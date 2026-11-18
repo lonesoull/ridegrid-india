@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { Graph, route } from '../src/route/graph';
+import { Graph, route, routeMulti, linkGraphs, unlinkGraph } from '../src/route/graph';
 
 // tests/fixtures/test.rgg = 3×3 grid around (80.00–80.02, 13.00–13.02):
 //   row 13.00: Beach Road (NH 32, primary) 1-2-3 ;  column 80.00: West Rd 1-4-7 ;  column 80.01: 2nd Street 2-5-8
@@ -36,5 +36,33 @@ describe('on-device road graph', () => {
     const s = g.snap([80.005, 13.0003])!;
     expect(s.d).toBeLessThan(40);
     expect(g.names[g.name[s.e]]).toMatch(/Beach Road/);
+  });
+});
+
+// two neighbouring "regions" that share the border junctions at lon 80.01 (like Geofabrik zones):
+//   west: 1(80.00,13.00) 2(80.01,13.00) 4(80.00,13.01) 5(80.01,13.01) ;  east: 2 3(80.02,13.00) 5 6(80.02,13.01)
+const ld = (f: string) => { const b = readFileSync(new URL(`./fixtures/${f}`, import.meta.url)); return new Graph(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
+
+describe('routing across downloaded regions', () => {
+  it('finds the shared border junctions', () => {
+    const w = ld('test-west.rgg'), e = ld('test-east.rgg');
+    expect(linkGraphs(w, e)).toBe(2);
+  });
+  it('routes from one region into the next, both ways, along roads', () => {
+    const w = ld('test-west.rgg'), e = ld('test-east.rgg');
+    expect(routeMulti([w], [80.0, 13.0], [80.02, 13.01])).toBeNull(); // west alone has no road near 6
+    linkGraphs(w, e);
+    const r = routeMulti([w, e], [80.0, 13.0], [80.02, 13.01])!;
+    expect(r).not.toBeNull();
+    expect(r.distM).toBeGreaterThan(3200); // two grid sides ≈ 2.17 + 1.11 km, not the 2.4 km diagonal
+    expect(r.distM).toBeLessThan(3400);
+    expect(r.coords.some((c) => near(c, [80.01, 13.0]) || near(c, [80.01, 13.01]))).toBe(true);
+    const back = routeMulti([e, w], [80.02, 13.01], [80.0, 13.0])!;
+    expect(Math.abs(back.distM - r.distM)).toBeLessThan(5);
+  });
+  it('forgets a region when it is removed', () => {
+    const w = ld('test-west.rgg'), e = ld('test-east.rgg');
+    linkGraphs(w, e); unlinkGraph(e, [w]);
+    expect(w.links.size).toBe(0);
   });
 });

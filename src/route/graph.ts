@@ -3,6 +3,7 @@
  * Pure TypeScript, no DOM: runs inside a Web Worker in the app and directly in tests.
  */
 export type LngLat = [number, number];
+export interface Link { g: Graph; v: number }
 const RAD = Math.PI / 180, R = 6371008.8;
 
 export class Graph {
@@ -15,6 +16,8 @@ export class Graph {
   /** first/second endpoint of each edge */
   ea: Uint32Array; eb: Uint32Array;
   private grid = new Map<number, number[]>();
+  /** junctions this graph shares (same OSM node, same coordinates) with neighbouring region graphs */
+  links = new Map<number, Link[]>();
   private _work: { dist: Float64Array; prevE: Int32Array; prevV: Int32Array; done: Uint8Array } | null = null;
   /** Search arrays sized to the graph, allocated once and reused (callers reset what they touch). */
   work() {
@@ -151,56 +154,114 @@ class Heap {
 
 export interface Path { coords: LngLat[]; distM: number; timeS: number; names: (string | undefined)[]; settled: number }
 
-/** Shortest-time route between two points with A* (snaps both points to the nearest road first). */
-export function route(g: Graph, from: LngLat, to: LngLat): Path | null {
-  const a = g.snap(from), b = g.snap(to);
-  if (!a || !b) return null;
-  const sec = (e: number, m: number) => m / (g.kmh[e] / 3.6);
-  const edgeM = (e: number) => g.len[e] / 10;
-  const oneway = (e: number) => (g.cls[e] & 0x80) !== 0;
-  // reusable per-graph search arrays (reset only what was touched) — fast even with millions of junctions
-  const W = g.work();
-  const { dist, prevE, prevV, done } = W;
+/**
+ * Join two neighbouring region graphs at their shared junctions (the same OSM nodes appear in both
+ * extracts along the border). Returns the number of shared junctions.
+ */
+export function linkGraphs(a: Graph, b: Graph): number {
+  const ov = [Math.max(a.bbox[0], b.bbox[0]), Math.max(a.bbox[1], b.bbox[1]), Math.min(a.bbox[2], b.bbox[2]), Math.min(a.bbox[3], b.bbox[3])].map((v) => Math.round(v * 1e6));
+  if (ov[0] > ov[2] || ov[1] > ov[3]) return 0;
+  const key = (x: number, y: number) => (x + 180e6) * 4e8 + (y + 100e6);
+  const inOv = (g: Graph, v: number) => g.lon[v] >= ov[0] && g.lon[v] <= ov[2] && g.lat[v] >= ov[1] && g.lat[v] <= ov[3];
+  const keys = (g: Graph) => {
+    let n = 0;
+    for (let v = 0; v < g.V; v++) if (inOv(g, v)) n++;
+    const k = new Float64Array(n); n = 0;
+    for (let v = 0; v < g.V; v++) if (inOv(g, v)) k[n++] = key(g.lon[v], g.lat[v]);
+    return k.sort();
+  };
+  const ka = keys(a), kb = keys(b), shared = new Set<number>();
+  for (let i = 0, j = 0; i < ka.length && j < kb.length;) {
+    if (ka[i] === kb[j]) { shared.add(ka[i]); i++; j++; } else if (ka[i] < kb[j]) i++; else j++;
+  }
+  if (!shared.size) return 0;
+  const ids = (g: Graph) => { const m = new Map<number, number>(); for (let v = 0; v < g.V; v++) if (inOv(g, v)) { const k = key(g.lon[v], g.lat[v]); if (shared.has(k) && !m.has(k)) m.set(k, v); } return m; };
+  const ia = ids(a), ib = ids(b);
+  const add = (g: Graph, v: number, l: Link) => { const x = g.links.get(v); if (x) x.push(l); else g.links.set(v, [l]); };
+  let n = 0;
+  for (const [k, va] of ia) { const vb = ib.get(k); if (vb === undefined) continue; add(a, va, { g: b, v: vb }); add(b, vb, { g: a, v: va }); n++; }
+  return n;
+}
+
+/** Forget every link into graph `gone` (when a region is removed). */
+export function unlinkGraph(gone: Graph, others: Iterable<Graph>) {
+  for (const g of others) for (const [v, ls] of g.links) {
+    const keep = ls.filter((l) => l.g !== gone);
+    if (!keep.length) g.links.delete(v); else if (keep.length !== ls.length) g.links.set(v, keep);
+  }
+  gone.links.clear();
+}
+
+/** Shortest-time route between two points with A* in one graph. */
+export function route(g: Graph, from: LngLat, to: LngLat): Path | null { return routeMulti([g], from, to); }
+
+/**
+ * Shortest-time route with A* across one or more region graphs: the search hops between regions
+ * at their shared border junctions, so a ride from one downloaded region into the next works offline.
+ */
+export function routeMulti(gs: Graph[], from: LngLat, to: LngLat): Path | null {
+  const snapBest = (p: LngLat) => {
+    let best: { gi: number; s: NonNullable<ReturnType<Graph['snap']>> } | null = null;
+    gs.forEach((g, gi) => { if (!g.contains(p)) return; const s = g.snap(p, 500); if (s && (!best || s.d < best.s.d)) best = { gi, s }; });
+    return best as { gi: number; s: NonNullable<ReturnType<Graph['snap']>> } | null;
+  };
+  const A = snapBest(from), B = snapBest(to);
+  if (!A || !B) return null;
+  const ga = gs[A.gi], gb = gs[B.gi], a = A.s, b = B.s;
+  const base: number[] = [0];
+  for (const g of gs) base.push(base[base.length - 1] + g.V);
+  const dec = (id: number) => { let i = 0; while (id >= base[i + 1]) i++; return i; };
+  const W = gs.map((g) => g.work());
+  const sec = (g: Graph, e: number, m: number) => m / (g.kmh[e] / 3.6);
+  const edgeM = (g: Graph, e: number) => g.len[e] / 10;
+  const oneway = (g: Graph, e: number) => (g.cls[e] & 0x80) !== 0;
   const touched: number[] = [];
-  const getD = (v: number) => dist[v];
-  const setD = (v: number, d: number, e: number, pv: number) => { if (dist[v] === Infinity) touched.push(v); dist[v] = d; prevE[v] = e; prevV[v] = pv; };
-  const h = (v: number) => { const x = (g.lon[v] / 1e6 - to[0]) * Math.cos(to[1] * RAD) * 111320, y = (g.lat[v] / 1e6 - to[1]) * 110540; return Math.hypot(x, y) / (75 / 3.6); };
+  const setD = (gi: number, v: number, d: number, e: number, pv: number) => {
+    const w = W[gi]; if (w.dist[v] === Infinity) touched.push(base[gi] + v);
+    w.dist[v] = d; w.prevE[v] = e; w.prevV[v] = pv;
+  };
+  const kx = Math.cos(to[1] * RAD) * 111320;
+  const h = (g: Graph, v: number) => Math.hypot((g.lon[v] / 1e6 - to[0]) * kx, (g.lat[v] / 1e6 - to[1]) * 110540) / (75 / 3.6);
   const heap = new Heap();
-  // start: leave the snapped point towards either end of its edge (respecting one-way)
-  const startTo = (v: number, cost: number) => { if (cost < getD(v)) { setD(v, cost, -1, -1); heap.push(cost + h(v), v); } };
-  startTo(g.eb[a.e], sec(a.e, edgeM(a.e) - a.along));
-  if (!oneway(a.e)) startTo(g.ea[a.e], sec(a.e, a.along));
-  // goal: arrive at either end of b's edge and travel along it to the snapped point
-  const goalCost = (v: number) => (v === g.ea[b.e] ? sec(b.e, b.along) : v === g.eb[b.e] && !oneway(b.e) ? sec(b.e, edgeM(b.e) - b.along) : Infinity);
+  const startTo = (v: number, cost: number) => { if (cost < W[A.gi].dist[v]) { setD(A.gi, v, cost, -1, -1); heap.push(cost + h(ga, v), base[A.gi] + v); } };
+  startTo(ga.eb[a.e], sec(ga, a.e, edgeM(ga, a.e) - a.along));
+  if (!oneway(ga, a.e)) startTo(ga.ea[a.e], sec(ga, a.e, a.along));
+  const goalCost = (gi: number, v: number) => gi !== B.gi ? Infinity
+    : v === gb.ea[b.e] ? sec(gb, b.e, b.along) : v === gb.eb[b.e] && !oneway(gb, b.e) ? sec(gb, b.e, edgeM(gb, b.e) - b.along) : Infinity;
   let bestTotal = Infinity, bestEnd = -1;
-  // same edge, direct
-  if (a.e === b.e && (b.along >= a.along || !oneway(a.e))) { bestTotal = sec(a.e, Math.abs(b.along - a.along)); bestEnd = -2; }
+  if (A.gi === B.gi && a.e === b.e && (b.along >= a.along || !oneway(ga, a.e))) { bestTotal = sec(ga, a.e, Math.abs(b.along - a.along)); bestEnd = -2; }
   let settled = 0;
+  const cleanup = () => { for (const id of touched) { const gi = dec(id), v = id - base[gi]; W[gi].dist[v] = Infinity; W[gi].done[v] = 0; } };
   try {
     while (heap.size) {
       if (heap.peekKey() >= bestTotal) break;
-      const v = heap.pop();
-      if (done[v]) continue;
-      done[v] = 1; settled++;
-      const dv = dist[v];
-      const gc = goalCost(v);
-      if (dv + gc < bestTotal) { bestTotal = dv + gc; bestEnd = v; }
+      const id = heap.pop(), gi = dec(id), g = gs[gi], v = id - base[gi], w = W[gi];
+      if (w.done[v]) continue;
+      w.done[v] = 1; settled++;
+      const dv = w.dist[v];
+      const gc = goalCost(gi, v);
+      if (dv + gc < bestTotal) { bestTotal = dv + gc; bestEnd = id; }
       for (let i = g.adjStart[v]; i < g.adjStart[v + 1]; i++) {
         if (!(g.adjFlag[i] & 1)) continue;
-        const e = g.adjEdge[i], w = g.adjTo[i];
-        const nd = dv + sec(e, edgeM(e));
-        if (nd < dist[w]) { setD(w, nd, e, v); heap.push(nd + h(w), w); }
+        const e = g.adjEdge[i], to2 = g.adjTo[i];
+        const nd = dv + sec(g, e, edgeM(g, e));
+        if (nd < w.dist[to2]) { setD(gi, to2, nd, e, id); heap.push(nd + h(g, to2), base[gi] + to2); }
+      }
+      // hop into a neighbouring region at a shared border junction (same place, no cost)
+      const ls = g.links.get(v);
+      if (ls) for (const l of ls) {
+        const hi = gs.indexOf(l.g);
+        if (hi < 0 || dv >= W[hi].dist[l.v]) continue;
+        setD(hi, l.v, dv, -2, id); heap.push(dv + h(l.g, l.v), base[hi] + l.v);
       }
       if (settled > 4_000_000) break;
     }
-  } catch (e) { for (const v of touched) { dist[v] = Infinity; done[v] = 0; } throw e; }
-  const prevEdge = { get: (v: number) => prevE[v] }, prevVx = { get: (v: number) => prevV[v] };
-  const cleanup = () => { for (const v of touched) { dist[v] = Infinity; done[v] = 0; } };
+  } catch (e) { cleanup(); throw e; }
   if (bestEnd === -1) { cleanup(); return null; }
   // ---- rebuild geometry
   const coords: LngLat[] = [], names: (string | undefined)[] = [];
   const add = (pts: LngLat[], name: string | undefined) => { for (const p of pts) { const l = coords[coords.length - 1]; if (l && l[0] === p[0] && l[1] === p[1]) continue; coords.push(p); names.push(name); } };
-  const cut = (e: number, fromM: number, toM: number): LngLat[] => {
+  const cut = (g: Graph, e: number, fromM: number, toM: number): LngLat[] => {
     // part of edge e between two distances from ea (either order)
     const pts = g.edgeCoords(e), rev = toM < fromM, lo = Math.min(fromM, toM), hi = Math.max(fromM, toM);
     const out: LngLat[] = []; let acc = 0;
@@ -215,22 +276,23 @@ export function route(g: Graph, from: LngLat, to: LngLat): Path | null {
     }
     return rev ? out.reverse() : out;
   };
-  const nameOf = (e: number) => g.names[g.name[e]] || undefined;
+  const nameOf = (g: Graph, e: number) => g.names[g.name[e]] || undefined;
   if (bestEnd === -2) {
-    add(cut(a.e, a.along, b.along), nameOf(a.e));
+    add(cut(ga, a.e, a.along, b.along), nameOf(ga, a.e));
   } else {
     const chain: number[] = [];
-    for (let v = bestEnd; v !== -1 && prevEdge.get(v) !== -1; v = prevVx.get(v)) chain.push(v);
-    const startV = chain.length ? prevVx.get(chain[chain.length - 1]) : bestEnd;
-    // first partial edge: from snap point a to startV
-    add(cut(a.e, a.along, startV === g.ea[a.e] ? 0 : edgeM(a.e)), nameOf(a.e));
+    let cur = bestEnd;
+    for (;;) { const gi = dec(cur), v = cur - base[gi]; if (W[gi].prevE[v] === -1) break; chain.push(cur); cur = W[gi].prevV[v]; }
+    const startV = cur - base[A.gi];
+    add(cut(ga, a.e, a.along, startV === ga.ea[a.e] ? 0 : edgeM(ga, a.e)), nameOf(ga, a.e));
     for (let k = chain.length - 1; k >= 0; k--) {
-      const v = chain[k], e = prevEdge.get(v);
+      const gi = dec(chain[k]), g = gs[gi], v = chain[k] - base[gi], e = W[gi].prevE[v];
+      if (e === -2) continue; // border hop: same point in the next region
       const pts = g.edgeCoords(e);
-      add(g.ea[e] === v ? pts.reverse() : pts, nameOf(e));
+      add(g.ea[e] === v ? pts.reverse() : pts, nameOf(g, e));
     }
-    // last partial edge: from bestEnd to snap point b
-    add(cut(b.e, bestEnd === g.ea[b.e] ? 0 : edgeM(b.e), b.along), nameOf(b.e));
+    const endV = bestEnd - base[B.gi];
+    add(cut(gb, b.e, endV === gb.ea[b.e] ? 0 : edgeM(gb, b.e), b.along), nameOf(gb, b.e));
   }
   cleanup();
   let distM = 0;
