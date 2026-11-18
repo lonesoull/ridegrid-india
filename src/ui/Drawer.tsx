@@ -13,7 +13,7 @@ import { ui, useUI, toast, act } from './state';
 import { useAsync, useEngine, useRouterStatus } from './hooks';
 import { mapCtl } from './App';
 import { StressRouteButton } from './StressRouteButton';
-import { google } from '../core/google';
+import { google, testGoogleKey, type KeyTest } from '../core/google';
 import { applyBase } from '../map/googleBase';
 import { RideTab } from './RideTab';
 import { LogbookTab } from './LogbookTab';
@@ -393,6 +393,7 @@ function StorageInfo() {
 function GoogleSettingsPanel() {
   const [g, setG] = useState(google.settings);
   const [k, setK] = useState(google.settings.key);
+  const [tests, setTests] = useState<KeyTest[] | null>(null);
   const save = (p: Partial<typeof g>) => act(null, async () => { setG(await google.save(p)); if (mapCtl) await applyBase(mapCtl, true); });
   return (
     <section>
@@ -405,13 +406,27 @@ function GoogleSettingsPanel() {
         {g.key && <button onClick={() => save({ on: !g.on })}>{g.on ? 'Turn Google mode off' : 'Turn Google mode on'}</button>}
         {g.key && <button className="danger" onClick={() => { setK(''); void save({ key: '', on: false }); }}>Remove key</button>}
       </div>
+      <button disabled={!k} onClick={() => act('Testing the key with Google…', async () => setTests(await testGoogleKey(k)))}>Test key</button>
+      {tests && (
+        <div className="list">
+          {tests.map((t) => (
+            <div key={t.api} className={`item ${t.ok ? '' : 'keyfail'}`}>
+              <b>{t.ok ? '✅' : '❌'} {t.api}</b>
+              {!t.ok && <div className="muted">Google says: {t.message}</div>}
+              {t.fix && <div><b>Fix:</b> {t.fix}</div>}
+            </div>
+          ))}
+          {tests.every((t) => t.ok) && <p className="muted">All good — tap “Save key & turn on”.</p>}
+          {!tests[0].ok && <p className="muted">The Map Tiles API is required for Google mode; Routes and Places add directions and search.</p>}
+        </div>
+      )}
       {g.key && <label className="check"><input type="checkbox" checked={g.traffic} onChange={(e) => save({ traffic: e.target.checked })} /><span>Show live traffic on the map (refreshed every 10 min)</span></label>}
       <details>
         <summary className="muted">How to create the key and keep it at ₹0</summary>
         <ol className="muted small">
-          <li>console.cloud.google.com → new project → enable <b>Map Tiles API</b> and <b>Routes API</b> (billing account required).</li>
+          <li>console.cloud.google.com → new project → enable <b>Map Tiles API</b>, <b>Routes API</b> and <b>Places API (New)</b> (billing account required).</li>
           <li>Credentials → Create API key → <b>Application restrictions: Websites</b> → add <code>https://lonesoull.github.io/*</code> (and <code>http://localhost:*</code> for testing).</li>
-          <li><b>API restrictions</b> → restrict key to Map Tiles API + Routes API only.</li>
+          <li><b>API restrictions</b> → restrict key to Map Tiles API + Routes API + Places API (New).</li>
           <li>Quotas: cap requests per day (e.g. Map Tiles 20,000/day, Routes computeRoutes 1,000/day) and add a ₹1 budget alert, so usage stays inside the free monthly limits.</li>
         </ol>
       </details>

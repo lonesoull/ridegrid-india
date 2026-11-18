@@ -118,3 +118,48 @@ export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?
   }
   return { coords, distM: r.distanceMeters ?? lineLength(coords), durS: parseInt(String(r.duration ?? '0').replace('s', '')) || 0, turns };
 }
+
+// ---------------------------------------------------------------- key diagnostics
+export interface KeyTest { api: string; ok: boolean; message: string; fix?: string }
+
+/** Turn Google's error (status + ErrorInfo reason) into a plain-language fix. */
+function explain(j: any, httpStatus: number, apiName: string): { message: string; fix?: string } {
+  const e = j?.error ?? {};
+  const reason: string = (e.details ?? []).map((d: any) => d.reason).find(Boolean) ?? '';
+  const msg: string = e.message ?? `HTTP ${httpStatus}`;
+  const m = `${reason} ${msg}`;
+  if (/SERVICE_DISABLED|has not been used|is disabled/i.test(m)) return { message: msg, fix: `Enable “${apiName}”: Google Cloud console → APIs & Services → Library → search “${apiName}” → Enable. Wait 2–5 minutes, then test again.` };
+  if (/BILLING|billing/i.test(m)) return { message: msg, fix: 'Turn on billing for this project: Google Cloud console → Billing → Link a billing account. (Free monthly usage still applies; add a budget alert to stay at ₹0.)' };
+  if (/REFERRER|referer|referrer/i.test(m)) return { message: msg, fix: `Website restriction doesn't match. Key → Application restrictions → Websites → add exactly: ${location.origin}/*  (and keep https://lonesoull.github.io/*). Changes take up to 5 minutes.` };
+  if (/API_KEY_SERVICE_BLOCKED|are blocked|not authorized to use this API/i.test(m)) return { message: msg, fix: `Key → API restrictions → tick “${apiName}” (or choose “Don't restrict key” to test).` };
+  if (/API_KEY_INVALID|API key not valid|invalid/i.test(m)) return { message: msg, fix: 'The key text is wrong — copy it again from Credentials (no spaces) and paste.' };
+  if (httpStatus === 429 || /quota|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(m)) return { message: msg, fix: 'Daily quota reached (or quota set to 0). Check Quotas for this API.' };
+  return { message: msg };
+}
+
+async function probe(api: string, url: string, init: RequestInit): Promise<KeyTest> {
+  try {
+    const r = await fetch(url, init);
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) return { api, ok: true, message: 'Working' };
+    return { api, ok: false, ...explain(j, r.status, api) };
+  } catch (e: any) {
+    return { api, ok: false, message: e?.message ?? 'Network error', fix: 'No connection to Google (offline, firewall or VPN blocking googleapis.com).' };
+  }
+}
+
+/** Check each Google API this app uses, separately. */
+export async function testGoogleKey(key: string): Promise<KeyTest[]> {
+  const k = encodeURIComponent(key);
+  const json = { 'Content-Type': 'application/json' };
+  return Promise.all([
+    probe('Map Tiles API', `https://tile.googleapis.com/v1/createSession?key=${k}`, { method: 'POST', headers: json, body: JSON.stringify({ mapType: 'roadmap', language: 'en-IN', region: 'IN' }) }),
+    probe('Routes API', 'https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST', headers: { ...json, 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'routes.distanceMeters' },
+      body: JSON.stringify({ origin: { location: { latLng: { latitude: 13.0827, longitude: 80.2707 } } }, destination: { location: { latLng: { latitude: 13.0674, longitude: 80.2376 } } }, travelMode: 'TWO_WHEELER' }),
+    }),
+    probe('Places API (New)', 'https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST', headers: { ...json, 'X-Goog-Api-Key': key }, body: JSON.stringify({ input: 'Chennai Central', includedRegionCodes: ['in'] }),
+    }),
+  ]);
+}

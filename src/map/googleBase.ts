@@ -37,7 +37,7 @@ export async function applyBase(map: MapController, forceNew = false) {
     if (g.traffic && !refreshTimer) scheduleRefresh(map);
     if (!g.traffic) stopRefresh();
   } catch (e: any) {
-    toast(`${e?.message || e} — using the OpenStreetMap map instead. Check the key's API restrictions (Map Tiles API).`, 'error');
+    toast(`${e?.message || e} — using the OpenStreetMap map instead. Open Tools → Google Maps mode → “Test key” to see the exact fix.`, 'error');
     stopRefresh();
     map.setOsmBase(night);
   }
