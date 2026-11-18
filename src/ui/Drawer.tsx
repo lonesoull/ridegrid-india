@@ -420,6 +420,7 @@ function GoogleSettingsPanel() {
           {!tests[0].ok && <p className="muted">The Maps JavaScript API is required for Google mode (Google's map + live traffic); Routes and Places add directions and search.</p>}
         </div>
       )}
+      {g.key && g.on && <GoogleStatus />}
       {g.key && (
         <label className="field">Map ID (optional — for 3D tilt, rotation and 3D buildings)
           <div className="row">
@@ -472,5 +473,18 @@ function AndroidAppPanel() {
         </ol>
       </details>
     </section>
+  );
+}
+
+function GoogleStatus() {
+  const st = mapCtl?.googleStatus;
+  if (!st) return <p className="muted">Google map not showing (offline or key problem — use Test key).</p>;
+  const r = st.rendering;
+  return (
+    <p className={r === 'VECTOR' && st.maxTilt > 0 ? 'muted' : 'warn'}>
+      Google map: <b>{r === 'VECTOR' ? 'Vector' : r === 'RASTER' ? 'Basic (raster)' : 'loading…'}</b>
+      {r === 'VECTOR' && (st.maxTilt > 0 ? ` · 3D tilt works (up to ${Math.round(st.maxTilt)}° so far)` : ' · tilt not confirmed yet — tap 3D at street level; if it stays flat, add your own Map ID below')}
+      {r === 'RASTER' && ' · no 3D on this device/Map ID — add your own Vector Map ID below'}
+    </p>
   );
 }

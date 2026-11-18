@@ -97,7 +97,7 @@ export class MapController {
     const key = `${opts.night}|${opts.mapId}`;
     if (!this.underlay || this.underlayKey !== key) {
       this.underlay?.destroy();
-      this.underlay = new GoogleUnderlay(this.map, opts, (t) => this.onGoogleRendering(t));
+      this.underlay = new GoogleUnderlay(this.map, opts, (t) => this.onGoogleRendering(t), (asked, got, gz) => this.onTiltLimited(asked, got, gz));
       this.underlayKey = key;
     } else this.underlay.setTraffic(opts.traffic);
     // match Google's camera exactly: 25° vertical field of view, tilt up to Google's 67.5°
@@ -119,6 +119,25 @@ export class MapController {
       this.map.dragRotate.enable(); this.map.touchZoomRotate.enableRotation();
     }
   }
+  private lastTiltMsg = 0;
+  /** Google refused (part of) the requested tilt — explain instead of silently staying flat. */
+  private onTiltLimited(asked: number, got: number, gZoom: number) {
+    if (asked < 10 || Date.now() - this.lastTiltMsg < 8000) return;
+    this.lastTiltMsg = Date.now();
+    if (got < 1 && (this.underlay?.maxTiltSeen ?? 0) < 1) {
+      toast('Google won\'t tilt with this Map ID. Create your own Vector Map ID with Tilt + Rotation (Tools → Google Maps mode → Map ID) for 3D.', 'error');
+    } else if (got < 1) {
+      toast(`Zoom in to tilt — Google allows 3D only when closer (now zoom ${gZoom.toFixed(0)}).`);
+    } else if (asked - got > 5) {
+      toast(`Google allows ${Math.round(got)}° tilt at this zoom — zoom in for more 3D.`);
+    }
+  }
+  /** For the Tools panel: what the Google map can do on this device. */
+  get googleStatus() {
+    if (this.base !== 'google' || !this.underlay) return null;
+    return { rendering: this.underlay.renderingType, maxTilt: this.underlay.maxTiltSeen };
+  }
+
   get rotationLocked() { return this.base === 'google' && this.underlay?.renderingType === 'RASTER'; }
 
   private dropUnderlay() {
@@ -371,7 +390,9 @@ export class MapController {
   snapView() { this.follow = false; ui.set({ following: false }); this.map.easeTo({ pitch: 0, bearing: 0, duration: 500 }); }
   tilt() {
     if (this.rotationLocked) { toast('3D tilt needs Google\'s vector map, which this device can\'t show. Turn Google mode off for 3D.'); return; }
-    this.map.easeTo({ pitch: this.map.getPitch() > 10 ? 0 : 60, duration: 500 });
+    const flat = this.map.getPitch() > 10;
+    const zoomFor3d = this.base === 'google' && !flat ? { zoom: Math.max(this.map.getZoom(), 16.5) } : {};
+    this.map.easeTo({ pitch: flat ? 0 : 60, duration: 600, ...zoomFor3d });
   }
   showMe(p: LngLat, fly = true) {
     this.me = p;

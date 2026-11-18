@@ -33,9 +33,13 @@ export class GoogleUnderlay {
   gmap: any;
   traffic: any = null;
   private sync: () => void;
+  private settle: () => void;
   /** 'VECTOR' supports rotation + tilt; 'RASTER' (older devices / WebGL off) is north-up and flat */
   renderingType: 'VECTOR' | 'RASTER' | null = null;
-  constructor(private ml: MLMap, opts: { night: boolean; traffic: boolean; mapId: string }, onRendering?: (t: 'VECTOR' | 'RASTER') => void) {
+  /** largest tilt Google has actually allowed so far (0 = tilt switched off for this Map ID) */
+  maxTiltSeen = 0;
+  constructor(private ml: MLMap, opts: { night: boolean; traffic: boolean; mapId: string }, onRendering?: (t: 'VECTOR' | 'RASTER') => void,
+    private onTiltLimited?: (asked: number, got: number, zoom: number) => void) {
     const host = ml.getContainer();
     this.div = document.createElement('div');
     this.div.className = 'gmap-underlay';
@@ -60,10 +64,17 @@ export class GoogleUnderlay {
       const p = ml.getCenter();
       const pitch = ml.getPitch();
       this.gmap.moveCamera({ center: { lat: p.lat, lng: p.lng }, zoom: ml.getZoom() + 1, heading: ml.getBearing(), tilt: pitch });
-      // Google limits tilt by zoom level — follow its limit so both cameras stay identical
-      const gt = this.gmap.getTilt?.();
-      if (typeof gt === 'number' && pitch - gt > 0.5) ml.setPitch(gt);
     };
+    // Google limits tilt by zoom level / Map ID. Once a movement finishes, follow its limit so both cameras
+    // stay identical (doing this mid-animation would cancel the animation).
+    this.settle = () => {
+      const pitch = ml.getPitch();
+      const gt = this.gmap.getTilt?.();
+      if (typeof gt !== 'number') return;
+      this.maxTiltSeen = Math.max(this.maxTiltSeen, gt);
+      if (pitch - gt > 0.5) { ml.setPitch(gt); this.onTiltLimited?.(pitch, gt, ml.getZoom() + 1); }
+    };
+    ml.on('moveend', this.settle);
     ml.on('move', this.sync);
     ml.on('resize', this.sync);
     this.sync();
@@ -73,7 +84,7 @@ export class GoogleUnderlay {
     if (!on && this.traffic) { this.traffic.setMap(null); this.traffic = null; }
   }
   destroy() {
-    this.ml.off('move', this.sync); this.ml.off('resize', this.sync);
+    this.ml.off('move', this.sync); this.ml.off('resize', this.sync); this.ml.off('moveend', this.settle);
     this.traffic?.setMap(null);
     this.div.remove();
   }
