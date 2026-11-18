@@ -33,14 +33,16 @@ export class GoogleUnderlay {
   gmap: any;
   traffic: any = null;
   private sync: () => void;
-  constructor(private ml: MLMap, opts: { night: boolean; traffic: boolean; mapId: string }) {
+  /** 'VECTOR' supports rotation + tilt; 'RASTER' (older devices / WebGL off) is north-up and flat */
+  renderingType: 'VECTOR' | 'RASTER' | null = null;
+  constructor(private ml: MLMap, opts: { night: boolean; traffic: boolean; mapId: string }, onRendering?: (t: 'VECTOR' | 'RASTER') => void) {
     const host = ml.getContainer();
     this.div = document.createElement('div');
     this.div.className = 'gmap-underlay';
     host.parentElement!.insertBefore(this.div, host);
     const c = ml.getCenter();
     this.gmap = new google.maps.Map(this.div, {
-      center: { lat: c.lat, lng: c.lng }, zoom: ml.getZoom() + 1, heading: ml.getBearing(), tilt: 0,
+      center: { lat: c.lat, lng: c.lng }, zoom: ml.getZoom() + 1, heading: ml.getBearing(), tilt: ml.getPitch(),
       mapId: opts.mapId || 'DEMO_MAP_ID',
       renderingType: google.maps.RenderingType?.VECTOR,
       colorScheme: opts.night ? 'DARK' : 'LIGHT',
@@ -48,10 +50,19 @@ export class GoogleUnderlay {
       isFractionalZoomEnabled: true,
     });
     this.setTraffic(opts.traffic);
-    // MapLibre tiles are 512 px, Google's 256 px → Google zoom = MapLibre zoom + 1
+    this.gmap.addListener('renderingtype_changed', () => {
+      const t = this.gmap.getRenderingType?.();
+      if (t === 'VECTOR' || t === 'RASTER') { this.renderingType = t; onRendering?.(t); }
+    });
+    // Camera match (same as deck.gl's Google overlay): MapLibre tiles are 512 px vs Google's 256 px → zoom + 1;
+    // tilt = pitch, heading = bearing; MapLibre's field of view is set to Google's 25° by the caller.
     this.sync = () => {
       const p = ml.getCenter();
-      this.gmap.moveCamera({ center: { lat: p.lat, lng: p.lng }, zoom: ml.getZoom() + 1, heading: ml.getBearing(), tilt: 0 });
+      const pitch = ml.getPitch();
+      this.gmap.moveCamera({ center: { lat: p.lat, lng: p.lng }, zoom: ml.getZoom() + 1, heading: ml.getBearing(), tilt: pitch });
+      // Google limits tilt by zoom level — follow its limit so both cameras stay identical
+      const gt = this.gmap.getTilt?.();
+      if (typeof gt === 'number' && pitch - gt > 0.5) ml.setPitch(gt);
     };
     ml.on('move', this.sync);
     ml.on('resize', this.sync);

@@ -97,16 +97,34 @@ export class MapController {
     const key = `${opts.night}|${opts.mapId}`;
     if (!this.underlay || this.underlayKey !== key) {
       this.underlay?.destroy();
-      this.underlay = new GoogleUnderlay(this.map, opts);
+      this.underlay = new GoogleUnderlay(this.map, opts, (t) => this.onGoogleRendering(t));
       this.underlayKey = key;
     } else this.underlay.setTraffic(opts.traffic);
-    this.map.setMaxPitch(0); // Google's tilted camera differs from MapLibre's; keep both flat so layers line up exactly
+    // match Google's camera exactly: 25° vertical field of view, tilt up to Google's 67.5°
+    this.map.setVerticalFieldOfView(25);
+    this.map.setMaxPitch(this.underlay.renderingType === 'RASTER' ? 0 : 67.5);
     this.map.getContainer().classList.add('over-google');
     const style: StyleSpecification = { version: 8, glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', sources: {}, layers: [] };
     this.applyBase('google-js', style, 'google');
   }
+  /** Basic (raster) Google map can't rotate or tilt — keep ours north-up and flat so they stay aligned. */
+  private onGoogleRendering(t: 'VECTOR' | 'RASTER') {
+    if (t === 'RASTER') {
+      this.map.setMaxPitch(0);
+      this.map.setBearing(0);
+      this.map.dragRotate.disable(); this.map.touchZoomRotate.disableRotation();
+      toast('Google map is in basic mode on this device (no WebGL vector map) — rotation and 3D tilt are off in Google mode.');
+    } else {
+      this.map.setMaxPitch(67.5);
+      this.map.dragRotate.enable(); this.map.touchZoomRotate.enableRotation();
+    }
+  }
+  get rotationLocked() { return this.base === 'google' && this.underlay?.renderingType === 'RASTER'; }
+
   private dropUnderlay() {
     this.underlay?.destroy(); this.underlay = null; this.underlayKey = '';
+    this.map.setVerticalFieldOfView(36.87);
+    this.map.dragRotate.enable(); this.map.touchZoomRotate.enableRotation();
     this.map.setMaxPitch(80);
     this.map.getContainer().classList.remove('over-google');
   }
@@ -350,8 +368,11 @@ export class MapController {
     ui.set({ selectedId: s.id });
     this.map.flyTo({ center: [s.lng, s.lat], zoom: Math.max(this.map.getZoom(), 14), duration: 700 });
   }
-  snapView() { this.map.easeTo({ pitch: 0, bearing: 0, duration: 500 }); }
-  tilt() { this.map.easeTo({ pitch: this.map.getPitch() > 10 ? 0 : 60, duration: 500 }); }
+  snapView() { this.follow = false; ui.set({ following: false }); this.map.easeTo({ pitch: 0, bearing: 0, duration: 500 }); }
+  tilt() {
+    if (this.rotationLocked) { toast('3D tilt needs Google\'s vector map, which this device can\'t show. Turn Google mode off for 3D.'); return; }
+    this.map.easeTo({ pitch: this.map.getPitch() > 10 ? 0 : 60, duration: 500 });
+  }
   showMe(p: LngLat, fly = true) {
     this.me = p;
     this.src(ME)?.setData({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } });

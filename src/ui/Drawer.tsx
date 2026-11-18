@@ -421,7 +421,7 @@ function GoogleSettingsPanel() {
         </div>
       )}
       {g.key && <label className="check"><input type="checkbox" checked={g.traffic} onChange={(e) => save({ traffic: e.target.checked })} /><span>Show live traffic on the map (Google refreshes it automatically)</span></label>}
-      <p className="muted small-note">In Google mode the map is flat (rotates with your direction; no 3D tilt) so your route lines up exactly with Google's roads. Route lines © OpenStreetMap contributors (OSRM).</p>
+      <p className="muted small-note">In Google mode your route is drawn with Google's own camera settings, so it stays on Google's roads when rotated or tilted. Route lines © OpenStreetMap contributors (OSRM).</p>
       <details>
         <summary className="muted">How to create the key and keep it at ₹0</summary>
         <ol className="muted small">
