@@ -95,3 +95,36 @@ describe('logbook', () => {
     expect(days[0].breaks).toBe(1);
   });
 });
+
+describe('evidence checks', () => {
+  it('flags GPS gaps, missing witnesses/evidence and a day not starting where the last ended', async () => {
+    useDB(new RideDB('lb2'));
+    const t = await createTrip('EV', undefined, 'expedition');
+    const pts = (t0: number, from: LngLat, n: number, stepDeg: number) =>
+      Array.from({ length: n }, (_, i) => [t0 + i * 10000, from[0] + i * stepDeg, from[1], 8, 15] as [number, number, number, number, number]);
+    const d1 = Date.parse('2026-11-20T08:00:00+05:30'), d2 = Date.parse('2026-11-21T08:00:00+05:30');
+    // day 1: ~2 h riding east (15 m/s), then a 20-min hole while moving 10 km, then more riding
+    const a = pts(d1, [77, 20], 720, 0.0014);
+    const last = a[a.length - 1];
+    const b = pts(last[0] + 20 * 60000, [last[1] + 0.1, 20], 60, 0.0014);
+    await db.rides.put({ id: 'r1', tripId: t.id, startedAt: d1, endedAt: b[b.length - 1][0], distM: 0, points: 0, simulated: false, name: 'r1' });
+    await db.rideChunks.add({ rideId: 'r1', pts: [...a, ...b] });
+    // day 2 starts 5 km away from where day 1 ended
+    const c = pts(d2, [b[b.length - 1][1] + 0.05, 20], 60, 0.0014);
+    await db.rides.put({ id: 'r2', tripId: t.id, startedAt: d2, endedAt: c[c.length - 1][0], distM: 0, points: 0, simulated: false, name: 'r2' });
+    await db.rideChunks.add({ rideId: 'r2', pts: c });
+    await db.stopLogs.put({ id: 'w', tripId: t.id, type: 'police', at: d2 + 60000, lng: c[5][1], lat: 20, witness: { name: 'SI Kumar', role: 'Sub-Inspector', independent: true } });
+    const [day2, day1] = await daySummaries(t.id);
+    expect(day1.gaps.length).toBe(1);
+    expect(day1.gaps[0].km).toBeGreaterThan(9);
+    expect(day1.km).toBeGreaterThan(100); // gap not counted: ~111 + ~9 km of real track
+    expect(day1.km).toBeLessThan(125);
+    expect(day1.issues.join('\n')).toMatch(/No witness/);
+    expect(day1.issues.join('\n')).toMatch(/evidence photo/);
+    expect(day1.issues.join('\n')).toMatch(/GPS not recording/);
+    expect(day2.witnesses).toBe(1);
+    expect(day2.startGapKm!).toBeGreaterThan(4);
+    expect(day2.issues.join('\n')).toMatch(/continuous/);
+    expect(day2.issues.join('\n')).not.toMatch(/No witness/);
+  });
+});

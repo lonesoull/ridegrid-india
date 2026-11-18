@@ -13,6 +13,8 @@ import { team } from '../team/team';
 import { sendSos } from '../team/actions';
 import { useEffect, useRef, useState } from 'react';
 import { compliance } from '../nav/compliance';
+import { reminder, saveEvidence } from '../nav/evidence';
+import { myLocation } from '../nav/directions';
 
 const fmtDist = (m: number) => (m < 1000 ? `${m < 100 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m` : fmtKm(m));
 const fmtDur = (s: number) => {
@@ -122,6 +124,7 @@ export function NavPanel() {
           {sim && SIM_SPEEDS.map((m) => <button key={m} className={nav.mult === m ? 'on' : ''} onClick={() => nav.setMult(m)}>{m}×</button>)}
           {!following && <button onClick={() => { ui.set({ following: true }); mapCtl?.startFollow(nav.pos); }}><Icon name="target" /> Re-centre</button>}
           {!sim && <button className="logbtn" onClick={() => ui.set({ logStop: true })}>Log stop</button>}
+          {!sim && isExpedition() && <EvidenceButton />}
           {team.settings && <SosHold />}
           {st && <button title="Open this 10-leg stage in Google Maps (backup)" onClick={() => window.open(st.url, '_blank', 'noopener')}><Icon name="gmaps" size={18} /> G-Maps</button>}
           <button className="danger" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: 'append' }))}><Icon name="stop" /> Exit</button>
@@ -156,4 +159,24 @@ function CompAlerts() {
   const list = [...compliance.alerts.values()];
   if (!list.length) return null;
   return <div className="compalerts">{list.map((a) => <div key={a.kind} className={`comp ${a.level}`}>{a.text}</div>)}</div>;
+}
+
+/** One tap: camera → photo/video saved as an "Evidence" logbook entry with GPS, time and place printed on it. */
+function EvidenceButton() {
+  const [, tick] = useState(0);
+  useEffect(() => { const f = () => tick((x) => x + 1); reminder.listeners.add(f); return () => { reminder.listeners.delete(f); }; }, []);
+  const input = useRef<HTMLInputElement>(null);
+  const onFiles = (files: File[]) => files.length && act('Saving evidence…', async () => {
+    const pos = nav.pos ?? (await myLocation());
+    await saveEvidence(files, pos, nav.accuracy);
+    toast('Evidence saved with GPS, time and place');
+  });
+  return (
+    <>
+      <input ref={input} type="file" accept="image/*,video/*" capture="environment" hidden onChange={(e) => { void onFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+      <button className={reminder.due ? 'primary pulse' : ''} title="Evidence photo / video (GPS, time and place recorded)" onClick={() => input.current?.click()}>
+        📷 {reminder.due ? 'Evidence due' : 'Evidence'}
+      </button>
+    </>
+  );
 }

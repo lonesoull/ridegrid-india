@@ -27,14 +27,21 @@ export interface Ride { id: string; tripId: string; startedAt: number; endedAt?:
 /** Ride GPS points in chunks: [timeMs, lng, lat, accuracyM, speedMps] */
 export type RidePoint = [number, number, number, number, number];
 export interface RideChunk { id?: number; rideId: string; pts: RidePoint[] }
-export type StopType = 'daystart' | 'dayend' | 'overnight' | 'police' | 'fuel' | 'other' | 'break';
+export type StopType = 'daystart' | 'dayend' | 'overnight' | 'police' | 'witness' | 'fuel' | 'service' | 'food' | 'evidence' | 'media' | 'other' | 'break';
+/** Who signed / gave a witness statement (they write the statement themselves; the app only records who and where). */
+export interface Witness { name: string; role?: string; org?: string; phone?: string; gazetted?: boolean; independent?: boolean }
 /** Logbook entry: a real stop (overnight, police signature…) or an automatically detected break. */
 export interface StopLog {
   id: string; tripId: string; rideId?: string;
   type: StopType; auto?: boolean;
   at: number; endAt?: number;
   lng: number; lat: number; acc?: number;
-  odoKm?: number; note?: string; photos?: Blob[];
+  odoKm?: number; note?: string;
+  /** photos and videos (an evidence photo keeps the original and a copy with GPS/time printed on it) */
+  photos?: Blob[];
+  witness?: Witness;
+  /** media article / video link */
+  link?: string;
   /** human place name (reverse geocoded), e.g. "Taramani, Chennai, Tamil Nadu" */
   place?: string;
 }

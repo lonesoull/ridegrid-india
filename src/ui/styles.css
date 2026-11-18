@@ -275,3 +275,14 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .haltchip.warn { color: var(--warn); } .haltchip.danger { color: var(--danger); }
 .statetable td, .statetable th { padding: 3px 6px 3px 0; }
 .statetable td:not(:first-child), .statetable th:not(:first-child) { text-align: right; }
+
+/* evidence & record */
+.record { margin: 8px 0; padding: 10px; border-radius: 10px; background: var(--chip, rgba(127,127,127,.12)); }
+.record .bar { height: 8px; border-radius: 4px; background: rgba(127,127,127,.25); margin: 6px 0; overflow: hidden; }
+.record .bar i { display: block; height: 100%; background: #22a06b; }
+.warnbox { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: rgba(245,166,35,.15); border: 1px solid rgba(245,166,35,.5); font-size: 13px; }
+.warnbox ul { margin: 4px 0 0 18px; padding: 0; }
+.warn { color: #c77700; }
+.thumbs video { width: 120px; height: 90px; border-radius: 6px; background: #000; }
+.pulse { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255,120,0,.35); } }

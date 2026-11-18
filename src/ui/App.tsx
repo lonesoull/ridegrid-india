@@ -20,6 +20,7 @@ import { startCompliance, compliance, fmtHms } from '../nav/compliance';
 import { loadExpressways } from '../nav/expressways';
 import { riddenLines } from '../nav/history';
 import { device } from '../route/device';
+import { reminder } from '../nav/evidence';
 import { PlaceCard } from './PlaceCard';
 import { Icon } from './Icon';
 import { useNav } from './navHooks';
@@ -61,6 +62,7 @@ export function App() {
       window.addEventListener('online', () => mapCtl && applyBase(mapCtl));
       window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
       await bootTrips();
+      void reminder.start();
       setReady(true);
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
     })().catch((e) => toast(String(e), 'error'));

@@ -25,8 +25,9 @@ export interface NavSettings {
   breakMin: number;    // stationary this long = automatic break log
   gapM: number;        // expedition: minimum distance to keep from any other planned road
   fasterSec: number;   // daily: how often to look for a faster route with live traffic (0 = off)
+  evidenceMin: number; // expedition: remind to take an evidence photo/video this often while riding (0 = off)
 }
-export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30, fasterSec: 60 };
+export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30, fasterSec: 60, evidenceMin: 60 };
 export const SIM_SPEEDS = [1, 10, 50, 500] as const;
 
 const MAX_ACC_M = 50;          // ignore GPS fixes worse than this for "covered" distance
