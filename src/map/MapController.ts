@@ -180,8 +180,9 @@ export class MapController {
     m.addSource(TRACK, { type: 'geojson', data: empty() });
     m.addSource(NEXT, { type: 'geojson', data: empty() });
     m.addSource(PUCK, { type: 'geojson', data: empty() });
+    // ridden track goes UNDER the planned route (wider, translucent) so any difference stays visible
     m.addLayer({ id: 'rg-track', type: 'line', source: TRACK, layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6], 'line-opacity': 0.9 } }, 'rg-clusters');
+      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 5, 14, 13], 'line-opacity': 0.55 } }, 'rg-route-casing');
     m.addLayer({ id: 'rg-next', type: 'circle', source: NEXT,
       paint: { 'circle-radius': 20, 'circle-color': 'rgba(34,197,94,0.18)', 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 4 } });
     if (!m.hasImage('rg-arrow')) m.addImage('rg-arrow', arrowImage(), { pixelRatio: 2 });

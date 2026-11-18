@@ -164,7 +164,7 @@ export class Navigator {
     unlockAudio();
     fromStop = Math.max(0, Math.min(fromStop, engine.stops.length - 1));
     this.approach = approach && approach.coords.length >= 2 ? approach : null;
-    this.spoken = new Map(); this.rerouting = false; this.lastReroute = 0; this.reroutes = 0; this.joinedAt = null; this.lastJoinCheck = 0;
+    this.spoken = new Map(); this.rerouting = false; this.lastReroute = 0; this.reroutes = 0; this.joinedAt = null; this.lastJoinCheck = 0; this.routeUpdates = 0;
     this.detour = null; this.guard = null; this.approachStartS = null; this.joinWin = null; this.parRun = 0;
     this.fromStop = fromStop;
     this.line = this.composeLine();
@@ -396,6 +396,8 @@ export class Navigator {
   private fullLine: RouteLine | null = null;
   private lastJoinCheck = 0;
   joinedAt: number | null = null;
+  /** times the planned route geometry changed during this ride */
+  routeUpdates = 0;
 
   // ---------------------------------------------------------------- expedition detour mode
   /** where the rider left the planned route (along-route distance + point) and the path ridden since */
@@ -543,10 +545,18 @@ export class Navigator {
   private rebuildLine() {
     if (this.mode === 'off') return;
     const prevNext = this.next;
+    const old = this.line;
     this.line = this.composeLine();
     if (this.pos) {
-      const m = matchToRoute(this.line, this.pos, 0, 0);
+      // re-find the rider near the same place on the new geometry (never jump to a far part of the route)
+      const hint = pointAt(this.line, this.s).idx;
+      const m = matchToRoute(this.line, this.pos, hint, isExpedition() ? Infinity : 300);
       this.s = m.s; this.matchIdx = m.idx;
+    }
+    // tell the rider when the road geometry ahead actually changed
+    if (old && Math.abs(old.total - this.line.total) > 50) {
+      this.routeUpdates++;
+      if (this.settings.voice && (this.mode === 'live' || this.mult <= 10)) say('Route updated');
     }
     // keep the next-stop counter where the rider is, without skipping ahead
     this.next = Math.min(prevNext, this.stopCount);

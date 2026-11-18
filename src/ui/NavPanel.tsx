@@ -87,7 +87,7 @@ export function NavPanel() {
         {nav.gpsError && <div className="offbanner warn">{nav.gpsError}</div>}
         {!sim && !nav.pos && !nav.gpsError && <div className="muted">Waiting for GPS fix… (outdoors with open sky is fastest)</div>}
         <div className="navsummary">
-          <div><b className="eta">{fmtDur(nav.remaining / etaSpeed)}</b> <span className="muted">· {fmtKm(nav.remaining)} · arrive {sim ? '—' : clock(nav.remaining / etaSpeed)}</span></div>
+          <div><b className="eta">{done ? 'Arrived' : fmtDur(nav.remaining / etaSpeed)}</b> <span className="muted">· {fmtKm(nav.remaining)} · arrive {sim ? '—' : clock(nav.remaining / etaSpeed)}</span></div>
           <div className="muted">Next {t.one} <b>#{Math.min(nav.next + 1, N).toLocaleString('en-IN')}</b> of {N.toLocaleString('en-IN')} · {done ? '—' : fmtDist(toStop)}
             {!sim && ` · ${Math.round(nav.speedMps * 3.6)} km/h`}{sim && ` · ${nav.settings.simKmh} km/h ×${nav.mult}`}</div>
         </div>
@@ -113,6 +113,7 @@ export function NavPanel() {
           {sim ? 'Simulation' : `GPS ±${Math.round(nav.accuracy)} m`} · {nav.wake.active ? 'screen kept on ✓' : nav.wake.supported ? 'screen lock not held' : 'keep-awake not supported'}
           {nav.ride ? ` · logging ${fmtKm(nav.ride.distM)}` : sim ? ' · not logged' : ''}
           {nav.reroutes > 0 && ` · re-routed ${nav.reroutes}×`}
+          {nav.routeUpdates > 0 && <span className="warn"> · planned route changed {nav.routeUpdates}× during this ride</span>}
           {nav.joinedAt !== null && ` · joined route before #${nav.joinedAt + 1}`}
           {nav.missed.length > 0 && <span className="warn"> · missed: {nav.missed.slice(-5).map((i) => `#${i + 1}`).join(', ')}{nav.missed.length > 5 ? ` (+${nav.missed.length - 5})` : ''}</span>}
         </div>
