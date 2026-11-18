@@ -24,7 +24,7 @@ export function LogbookTab() {
   useNav();
   const trip = engine.trip!;
   const dialogOpen = useUI((x) => !!x.logStop);
-  const [days, reload] = useAsync(() => daySummaries(trip.id, { witnessesPerDay: nav.settings.witnessesPerDay }), [trip.id, nav.settings.witnessesPerDay, nav.mode, nav.version >> 6, dialogOpen]);
+  const [days, reload] = useAsync(() => daySummaries(trip.id, { witnessesPerDay: nav.settings.witnessesPerDay, record: isExpedition() }), [trip.id, trip.kind, nav.settings.witnessesPerDay, nav.mode, nav.version >> 6, dialogOpen]);
   // place names arrive a moment after saving — refresh once more
   useEffect(() => { if (!dialogOpen) { const t = setTimeout(reload, 2500); return () => clearTimeout(t); } }, [dialogOpen]);
   const [open, setOpen] = useState<string | null>(null);
@@ -34,9 +34,10 @@ export function LogbookTab() {
   const [, bump] = useState(0);
   const saved = backups(trip.id);
   const today = dayKey(Date.now());
-  const notBacked = (days ?? []).filter((d) => d.date !== today && d.km > 1 && !saved.includes(d.date));
+  const exp = isExpedition();
+  const notBacked = !exp ? [] : (days ?? []).filter((d) => d.date !== today && d.km > 1 && !saved.includes(d.date));
   const dayPack = (d: DaySummary) => act(`Building Day ${d.dayNo} evidence…`, async () => {
-    download(`${safeName(trip.name)}_evidence_day${String(d.dayNo).padStart(3, '0')}_${d.date}.zip`, await evidencePack(trip.id, trip.name, d.date, { witnessesPerDay: s.witnessesPerDay }, s));
+    download(`${safeName(trip.name)}_evidence_day${String(d.dayNo).padStart(3, '0')}_${d.date}.zip`, await evidencePack(trip.id, trip.name, d.date, { witnessesPerDay: s.witnessesPerDay, record: exp }, s));
     markBackup(trip.id, d.date); bump((x) => x + 1);
   });
 
@@ -44,7 +45,7 @@ export function LogbookTab() {
     <div className="stack">
       <section>
         <h3>Logbook {isExpedition() && <span className="pill">evidence</span>}</h3>
-        <p className="muted">Every entry records GPS position, exact time and place name automatically. Add the odometer and photos (odometer, bill, signed page — keep the number plate visible).</p>
+        <p className="muted">{exp ? 'Every entry records GPS position, exact time and place name automatically. Add the odometer and photos (odometer, bill, signed page — keep the number plate visible).' : 'Your ride diary: each day\'s km, riding time, breaks and any stops or bills you log.'}</p>
         {isExpedition() && days && (
           <div className="record">
             <div><b>{total.toLocaleString('en-IN', { maximumFractionDigits: 1 })} km</b> by GPS inside India · record to beat <b>{RECORD_KM.toLocaleString('en-IN')} km</b></div>
@@ -64,20 +65,20 @@ export function LogbookTab() {
           <button onClick={() => ui.set({ logStop: 'document' })}>Documents</button>
           <button onClick={() => ui.set({ logStop: 'finish' })}>Journey FINISH</button>
         </div>}
-        <div className="btns">
+        {exp && <div className="btns">
           <button onClick={() => ui.set({ logStop: 'police' })}>Witness / police</button>
           <button onClick={() => ui.set({ logStop: 'evidence' })}>📷 Evidence</button>
           <button onClick={() => ui.set({ logStop: 'fuel' })}>Bill</button>
           <button onClick={() => ui.set({ logStop: 'media' })}>Media</button>
-        </div>
+        </div>}
         <div className="btns">
-          <button onClick={() => act('Building printable logbook…', async () => printLogbook(trip.name, s, (await daySummaries(trip.id, { witnessesPerDay: s.witnessesPerDay })).slice().reverse()))}>Print / save as PDF</button>
-          <button onClick={() => act('Building evidence pack…', async () => download(`${safeName(trip.name)}_evidence_all_${new Date().toISOString().slice(0, 10)}.zip`, await evidencePack(trip.id, trip.name, undefined, { witnessesPerDay: s.witnessesPerDay })))}>Whole-journey evidence (.zip)</button>
+          <button onClick={() => act('Building printable logbook…', async () => printLogbook(trip.name, s, (await daySummaries(trip.id, { witnessesPerDay: s.witnessesPerDay, record: exp })).slice().reverse()))}>Print / save as PDF</button>
+          <button onClick={() => act('Building evidence pack…', async () => download(`${safeName(trip.name)}_evidence_all_${new Date().toISOString().slice(0, 10)}.zip`, await evidencePack(trip.id, trip.name, undefined, { witnessesPerDay: s.witnessesPerDay, record: exp }, s)))}>{exp ? 'Whole-journey evidence (.zip)' : 'Export rides & logbook (.zip)'}</button>
         </div>
         <label className="field">Automatic break after standing still <b>{s.breakMin} min</b>
           <input type="range" min={2} max={30} step={1} value={s.breakMin} onChange={(e) => void nav.setSettings({ breakMin: +e.target.value })} />
         </label>
-        <div className="riderinfo">
+        {exp && <><div className="riderinfo">
           <input placeholder="Rider name" defaultValue={s.riderName} onBlur={(e) => void nav.setSettings({ riderName: e.target.value.trim() })} />
           <input placeholder="Motorcycle (make & model)" defaultValue={s.bikeModel} onBlur={(e) => void nav.setSettings({ bikeModel: e.target.value.trim() })} />
           <input placeholder="Registration no." defaultValue={s.bikeReg} onBlur={(e) => void nav.setSettings({ bikeReg: e.target.value.trim().toUpperCase() })} />
@@ -87,8 +88,8 @@ export function LogbookTab() {
         </label>
         <label className="field">Evidence photo reminder while riding <b>{s.evidenceMin ? `every ${s.evidenceMin} min` : 'off'}</b>
           <input type="range" min={0} max={180} step={15} value={s.evidenceMin} onChange={(e) => void nav.setSettings({ evidenceMin: +e.target.value })} />
-        </label>
-        {days && days.length > 0 && <p className="muted">{days.length} day(s) · {total.toFixed(1)} km by GPS inside India (real rides only)</p>}
+        </label></>}
+        {days && days.length > 0 && <p className="muted">{days.length} day(s) · {(exp ? total : days.reduce((a, d) => a + d.km, 0)).toFixed(1)} km by GPS{exp ? ' inside India' : ''} (real rides only)</p>}
       </section>
 
       {!days?.length && <section><p className="muted">No entries yet. Tap <b>Start day</b> before you ride: it records time, place and odometer as the first line of today's page.</p></section>}
@@ -100,21 +101,21 @@ export function LogbookTab() {
           <section key={d.date} className="logday">
             <button className="link dayhead" onClick={() => setOpen(isOpen ? '' : d.date)}>
               <b>{dayTitle(d)}</b>
-              <div className="muted">{d.kmIndia.toFixed(1)} km GPS{odoKm !== undefined ? ` · ${odoKm.toFixed(1)} km odometer` : ''} · riding {hm(d.movingMin)} · {d.witnesses} witness · {d.evidence} evidence · {d.breaks} breaks
-                {d.issues.length > 0 && <span className="warn"> · ⚠ {d.issues.length} to check</span>}{saved.includes(d.date) && ' · ✓ backed up'}</div>
+              <div className="muted">{(exp ? d.kmIndia : d.km).toFixed(1)} km GPS{odoKm !== undefined ? ` · ${odoKm.toFixed(1)} km odometer` : ''} · riding {hm(d.movingMin)}{exp && ` · ${d.witnesses} witness · ${d.evidence} evidence`} · {d.breaks} breaks
+                {d.issues.length > 0 && <span className="warn"> · ⚠ {d.issues.length} to check</span>}{exp && saved.includes(d.date) && ' · ✓ backed up'}</div>
             </button>
             {isOpen && <>
               <table className="logtable">
                 <tbody>
                   <tr><th>Start</th><td>{d.start ? <>{tm(d.start.at)} · {d.start.place ?? coords(d.start)}{d.start.odoKm !== undefined && <> · odo <b>{d.start.odoKm}</b></>}</> : <span className="muted">first GPS fix {tm(d.firstAt)} — tap “Start day” to log it properly</span>}</td></tr>
                   <tr><th>End</th><td>{d.end ? <>{tm(d.end.at)} · {d.end.place ?? coords(d.end)}{d.end.odoKm !== undefined && <> · odo <b>{d.end.odoKm}</b></>}</> : <span className="muted">last GPS fix {tm(d.lastAt)}</span>}</td></tr>
-                  <tr><th>Distance</th><td><b>{d.kmIndia.toFixed(2)} km</b> GPS in India{d.kmOutside > 0.05 && <> · {d.kmOutside.toFixed(2)} km outside / unclear border</>}{odoKm !== undefined && <> · <b>{odoKm.toFixed(1)} km</b> odometer</>}</td></tr>
-                  {d.startGapKm !== undefined && <tr><th>Continuity</th><td>{d.startGapKm <= 1 ? `✓ started where the previous day ended (${Math.round(d.startGapKm * 1000)} m)` : <span className="warn">started {d.startGapKm.toFixed(1)} km from the previous day's end</span>}</td></tr>}
+                  <tr><th>Distance</th><td><b>{(exp ? d.kmIndia : d.km).toFixed(2)} km</b> GPS{exp && ' in India'}{exp && d.kmOutside > 0.05 && <> · {d.kmOutside.toFixed(2)} km outside / unclear border</>}{odoKm !== undefined && <> · <b>{odoKm.toFixed(1)} km</b> odometer</>}</td></tr>
+                  {exp && d.startGapKm !== undefined && <tr><th>Continuity</th><td>{d.startGapKm <= 1 ? `✓ started where the previous day ended (${Math.round(d.startGapKm * 1000)} m)` : <span className="warn">started {d.startGapKm.toFixed(1)} km from the previous day's end</span>}</td></tr>}
                   <tr><th>Riding</th><td>{hm(d.movingMin)} moving · {d.breaks} breaks ({Math.round(d.breakMin)} min)</td></tr>
                 </tbody>
               </table>
               {d.issues.length > 0 && <div className="warnbox"><b>Check before submitting:</b><ul>{d.issues.map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
-              <div className="btns sm"><button onClick={() => dayPack(d)}>{saved.includes(d.date) ? '✓ Download again' : "Download this day's evidence"}</button></div>
+              {exp && <div className="btns sm"><button onClick={() => dayPack(d)}>{saved.includes(d.date) ? '✓ Download again' : "Download this day's evidence"}</button></div>}
               <div className="timeline">
                 {d.entries.map((x) => <Entry key={x.id} x={x} onChange={reload} />)}
               </div>

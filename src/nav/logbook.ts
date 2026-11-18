@@ -102,8 +102,8 @@ export interface DaySummary {
 export const dayKey = (t: number) => new Date(t).toLocaleDateString('en-CA'); // YYYY-MM-DD local
 
 /** How strict the daily checks are (old Guinness journey rules asked for two witness signatures a day). */
-export interface EvidenceRules { witnessesPerDay: number }
-export const DEFAULT_RULES: EvidenceRules = { witnessesPerDay: 1 };
+export interface EvidenceRules { witnessesPerDay: number; /** record checks (expedition); off = plain ride diary */ record?: boolean }
+export const DEFAULT_RULES: EvidenceRules = { witnessesPerDay: 1, record: true };
 
 export async function daySummaries(tripId: string, rules: EvidenceRules = DEFAULT_RULES): Promise<DaySummary[]> {
   const statesOk = await loadStates();
@@ -162,7 +162,8 @@ export async function daySummaries(tripId: string, rules: EvidenceRules = DEFAUL
     const prevDay = sorted[i - 1];
     const prevEnd: LngLat | undefined = prevDay ? (prevDay.end ? [prevDay.end.lng, prevDay.end.lat] : prevDay.lastPos) : undefined;
     if (startPos && prevEnd) d.startGapKm = haversine(prevEnd, startPos) / 1000;
-    // examiner's checklist
+    // examiner's checklist (expedition / record trips only)
+    if (rules.record === false) return;
     if (d.km > 1) {
       if (!d.start) d.issues.push('No "Start of day" entry (odometer + photo)');
       if (!d.end) d.issues.push('No "End of day" entry (odometer + photo)');

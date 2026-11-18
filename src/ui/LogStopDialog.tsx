@@ -9,6 +9,7 @@ import { download, safeName } from '../io/exporters';
 import { markBackup } from './LogbookTab';
 import { ui, useUI, act, toast } from './state';
 import { team } from '../team/team';
+import { isExpedition } from '../core/terms';
 
 const TYPES: StopType[] = ['start', 'finish', 'document', 'daystart', 'dayend', 'overnight', 'police', 'witness', 'fuel', 'service', 'food', 'evidence', 'media', 'other'];
 const HINT: Partial<Record<StopType, string>> = {
@@ -26,6 +27,7 @@ const HINT: Partial<Record<StopType, string>> = {
   evidence: 'Photo or video of the bike (number plate visible) at this place. GPS, time and place are printed on a copy of each photo.',
   media: 'Newspaper / TV / online coverage of the journey: link and a photo or screenshot.',
 };
+const DAILY_TYPES: StopType[] = ['daystart', 'dayend', 'overnight', 'fuel', 'service', 'food', 'other'];
 const WITNESS: StopType[] = ['police', 'witness'];
 const NO_ODO: StopType[] = ['media', 'food', 'evidence', 'document'];
 
@@ -42,6 +44,7 @@ export function LogStopDialog() {
   if (!open) return null;
   const close = () => { ui.set({ logStop: false }); setOdo(''); setNote(''); setLink(''); setW({ name: '' }); setPhotos([]); };
   const isW = WITNESS.includes(type);
+  const types = isExpedition() ? TYPES : DAILY_TYPES;
   const save = () => act('Saving entry…', async () => {
     if (isW && !w.name.trim()) throw new Error('Enter the witness / officer name');
     if ((type === 'evidence' || type === 'document') && !photos.length) throw new Error('Add at least one photo / file');
@@ -52,7 +55,7 @@ export function LogStopDialog() {
       odoKm: odo ? +odo : undefined, note: note || undefined, photos, link: link || undefined, witness: isW ? { ...w, name: w.name.trim() } : undefined });
     if (team.settings) void team.send({ type: 'stop', from: team.settings.deviceId, name: team.settings.name, label: STOP_LABEL[type], pos, t: Date.now() });
     toast(`${STOP_LABEL[type]} logged with GPS, time${odo ? ', odometer' : ''}${photos.length ? ` and ${photos.length} file(s)` : ''} — see the Logbook tab`);
-    const wasEnd = type === 'dayend';
+    const wasEnd = type === 'dayend' && isExpedition();
     close();
     // back up the day's evidence off the phone straight away
     if (wasEnd && confirm("Day logged. Download today's evidence pack now and keep a copy on your laptop / Google Drive?")) {
@@ -66,9 +69,9 @@ export function LogStopDialog() {
       <div className="modal glass" onClick={(e) => e.stopPropagation()}>
         <h3>Logbook entry</h3>
         <div className="typegrid">
-          {TYPES.map((t) => <button key={t} className={type === t ? 'on' : ''} onClick={() => setType(t)}>{STOP_LABEL[t]}</button>)}
+          {types.map((t) => <button key={t} className={type === t ? 'on' : ''} onClick={() => setType(t)}>{STOP_LABEL[t]}</button>)}
         </div>
-        <p className="muted">GPS position and exact time are recorded automatically. {HINT[type] ?? ''} {type !== 'media' && <b>Keep the bike's number plate visible in at least one photo.</b>}</p>
+        <p className="muted">GPS position and exact time are recorded automatically. {HINT[type] ?? ''} {type !== 'media' && isExpedition() && <b>Keep the bike's number plate visible in at least one photo.</b>}</p>
         {isW && <>
           <input placeholder="Name (as signed) *" value={w.name} onChange={(e) => setW({ ...w, name: e.target.value })} />
           <input placeholder="Designation (e.g. Sub-Inspector, Station House Officer)" value={w.role ?? ''} onChange={(e) => setW({ ...w, role: e.target.value })} />

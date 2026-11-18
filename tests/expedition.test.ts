@@ -150,3 +150,16 @@ describe('journey start / finish', () => {
     expect(journeyIssues(days)).toEqual([]);
   });
 });
+
+describe('daily trips', () => {
+  it('do not get record checks', async () => {
+    useDB(new RideDB('lb4'));
+    const t = await createTrip('D', undefined, 'daily');
+    const t0 = Date.parse('2026-12-02T08:00:00+05:30');
+    const pts = Array.from({ length: 400 }, (_, i) => [t0 + i * 10000, 77 + i * 0.0014, 13, 8, 15] as [number, number, number, number, number]);
+    await db.rides.put({ id: 'r', tripId: t.id, startedAt: t0, distM: 0, points: 0, simulated: false, name: 'r' });
+    await db.rideChunks.add({ rideId: 'r', pts });
+    expect((await daySummaries(t.id))[0].issues.length).toBeGreaterThan(0); // record mode
+    expect((await daySummaries(t.id, { witnessesPerDay: 1, record: false }))[0].issues).toEqual([]);
+  });
+});
