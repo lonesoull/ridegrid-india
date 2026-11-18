@@ -2,16 +2,34 @@ import { app } from '../core/app';
 import { google, googleRoute } from '../core/google';
 import { engine } from '../core/engine';
 import { haversine, lineLength, type LngLat } from '../core/geo';
+import { inIndia } from '../core/india';
 
-export function myLocation(): Promise<LngLat> {
+export interface Fix { p: LngLat; acc: number }
+
+/** Current position + its accuracy in metres (laptops often report a rough Wi-Fi / IP location). */
+export function myFix(): Promise<Fix> {
   return new Promise((res, rej) => {
     if (!navigator.geolocation) return rej(new Error('GPS is not available on this device.'));
     navigator.geolocation.getCurrentPosition(
-      (p) => res([p.coords.longitude, p.coords.latitude]),
+      (p) => res({ p: [p.coords.longitude, p.coords.latitude], acc: p.coords.accuracy }),
       (e) => rej(new Error(e.code === 1 ? 'Location permission denied — allow location for this site in the browser.' : `Could not get your location: ${e.message}`)),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
   });
+}
+export const myLocation = async (): Promise<LngLat> => (await myFix()).p;
+
+/**
+ * Sanity-check a location before routing from it. Returns a human explanation when it can't be trusted:
+ * very rough accuracy (Wi-Fi / IP based, not GPS), outside India, or absurdly far from the route.
+ */
+export function fixProblem(f: Fix, target?: LngLat): string | null {
+  const far = target ? haversine(f.p, target) : 0;
+  const where = `${f.p[1].toFixed(3)}, ${f.p[0].toFixed(3)}`;
+  if (!inIndia(f.p)) return `Your device reports a location outside India (${where}${target ? `, ${Math.round(far / 1000).toLocaleString('en-IN')} km from the route` : ''}). This usually means a VPN is on, or the location comes from your internet connection instead of GPS.`;
+  if (f.acc > 1500) return `Your location is only accurate to about ±${(f.acc / 1000).toFixed(1)} km — it comes from Wi-Fi / internet, not GPS (common on laptops, or with a VPN on).`;
+  if (target && far > 500000) return `Your device reports a location ${Math.round(far / 1000).toLocaleString('en-IN')} km from the route — that looks wrong (VPN or network location?).`;
+  return null;
 }
 
 import type { Turn } from '../core/turns';

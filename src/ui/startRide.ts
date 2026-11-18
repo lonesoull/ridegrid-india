@@ -2,7 +2,10 @@ import { engine } from '../core/engine';
 import { app } from '../core/app';
 import { haversine, type LngLat } from '../core/geo';
 import { nav } from '../nav/navigator';
-import { directionsTo, myLocation } from '../nav/directions';
+import { directionsTo, myFix, fixProblem } from '../nav/directions';
+import { T } from '../core/terms';
+
+class SkipApproach extends Error {}
 import type { Approach } from '../nav/routeLine';
 import { ui, toast } from './state';
 import { mapCtl } from './App';
@@ -17,13 +20,22 @@ export async function startRide(mode: 'live' | 'sim', i: number, approach: Appro
   const target: LngLat = [s.lng, s.lat];
   if (!approach) {
     try {
-      const me = await myLocation();
+      const fix = await myFix();
+      const problem = fixProblem(fix, target);
+      const me = fix.p;
+      if (problem) {
+        if (mode === 'sim') { toast(`${problem} Simulating from the ${T().one} itself.`, 'error'); throw new SkipApproach(); }
+        if (!confirm(`${problem}\n\nOK = start from the ${T().one} anyway (live GPS takes over once a real GPS fix arrives)\nCancel = don't start`)) throw new Error('Start cancelled');
+        throw new SkipApproach();
+      }
       if (haversine(me, target) > 150) {
         const d = await directionsTo(i, me);
         approach = { coords: d.coords, turns: d.turns };
       }
     } catch (e: any) {
-      if (mode === 'live') throw e;                 // live navigation needs GPS
+      if (e instanceof SkipApproach) approach = null;
+      else if (mode === 'live') throw e;            // live navigation needs GPS
+      else
       toast('No location — simulating from the stop itself');
     }
   }

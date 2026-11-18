@@ -3,7 +3,7 @@ import { T } from '../core/terms';
 import { engine } from '../core/engine';
 import { fmtKm, haversine } from '../core/geo';
 import { nav } from '../nav/navigator';
-import { directionsTo, rideMinutes, type Directions } from '../nav/directions';
+import { directionsTo, myFix, fixProblem, rideMinutes, type Directions } from '../nav/directions';
 import { startRide } from './startRide';
 import { ui, useUI, act, toast } from './state';
 import { useEngine } from './hooks';
@@ -41,7 +41,10 @@ export function StopSheet() {
   const legKm = (l: typeof prev) => (l ? (l.status === 'ok' ? fmtKm(l.distM) : `~${fmtKm(haversine(l.from, l.to) * 1.3)}`) : '—');
 
   const getDirections = () => act('Finding road route from your location…', async () => {
-    const d = await directionsTo(i);
+    const fix = await myFix();
+    const problem = fixProblem(fix, [s.lng, s.lat]);
+    if (problem) throw new Error(`${problem} Turn off the VPN / turn on Windows Location (or use your phone) and try again.`);
+    const d = await directionsTo(i, fix.p);
     setDir(d);
     mapCtl?.setApproach(d.coords, true);
     mapCtl?.showMe(d.from, false);

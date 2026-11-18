@@ -6,6 +6,7 @@ import { turnText } from '../core/turns';
 import { isExpedition, T } from '../core/terms';
 import { directionsTo } from './directions';
 import { BreakDetector } from './logbook';
+import { inIndia } from '../core/india';
 import { SegIndex, isParallel } from './spatial';
 import { cleanPath, deriveTurns, safeRoute, type SafeRoute } from './detour';
 import { sounds, say, unlockAudio, WakeLock } from './audio';
@@ -266,6 +267,12 @@ export class Navigator {
   private onFix(f: GeolocationPosition) {
     if (this.mode !== 'live' || !this.line) return;
     const p: LngLat = [f.coords.longitude, f.coords.latitude];
+    // a Wi-Fi / IP (or VPN) location is not usable for riding: keep the last good position and say why
+    if (f.coords.accuracy > 1500 || !inIndia(p)) {
+      this.gpsError = `Location from Wi-Fi/internet, not GPS (±${(f.coords.accuracy / 1000).toFixed(1)} km${inIndia(p) ? '' : ', outside India — VPN on?'}). Waiting for a real GPS fix…`;
+      this.emit();
+      return;
+    }
     const prev = this.pos;
     this.pos = p;
     this.accuracy = f.coords.accuracy;
