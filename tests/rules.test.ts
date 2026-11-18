@@ -76,3 +76,15 @@ describe('dead-end spur detector', () => {
     expect(deadEndSpurs(L).length).toBeGreaterThan(0);
   });
 });
+
+describe('daily trips and expressways', () => {
+  it('only expedition trips keep off banned expressways', async () => {
+    const { routing, avoidingBanned } = await import('../src/core/router');
+    routing.avoidExpressways = true;
+    routing.isDaily = () => false;
+    expect(avoidingBanned()).toBe(true);
+    routing.isDaily = () => true;
+    expect(avoidingBanned()).toBe(false);
+    routing.isDaily = undefined;
+  });
+});

@@ -4,7 +4,9 @@ import { cacheKey, engine, type RouteEngine } from './engine';
 import { osrmTurn, valhallaTurn, type Turn } from './turns';
 
 /** Global routing preferences (set from app settings). */
-export const routing: { avoidExpressways: boolean; covers?: (p: LngLat) => boolean } = { avoidExpressways: true };
+export const routing: { avoidExpressways: boolean; covers?: (p: LngLat) => boolean; isDaily?: () => boolean } = { avoidExpressways: true };
+/** Keep off two-wheeler-banned expressways? (expedition trips only — daily trips may use them) */
+export const avoidingBanned = () => routing.avoidExpressways && !routing.isDaily?.();
 
 export interface LegResult { coords: LngLat[]; distM: number; turns?: Turn[] }
 export interface Provider {
@@ -61,8 +63,8 @@ export function osrmProvider(base = 'https://router.project-osrm.org', profile =
       // two-wheelers are banned on Indian motorways/expressways → exclude them (falls back if a server can't)
       const q = `overview=false&steps=true&geometries=polyline6&continue_straight=false`;
       let j: any;
-      try { j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}${routing.avoidExpressways ? '&exclude=motorway' : ''}`, { signal }); }
-      catch (e) { if (routing.avoidExpressways && e instanceof HttpError && e.status === 400 && /exclude|InvalidValue/i.test(e.message)) j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}`, { signal }); else throw e; }
+      try { j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}${avoidingBanned() ? '&exclude=motorway' : ''}`, { signal }); }
+      catch (e) { if (avoidingBanned() && e instanceof HttpError && e.status === 400 && /exclude|InvalidValue/i.test(e.message)) j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}`, { signal }); else throw e; }
       if (j.code !== 'Ok') throw new HttpError(422, j.message || j.code);
       return j.routes[0].legs.map((leg: any) => {
         const { coords: c, turns } = joinSteps(leg.steps);
@@ -89,7 +91,7 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
       const body = {
         locations: points.map(([lon, lat]) => ({ lon, lat, type: 'break' })),
         costing: 'motorcycle',
-        costing_options: { motorcycle: { use_highways: routing.avoidExpressways ? 0 : 0.5 } },
+        costing_options: { motorcycle: { use_highways: avoidingBanned() ? 0 : 0.5 } },
         directions_type: 'maneuvers',
         ...(excludePolygons.length ? { exclude_polygons: excludePolygons } : {}),
       };
@@ -239,7 +241,7 @@ export class RoutingQueue {
           if (safe) { this.avoid.delete(run[0].key); this.avoidTried.add(run[0].key); }
           // never accept a route along a two-wheeler-banned expressway: send it back for an avoiding re-route
           const { legOnBanned } = await import('../nav/expressways');
-          for (let i = 0; i < run.length; i++) {
+          if (avoidingBanned()) for (let i = 0; i < run.length; i++) {
             const r = legs[i];
             if (r && !this.avoidTried.has(run[i].key) && (await legOnBanned(r.coords))) { this.avoid.add(run[i].key); legs[i] = undefined as any; }
           }

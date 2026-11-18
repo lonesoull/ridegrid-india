@@ -1,3 +1,4 @@
+import { isExpedition } from '../core/terms';
 import { useState } from 'react';
 import { engine } from '../core/engine';
 import { fmtKm } from '../core/geo';
@@ -24,7 +25,7 @@ export function RouteChecker() {
     const L = buildRouteLine();
     const result = await checkRoute(L, { gapM: nav.settings.gapM, onProgress: (f) => setBusy(f * 0.6) });
     // Guinness/India: no riding on two-wheeler-banned expressways
-    const ex = await routeOnExpressways(L, (f) => setBusy(0.6 + f * 0.35));
+    const ex = isExpedition() ? await routeOnExpressways(L, (f) => setBusy(0.6 + f * 0.35)) : [];
     if (ex === null) exMissing = true;
     else { exMissing = false; for (const x of ex) result.issues.push({ kind: 'expressway', s1: x.s1, s1End: x.s1End, s2: x.s1End, d: x.d, p: x.p, p2: x.p2, label: x.road.name }); }
     for (const sp of deadEndSpurs(L)) result.issues.push(sp);

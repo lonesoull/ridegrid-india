@@ -137,6 +137,7 @@ function RulesSection() {
   return (
     <section>
       <h3>Record rules (alerts while riding)</h3>
+      <p className="muted">Expressway and speed alerts apply to expedition trips only. Daily trips may use expressways and get no speed alerts.</p>
       <label className="check"><input type="checkbox" checked={c.speedOn} onChange={(e) => set({ speedOn: e.target.checked })} /><span>Speed alert above <b>{c.speedNH}</b> km/h on National Highways, <b>{c.speedOther}</b> km/h elsewhere</span></label>
       <div className="grid2">
         <label className="field">NH limit (km/h)<input type="number" value={c.speedNH} onChange={(e) => set({ speedNH: +e.target.value || 80 })} /></label>

@@ -82,14 +82,15 @@ class Compliance {
     if (Date.now() - this.lastCheck < 900) return;
     this.lastCheck = Date.now();
     // --- banned expressway underfoot
-    const ex = await loadExpressways();
+    const exp = isExpedition();
+    const ex = exp ? await loadExpressways() : null;
     const h = ex?.idx.nearest(p, 35);
     if (h && speedMps > 3 && isParallel(heading, h.bearing, 30)) {
       this.set('expressway', { level: 'danger', text: `Two-wheelers banned on ${h.road.name} — leave at the next exit` }, `Two wheelers are banned on ${h.road.name}. Leave at the next exit.`, 30000);
     } else this.set('expressway', null);
     // --- speed
     const s = this.settings;
-    if (s.speedOn && !sim) {
+    if (s.speedOn && !sim && exp) {
       const road = this.currentRoadName();
       const nh = /\bNH\b|\bNH ?\d|National Highway/i.test(road);
       const limit = nh ? s.speedNH : s.speedOther;

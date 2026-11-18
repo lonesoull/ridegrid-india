@@ -338,7 +338,7 @@ function ToolsTab() {
           ? <><p className="warn">You are viewing the <b>Stress Test</b> trip. Road mapping starts paused here so thousands of test stops don't flood the free server — start it when you want (paced ~1 request/sec, ~24 stops per request). Your real trips are safe — <b>Back to my trip</b> is below.</p><StressRouteButton className="" /></>
           : <label className="check"><input type="checkbox" checked={app.queue.autoRoute} onChange={(e) => { app.queue.setAuto(e.target.checked); setR({ ...r }); }} /><span>Auto-route new legs (paced, cached, rate-limit safe)</span></label>}
         <label className="check"><input type="checkbox" checked={snap} onChange={(e) => ui.set({ snapToRoad: e.target.checked })} /><span>Snap tapped / dragged stops to the nearest road</span></label>
-        <label className="check"><input type="checkbox" checked={r.avoidExpressways !== false} onChange={(e) => setR({ ...r, avoidExpressways: e.target.checked })} /><span>Avoid expressways / motorways (two-wheelers are banned) — tap “Save engine”</span></label>
+        <label className="check"><input type="checkbox" checked={r.avoidExpressways !== false} onChange={(e) => setR({ ...r, avoidExpressways: e.target.checked })} /><span>Expedition trips: avoid expressways / motorways (two-wheelers are banned; daily trips may use them) — tap “Save engine”</span></label>
         <div className="grid2">
           <label className="field">Engine
             <select value={r.kind} onChange={(e) => setR({ kind: e.target.value as RouterSettings['kind'], url: e.target.value === 'valhalla' ? 'https://valhalla1.openstreetmap.de' : DEFAULT_ROUTER.url })}>

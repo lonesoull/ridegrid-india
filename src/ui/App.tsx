@@ -50,7 +50,16 @@ export function App() {
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance();
       void device.boot().then(() => app.queue.kick());
-      void loadExpressways().then((d) => d && mapCtl?.setBanned(d.fc));
+      // two-wheeler-banned roads on the map: expedition trips only
+      let bannedFor: string | null = null;
+      const showBanned = () => {
+        const k = `${engine.trip?.id}:${engine.trip?.kind}`;
+        if (k === bannedFor) return;
+        bannedFor = k;
+        void loadExpressways().then((d) => mapCtl?.setBanned(d && engine.trip?.kind !== 'daily' ? d.fc : null));
+      };
+      showBanned();
+      engine.subscribe(() => showBanned());
       const drawRidden = () => engine.trip && riddenLines(engine.trip.id).then((l) => mapCtl?.setRidden(l));
       void drawRidden();
       engine.subscribe((e) => { if (e.stops && e.legs === undefined) void drawRidden(); });
