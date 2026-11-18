@@ -8,6 +8,7 @@ import { ui, useUI, toast, act, type TapMode } from './state';
 import { useEngine, useRouterStatus } from './hooks';
 import { Drawer } from './Drawer';
 import { FpsMeter } from './FpsMeter';
+import { StressRouteButton } from './StressRouteButton';
 
 export let mapCtl: MapController | null = null;
 
@@ -79,12 +80,13 @@ function Hud() {
       </div>
       {t?.isStress && (
         <div className="hud-stress" onClick={(e) => e.stopPropagation()}>
-          <span>⚙ Viewing STRESS TEST trip (test stops only, not routed). Your real stops are in your own trip.</span>
+          <span>⚙ Viewing STRESS TEST trip (test stops only). Your real stops are in your own trip.</span>
+          <StressRouteButton />
           <button className="sm" onClick={() => act(null, () => leaveStressTrip()).then(() => setTimeout(() => mapCtl?.fitRoute(), 300))}>Back to my trip</button>
           <button className="sm danger" onClick={() => confirm('Clear ALL stress-test stops and delete the Stress Test trip?') && act('Clearing stress test…', () => deleteStressTrip())}>Clear all</button>
         </div>
       )}
-      {!t?.isStress && (pending > 0 || errors > 0 || status === 'offline' || status === 'backoff' || status === 'paused') && (
+      {(pending > 0 || errors > 0 || status === 'offline' || status === 'backoff' || status === 'paused') && !(t?.isStress && status === 'paused') && (
         <div className={`hud-router st-${status}`}>
           {status === 'offline' ? '📴 Offline — ' : status === 'backoff' ? '⏳ Server busy, retrying — ' : status === 'paused' ? '⏸ Auto-route paused — ' : '🛣 Snapping to roads — '}
           {pending.toLocaleString('en-IN')} legs pending{errors ? ` · ${errors} failed` : ''}

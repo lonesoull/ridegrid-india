@@ -9,6 +9,7 @@ import { download, exportAs, safeName } from '../io/exporters';
 import { ui, useUI, toast, act } from './state';
 import { useAsync, useEngine, useRouterStatus } from './hooks';
 import { mapCtl } from './App';
+import { StressRouteButton } from './StressRouteButton';
 
 export function Drawer() {
   const open = useUI((s) => s.drawer);
@@ -301,7 +302,7 @@ function ToolsTab() {
   const stress = (k: number) => act(`Generating ${k.toLocaleString('en-IN')} test stops…`, async () => {
     await trips.addStressStops(k);
     ui.set({ fps: true });
-    toast(`+${k.toLocaleString('en-IN')} test stops in the separate Stress Test trip (never routed).`);
+    toast(`+${k.toLocaleString('en-IN')} test stops in the separate Stress Test trip. Tap “Map test stops on roads” to road-snap them.`);
   });
   const isStress = !!engine.trip?.isStress;
 
@@ -311,7 +312,7 @@ function ToolsTab() {
         <h3>Road snapping engine</h3>
         <p className="muted">Status: <b>{status}</b> · {engine.pendingLegs.toLocaleString('en-IN')} pending · {engine.errorLegs} failed · {app.queue.requests} requests this session · {cacheCount?.toLocaleString('en-IN') ?? '…'} legs cached on device{app.queue.lastError ? ` · last error: ${app.queue.lastError}` : ''}</p>
         {isStress
-          ? <p className="warn">You are viewing the <b>Stress Test</b> trip. Road snapping is switched off here on purpose, so test stops never hit the routing server. Your real trips and stops are safe — tap <b>Back to my trip</b> below.</p>
+          ? <><p className="warn">You are viewing the <b>Stress Test</b> trip. Road mapping starts paused here so thousands of test stops don't flood the free server — start it when you want (paced ~1 request/sec, ~24 stops per request). Your real trips are safe — <b>Back to my trip</b> is below.</p><StressRouteButton className="" /></>
           : <label className="check"><input type="checkbox" checked={app.queue.autoRoute} onChange={(e) => { app.queue.setAuto(e.target.checked); setR({ ...r }); }} /><span>Auto-route new legs (paced, cached, rate-limit safe)</span></label>}
         <label className="check"><input type="checkbox" checked={snap} onChange={(e) => ui.set({ snapToRoad: e.target.checked })} /><span>Snap tapped / dragged stops to the nearest road</span></label>
         <div className="grid2">
