@@ -1,6 +1,7 @@
 import { Map as MLMap, setWorkerUrl, type GeoJSONSource, type MapMouseEvent, type MapTouchEvent, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import { GoogleUnderlay } from './googleJs';
 import { engine, type Leg, type LegDiff } from '../core/engine';
 import { bounds, type LngLat } from '../core/geo';
 import { ui, toast, act } from '../ui/state';
@@ -87,20 +88,27 @@ export class MapController {
   base: 'osm' | 'google' = 'osm';
 
   /** OpenStreetMap vector basemap (works offline from cache). */
-  setOsmBase(night: boolean) { this.applyBase(`osm:${night ? 'night' : 'day'}`, night ? STYLES.night : STYLES.day, 'osm'); }
+  setOsmBase(night: boolean) { this.dropUnderlay(); this.applyBase(`osm:${night ? 'night' : 'day'}`, night ? STYLES.night : STYLES.day, 'osm'); }
 
-  /** Google 2D tiles (with optional live traffic) as the basemap; our layers are drawn on top. */
-  setGoogleBase(id: string, tiles: string, night: boolean) {
-    const style: StyleSpecification = {
-      version: 8,
-      glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
-      sources: { google: { type: 'raster', tiles: [tiles], tileSize: 256, maxzoom: 22 } },
-      layers: [
-        { id: 'bg', type: 'background', paint: { 'background-color': night ? '#1d2c4d' : '#e5e3df' } },
-        { id: 'google', type: 'raster', source: 'google', paint: { 'raster-fade-duration': 0 } },
-      ],
-    };
-    this.applyBase(`google:${id}`, style, 'google');
+  /** Google mode: transparent MapLibre over a Google Maps JavaScript map (flat, rotates with heading). */
+  private underlay: GoogleUnderlay | null = null;
+  private underlayKey = '';
+  setGoogleJsBase(opts: { night: boolean; traffic: boolean; mapId: string }) {
+    const key = `${opts.night}|${opts.mapId}`;
+    if (!this.underlay || this.underlayKey !== key) {
+      this.underlay?.destroy();
+      this.underlay = new GoogleUnderlay(this.map, opts);
+      this.underlayKey = key;
+    } else this.underlay.setTraffic(opts.traffic);
+    this.map.setMaxPitch(0); // Google's tilted camera differs from MapLibre's; keep both flat so layers line up exactly
+    this.map.getContainer().classList.add('over-google');
+    const style: StyleSpecification = { version: 8, glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', sources: {}, layers: [] };
+    this.applyBase('google-js', style, 'google');
+  }
+  private dropUnderlay() {
+    this.underlay?.destroy(); this.underlay = null; this.underlayKey = '';
+    this.map.setMaxPitch(80);
+    this.map.getContainer().classList.remove('over-google');
   }
 
   private applyBase(id: string, style: string | StyleSpecification, kind: 'osm' | 'google') {

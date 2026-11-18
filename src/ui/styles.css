@@ -242,3 +242,8 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .fasterbar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 10px; border-radius: 12px; background: rgba(22,163,74,.12); border: 2px solid var(--ok); }
 
 .item.keyfail { border-color: var(--danger); }
+
+/* Google mode: Google's map underneath, our transparent MapLibre layers on top */
+.gmap-underlay { position: absolute; inset: 0; z-index: 0; }
+.map { z-index: 1; }
+.map.over-google .maplibregl-ctrl-attrib { display: none; }

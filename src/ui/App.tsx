@@ -16,7 +16,6 @@ import { Icon } from './Icon';
 import { useNav } from './navHooks';
 import { google } from '../core/google';
 import { applyBase } from '../map/googleBase';
-import { GoogleAttribution } from './GoogleAttribution';
 import { LogStopDialog } from './LogStopDialog';
 import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
@@ -76,7 +75,6 @@ export function App() {
       {ready && <PlaceCard />}
       {ready && <NavPanel />}
       {ready && <Drawer />}
-      {ready && <GoogleAttribution />}
       {ready && <LogStopDialog />}
       <Toast />
       <FpsMeterGate />

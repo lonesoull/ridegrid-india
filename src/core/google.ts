@@ -9,8 +9,8 @@ import type { Turn, TurnCode } from './turns';
  * mode is on the basemap switches to Google 2D tiles (Map Tiles API) and Google Routes is used for
  * "from my location" directions and re-routes. The key lives only in this browser (never in the repo).
  */
-export interface GoogleSettings { key: string; on: boolean; traffic: boolean }
-export const DEFAULT_GOOGLE: GoogleSettings = { key: '', on: false, traffic: true };
+export interface GoogleSettings { key: string; on: boolean; traffic: boolean; /** optional Map ID (vector map styling) */ mapId: string }
+export const DEFAULT_GOOGLE: GoogleSettings = { key: '', on: false, traffic: true, mapId: '' };
 
 export const google = {
   settings: DEFAULT_GOOGLE,
@@ -22,8 +22,10 @@ export const google = {
     return this.settings;
   },
   listeners: new Set<() => void>(),
-  /** Google content may be used right now (key present, mode on, online). */
-  get active() { return !!this.settings.key && this.settings.on && (typeof navigator === 'undefined' || navigator.onLine !== false); },
+  /** set by the basemap: Google tiles are actually showing (Google content must sit on a Google map) */
+  tilesOk: false,
+  /** Google content may be used right now (key present, mode on, online, Google map showing). */
+  get active() { return !!this.settings.key && this.settings.on && this.tilesOk && (typeof navigator === 'undefined' || navigator.onLine !== false); },
 };
 
 class GoogleError extends Error {}
@@ -126,12 +128,13 @@ export interface KeyTest { api: string; ok: boolean; message: string; fix?: stri
 function explain(j: any, httpStatus: number, apiName: string): { message: string; fix?: string } {
   const e = j?.error ?? {};
   const reason: string = (e.details ?? []).map((d: any) => d.reason).find(Boolean) ?? '';
-  const msg: string = e.message ?? `HTTP ${httpStatus}`;
+  const msg: string = `${e.message ?? `HTTP ${httpStatus}`}${reason ? ` [${reason}]` : ''}`;
   const m = `${reason} ${msg}`;
   if (/SERVICE_DISABLED|has not been used|is disabled/i.test(m)) return { message: msg, fix: `Enable “${apiName}”: Google Cloud console → APIs & Services → Library → search “${apiName}” → Enable. Wait 2–5 minutes, then test again.` };
   if (/BILLING|billing/i.test(m)) return { message: msg, fix: 'Turn on billing for this project: Google Cloud console → Billing → Link a billing account. (Free monthly usage still applies; add a budget alert to stay at ₹0.)' };
   if (/REFERRER|referer|referrer/i.test(m)) return { message: msg, fix: `Website restriction doesn't match. Key → Application restrictions → Websites → add exactly: ${location.origin}/*  (and keep https://lonesoull.github.io/*). Changes take up to 5 minutes.` };
   if (/API_KEY_SERVICE_BLOCKED|are blocked|not authorized to use this API/i.test(m)) return { message: msg, fix: `Key → API restrictions → tick “${apiName}” (or choose “Don't restrict key” to test).` };
+  if (/Permission denied on the service/i.test(m) || (httpStatus === 403 && /PERMISSION_DENIED/i.test(e.status ?? '') && !reason)) return { message: msg, fix: `This key isn't allowed to use ${apiName}. Most often: (1) it's a “Maps Demo Key” or the project has no billing account — Demo Keys don't include ${apiName}; link a billing account and create a normal API key; (2) ${apiName} isn't enabled — APIs & Services → Library → Enable; (3) the key's API restrictions don't tick ${apiName}.` };
   if (/API_KEY_INVALID|API key not valid|invalid/i.test(m)) return { message: msg, fix: 'The key text is wrong — copy it again from Credentials (no spaces) and paste.' };
   if (httpStatus === 429 || /quota|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(m)) return { message: msg, fix: 'Daily quota reached (or quota set to 0). Check Quotas for this API.' };
   return { message: msg };
@@ -150,10 +153,9 @@ async function probe(api: string, url: string, init: RequestInit): Promise<KeyTe
 
 /** Check each Google API this app uses, separately. */
 export async function testGoogleKey(key: string): Promise<KeyTest[]> {
-  const k = encodeURIComponent(key);
   const json = { 'Content-Type': 'application/json' };
   return Promise.all([
-    probe('Map Tiles API', `https://tile.googleapis.com/v1/createSession?key=${k}`, { method: 'POST', headers: json, body: JSON.stringify({ mapType: 'roadmap', language: 'en-IN', region: 'IN' }) }),
+    testMapsJs(key),
     probe('Routes API', 'https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST', headers: { ...json, 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'routes.distanceMeters' },
       body: JSON.stringify({ origin: { location: { latLng: { latitude: 13.0827, longitude: 80.2707 } } }, destination: { location: { latLng: { latitude: 13.0674, longitude: 80.2376 } } }, travelMode: 'TWO_WHEELER' }),
@@ -162,4 +164,40 @@ export async function testGoogleKey(key: string): Promise<KeyTest[]> {
       method: 'POST', headers: { ...json, 'X-Goog-Api-Key': key }, body: JSON.stringify({ input: 'Chennai Central', includedRegionCodes: ['in'] }),
     }),
   ]);
+}
+
+const JS_ERRORS: Record<string, string> = {
+  ApiNotActivatedMapError: 'Enable “Maps JavaScript API”: APIs & Services → Library → Maps JavaScript API → Enable. Wait 2–5 minutes.',
+  RefererNotAllowedMapError: 'Website restriction doesn\'t match: Key → Application restrictions → Websites → add https://lonesoull.github.io/* (and http://localhost:* for local testing).',
+  BillingNotEnabledMapError: 'Link a billing account to this project (Billing → Link a billing account). Free monthly usage still applies.',
+  InvalidKeyMapError: 'The key text is wrong — copy it again from Credentials.',
+  ApiTargetBlockedMapError: 'Key → API restrictions → tick “Maps JavaScript API”.',
+  ApiProjectMapError: 'The key\'s project is missing the Maps JavaScript API or billing — enable both.',
+  DeletedApiProjectMapError: 'This key belongs to a deleted project — create a new key.',
+};
+
+/** Load the Maps JavaScript API with this key and catch Google's named errors (it reports them in the console). */
+async function testMapsJs(key: string): Promise<KeyTest> {
+  const api = 'Maps JavaScript API';
+  const { loadMapsJs, onAuthFailure } = await import('../map/googleJs');
+  const seen: string[] = [];
+  const orig = console.error;
+  console.error = (...a: unknown[]) => { seen.push(a.map(String).join(' ')); orig(...a); };
+  let failed = false;
+  const off = onAuthFailure(() => { failed = true; });
+  try {
+    await loadMapsJs(key);
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;left:-9999px;width:50px;height:50px';
+    document.body.appendChild(div);
+    new (window as any).google.maps.Map(div, { center: { lat: 13.08, lng: 80.27 }, zoom: 10, mapId: 'DEMO_MAP_ID' });
+    await new Promise((r) => setTimeout(r, 4000));
+    div.remove();
+  } catch (e: any) {
+    return { api, ok: false, message: e?.message ?? 'Failed to load', fix: 'Check the internet connection; if you changed the key, restart the app.' };
+  } finally { console.error = orig; off(); }
+  const name = Object.keys(JS_ERRORS).find((n) => seen.some((x) => x.includes(n)));
+  if (name) return { api, ok: false, message: name, fix: JS_ERRORS[name] };
+  if (failed) return { api, ok: false, message: 'Google rejected the key', fix: 'Enable “Maps JavaScript API”, link billing, and check the key\'s website and API restrictions.' };
+  return { api, ok: true, message: 'Working' };
 }

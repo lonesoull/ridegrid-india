@@ -417,17 +417,18 @@ function GoogleSettingsPanel() {
             </div>
           ))}
           {tests.every((t) => t.ok) && <p className="muted">All good — tap “Save key & turn on”.</p>}
-          {!tests[0].ok && <p className="muted">The Map Tiles API is required for Google mode; Routes and Places add directions and search.</p>}
+          {!tests[0].ok && <p className="muted">The Maps JavaScript API is required for Google mode (Google's map + live traffic); Routes and Places add directions and search.</p>}
         </div>
       )}
-      {g.key && <label className="check"><input type="checkbox" checked={g.traffic} onChange={(e) => save({ traffic: e.target.checked })} /><span>Show live traffic on the map (refreshed every 10 min)</span></label>}
+      {g.key && <label className="check"><input type="checkbox" checked={g.traffic} onChange={(e) => save({ traffic: e.target.checked })} /><span>Show live traffic on the map (Google refreshes it automatically)</span></label>}
+      <p className="muted small-note">In Google mode the map is flat (rotates with your direction; no 3D tilt) so your route lines up exactly with Google's roads. Route lines © OpenStreetMap contributors (OSRM).</p>
       <details>
         <summary className="muted">How to create the key and keep it at ₹0</summary>
         <ol className="muted small">
-          <li>console.cloud.google.com → new project → enable <b>Map Tiles API</b>, <b>Routes API</b> and <b>Places API (New)</b> (billing account required).</li>
+          <li>console.cloud.google.com → new project → enable <b>Maps JavaScript API</b>, <b>Routes API</b> and <b>Places API (New)</b> (billing account required).</li>
           <li>Credentials → Create API key → <b>Application restrictions: Websites</b> → add <code>https://lonesoull.github.io/*</code> (and <code>http://localhost:*</code> for testing).</li>
-          <li><b>API restrictions</b> → restrict key to Map Tiles API + Routes API + Places API (New).</li>
-          <li>Quotas: cap requests per day (e.g. Map Tiles 20,000/day, Routes computeRoutes 1,000/day) and add a ₹1 budget alert, so usage stays inside the free monthly limits.</li>
+          <li><b>API restrictions</b> → restrict key to Maps JavaScript API + Routes API + Places API (New).</li>
+          <li>Quotas: cap requests per day (e.g. Maps JavaScript map loads 1,000/day, Routes 2,000/day, Places 1,000/day) and add a ₹1 budget alert, so usage stays inside the free monthly limits.</li>
         </ol>
       </details>
     </section>
