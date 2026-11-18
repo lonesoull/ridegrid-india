@@ -1,0 +1,49 @@
+name: Build offline maps
+
+# Offline vector map (OpenMapTiles schema, PMTiles) per India zone, built with Planetiler from
+# Geofabrik extracts, published to the "india-tiles" release. Used by Daily ride mode.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/tiles.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  tiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        zone: [southern-zone, western-zone, northern-zone, central-zone, eastern-zone, north-eastern-zone]
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Download Planetiler and the zone extract
+        run: |
+          curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors -o planetiler.jar https://github.com/onthegomap/planetiler/releases/download/v0.8.4/planetiler.jar
+          curl -fsSL --retry 6 --retry-delay 30 --retry-all-errors -o zone.osm.pbf https://download.geofabrik.de/asia/india/${{ matrix.zone }}-latest.osm.pbf
+          ls -la
+      - name: Build ${{ matrix.zone }}.pmtiles
+        run: |
+          java -Xmx10g -jar planetiler.jar --osm-path=zone.osm.pbf --download --output=${{ matrix.zone }}.pmtiles \
+            --maxzoom=14 --nodemap-type=sparsearray --storage=mmap --force
+          ls -la *.pmtiles
+          stat -c '{"zone":"%n","bytes":%s}' ${{ matrix.zone }}.pmtiles | sed 's/\.pmtiles//' > ${{ matrix.zone }}.tiles.json
+          date -u +'"%Y-%m-%dT%H:%M:%SZ"' | xargs -I{} sed -i 's/}$/,"generated":{}}/' ${{ matrix.zone }}.tiles.json
+          cat ${{ matrix.zone }}.tiles.json
+      - name: Publish to the "india-tiles" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: india-tiles
+          name: India offline maps
+          body: Offline vector maps (OpenMapTiles schema) built with Planetiler from OpenStreetMap (© OpenStreetMap contributors, ODbL; © OpenMapTiles).
+          files: |
+            ${{ matrix.zone }}.pmtiles
+            ${{ matrix.zone }}.tiles.json
