@@ -1,0 +1,312 @@
+import { Map as MLMap, setWorkerUrl, type GeoJSONSource, type MapMouseEvent, type MapTouchEvent, type StyleSpecification } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import { engine, type Leg, type LegDiff } from '../core/engine';
+import { bounds, type LngLat } from '../core/geo';
+import { ui, toast, act } from '../ui/state';
+import { app } from '../core/app';
+
+setWorkerUrl(new URL(workerUrl, location.href).href);
+
+export const STYLES = {
+  day: 'https://tiles.openfreemap.org/styles/liberty',
+  night: 'https://tiles.openfreemap.org/styles/dark',
+};
+
+const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me';
+const FONT = ['Noto Sans Bold'];
+const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
+
+function legFeature(l: Leg): GeoJSON.Feature {
+  return {
+    type: 'Feature', id: l.fid,
+    properties: { st: l.status },
+    geometry: { type: 'LineString', coordinates: l.status === 'ok' && l.coords ? l.coords : [l.from, l.to] },
+  };
+}
+
+/** Fallback raster style used when vector tiles are unreachable (keeps the app usable). */
+const fallbackStyle: StyleSpecification = {
+  version: 8,
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  sources: {},
+  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#1b2330' } }],
+};
+
+export class MapController {
+  map: MLMap;
+  private stopsDirty = false;
+  private stopsInFlight = false;
+  private drag: { id: string; i: number } | null = null;
+  private me: LngLat | null = null;
+  private styleReady = false;
+  private pendingDiffs: LegDiff[] = [];
+
+  constructor(container: HTMLElement) {
+    const night = ui.get().night;
+    this.map = new MLMap({
+      container,
+      style: night ? STYLES.night : STYLES.day,
+      center: [78.9629, 22.5937],
+      zoom: 4.2,
+      maxPitch: 80,
+      attributionControl: { compact: true },
+      fadeDuration: 0,
+      canvasContextAttributes: { antialias: true },
+    } as any);
+    this.map.on('style.load', () => this.installLayers());
+    this.map.on('error', (e: any) => {
+      if (String(e?.error?.message || '').match(/Failed to fetch|NetworkError|style/i) && !this.styleReady) {
+        this.map.setStyle(fallbackStyle);
+      }
+    });
+    engine.subscribe((e) => {
+      if (e.stops) this.scheduleStops();
+      if (e.legs) this.applyLegDiff(e.legs);
+    });
+    ui.subscribe(() => this.syncSelection());
+    this.bindInteractions();
+  }
+
+  private night = ui.get().night;
+  setNight(night: boolean) {
+    if (night === this.night) return;
+    this.night = night;
+    this.styleReady = false;
+    this.map.setStyle(night ? STYLES.night : STYLES.day, { diff: false });
+  }
+
+  // ---------- layers ----------
+  private installLayers() {
+    const m = this.map;
+    const night = ui.get().night;
+    m.addSource(ROUTE, { type: 'geojson', data: empty(), lineMetrics: false, tolerance: 0.2, buffer: 64 });
+    m.addSource(STOPS, {
+      type: 'geojson', data: empty(), cluster: true, clusterMaxZoom: 11, clusterRadius: 48,
+      clusterProperties: { lo: ['min', ['get', 'n']], hi: ['max', ['get', 'n']] },
+    } as any);
+    m.addSource(DRAG, { type: 'geojson', data: empty() });
+    m.addSource(SEL, { type: 'geojson', data: empty() });
+    m.addSource(ME, { type: 'geojson', data: empty() });
+
+    m.addLayer({ id: 'rg-route-casing', type: 'line', source: ROUTE, filter: ['==', ['get', 'st'], 'ok'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': night ? '#001a33' : '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 3, 10, 7, 16, 12] } });
+    m.addLayer({ id: 'rg-route-line', type: 'line', source: ROUTE, filter: ['==', ['get', 'st'], 'ok'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#1e90ff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.6, 10, 4, 16, 7] } });
+    m.addLayer({ id: 'rg-route-pending', type: 'line', source: ROUTE, filter: ['!=', ['get', 'st'], 'ok'],
+      paint: {
+        'line-color': ['match', ['get', 'st'], 'error', '#ef4444', night ? '#94a3b8' : '#64748b'],
+        'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8,
+      } });
+    m.addLayer({ id: 'rg-drag-line', type: 'line', source: DRAG, filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': '#f59e0b', 'line-width': 3, 'line-dasharray': [1, 1] } });
+
+    m.addLayer({ id: 'rg-clusters', type: 'circle', source: STOPS, filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#1e90ff', 'circle-opacity': 0.88, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2,
+        'circle-radius': ['step', ['get', 'point_count'], 16, 100, 20, 1000, 26, 10000, 32],
+      } });
+    m.addLayer({ id: 'rg-cluster-label', type: 'symbol', source: STOPS, filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['format', ['get', 'point_count_abbreviated'], { 'font-scale': 1 }, '\n', {},
+          ['concat', '#', ['to-string', ['get', 'lo']], '–', ['to-string', ['get', 'hi']]], { 'font-scale': 0.62 }],
+        'text-font': FONT, 'text-size': 13, 'text-allow-overlap': true, 'text-line-height': 1.05,
+      },
+      paint: { 'text-color': '#ffffff' } });
+    m.addLayer({ id: 'rg-stop-pts', type: 'circle', source: STOPS, filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 7, 14, 11],
+        'circle-color': ['match', ['get', 'r'], 0, '#22c55e', 2, '#ef4444', '#1e90ff'],
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2,
+      } });
+    m.addLayer({ id: 'rg-stop-label', type: 'symbol', source: STOPS, filter: ['!', ['has', 'point_count']],
+      layout: { 'text-field': ['to-string', ['get', 'n']], 'text-font': FONT, 'text-size': ['interpolate', ['linear'], ['zoom'], 8, 9, 14, 12], 'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': '#ffffff' } });
+    m.addLayer({ id: 'rg-sel', type: 'circle', source: SEL,
+      paint: { 'circle-radius': 18, 'circle-color': 'rgba(245,158,11,0.25)', 'circle-stroke-color': '#f59e0b', 'circle-stroke-width': 3 } });
+    m.addLayer({ id: 'rg-drag-pt', type: 'circle', source: DRAG, filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-radius': 12, 'circle-color': '#f59e0b', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+    m.addLayer({ id: 'rg-me', type: 'circle', source: ME,
+      paint: { 'circle-radius': 9, 'circle-color': '#0ea5e9', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+
+    this.styleReady = true;
+    this.pendingDiffs = [];
+    this.rebuildRoute();
+    this.scheduleStops();
+    this.syncSelection();
+    if (this.me) this.showMe(this.me, false);
+  }
+
+  private src(id: string) { return this.map.getSource(id) as GeoJSONSource | undefined; }
+
+  private rebuildRoute() {
+    const features: GeoJSON.Feature[] = [];
+    for (const l of engine.legs.values()) features.push(legFeature(l));
+    void this.src(ROUTE)?.setData({ type: 'FeatureCollection', features });
+  }
+
+  private applyLegDiff(d: LegDiff) {
+    if (!this.styleReady) return; // installLayers will rebuild everything
+    const big = d.add.length + d.remove.length > 4000;
+    if (big) { this.rebuildRoute(); return; }
+    this.pendingDiffs.push(d);
+    if (this.pendingDiffs.length === 1) requestAnimationFrame(() => this.flushDiffs());
+  }
+
+  /** Coalesce many small leg updates (router results, edits) into one GPU upload per frame. */
+  private flushDiffs() {
+    const diffs = this.pendingDiffs; this.pendingDiffs = [];
+    const s = this.src(ROUTE);
+    if (!s || !diffs.length) return;
+    const removed = new Set<number>(); const added = new Map<number, Leg>(); const updated = new Map<number, Leg>();
+    for (const d of diffs) {
+      d.remove.forEach((l) => { if (added.delete(l.fid)) return; updated.delete(l.fid); removed.add(l.fid); });
+      d.add.forEach((l) => added.set(l.fid, l));
+      d.update.forEach((l) => { if (added.has(l.fid)) added.set(l.fid, l); else if (!removed.has(l.fid)) updated.set(l.fid, l); });
+    }
+    void s.updateData({
+      remove: [...removed],
+      add: [...added.values()].map(legFeature),
+      update: [...updated.values()].map((l) => ({
+        id: l.fid,
+        newGeometry: legFeature(l).geometry,
+        addOrUpdateProperties: [{ key: 'st', value: l.status }],
+      })),
+    }).catch(() => this.rebuildRoute());
+  }
+
+  private scheduleStops() {
+    this.stopsDirty = true;
+    if (!this.stopsInFlight) requestAnimationFrame(() => this.pushStops());
+  }
+
+  private async pushStops() {
+    const s = this.src(STOPS);
+    if (!s || !this.stopsDirty) return;
+    this.stopsDirty = false; this.stopsInFlight = true;
+    const S = engine.stops, last = S.length - 1;
+    const features: GeoJSON.Feature[] = new Array(S.length);
+    for (let i = 0; i < S.length; i++) {
+      features[i] = { type: 'Feature', properties: { n: i + 1, id: S[i].id, r: i === 0 ? 0 : i === last ? 2 : 1 }, geometry: { type: 'Point', coordinates: [S[i].lng, S[i].lat] } };
+    }
+    try { await s.setData({ type: 'FeatureCollection', features }); } finally {
+      this.stopsInFlight = false;
+      if (this.stopsDirty) requestAnimationFrame(() => this.pushStops());
+    }
+    this.syncSelection();
+  }
+
+  private syncSelection() {
+    const id = ui.get().selectedId;
+    const i = id ? engine.indexOf(id) : -1;
+    const s = engine.stops[i];
+    this.src(SEL)?.setData(s ? { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [s.lng, s.lat] } } : empty());
+  }
+
+  // ---------- camera ----------
+  fitRoute() {
+    const b = bounds((function* () { for (const s of engine.stops) yield [s.lng, s.lat] as LngLat; })());
+    if (!b) { toast('No stops yet'); return; }
+    this.map.fitBounds(b, { padding: { top: 90, bottom: 90, left: 60, right: 60 }, maxZoom: 15, duration: 700 });
+  }
+  flyToStop(i: number) {
+    const s = engine.stops[i];
+    if (!s) return;
+    ui.set({ selectedId: s.id });
+    this.map.flyTo({ center: [s.lng, s.lat], zoom: Math.max(this.map.getZoom(), 14), duration: 700 });
+  }
+  snapView() { this.map.easeTo({ pitch: 0, bearing: 0, duration: 500 }); }
+  tilt() { this.map.easeTo({ pitch: this.map.getPitch() > 10 ? 0 : 60, duration: 500 }); }
+  showMe(p: LngLat, fly = true) {
+    this.me = p;
+    this.src(ME)?.setData({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } });
+    if (fly) this.map.flyTo({ center: p, zoom: Math.max(this.map.getZoom(), 14) });
+  }
+
+  // ---------- interactions ----------
+  private async snap(p: LngLat): Promise<LngLat> {
+    if (!ui.get().snapToRoad || !navigator.onLine) return p;
+    return (await app.queue.provider.nearest(p)) ?? p;
+  }
+
+  private hitStop(point: { x: number; y: number }, pad = 10) {
+    if (!this.styleReady) return undefined;
+    return this.map.queryRenderedFeatures([[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]], { layers: ['rg-stop-pts'] })[0];
+  }
+
+  private bindInteractions() {
+    const m = this.map;
+    m.on('click', async (e) => {
+      if (!this.styleReady) return;
+      const pad = 12;
+      const box: [[number, number], [number, number]] = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]];
+      const cl = m.queryRenderedFeatures(box, { layers: ['rg-clusters'] })[0];
+      if (cl) {
+        const z = await (this.src(STOPS) as any).getClusterExpansionZoom(cl.properties!.cluster_id);
+        m.easeTo({ center: (cl.geometry as GeoJSON.Point).coordinates as LngLat, zoom: z + 0.5 });
+        return;
+      }
+      const st = this.hitStop(e.point, pad);
+      if (st) { ui.set({ selectedId: st.properties!.id, drawer: false }); return; }
+      if (ui.get().selectedId) { ui.set({ selectedId: null }); return; }
+      const mode = ui.get().tapMode;
+      if (mode === 'off') return;
+      const raw: LngLat = [e.lngLat.lng, e.lngLat.lat];
+      const leg = mode === 'insert' ? m.queryRenderedFeatures(box, { layers: ['rg-route-line', 'rg-route-pending'] })[0] : undefined;
+      await act(null, async () => {
+        const p = await this.snap(raw);
+        if (leg) {
+          const l = [...engine.legs.values()].find((x) => x.fid === leg.id);
+          if (l) { await engine.insertOnLeg(l.key, p); return; }
+        }
+        await engine.addStop(p);
+      });
+    });
+
+    m.on('mouseenter', 'rg-stop-pts', () => { m.getCanvas().style.cursor = 'grab'; });
+    m.on('mouseleave', 'rg-stop-pts', () => { m.getCanvas().style.cursor = ''; });
+    m.on('mouseenter', 'rg-clusters', () => { m.getCanvas().style.cursor = 'zoom-in'; });
+    m.on('mouseleave', 'rg-clusters', () => { m.getCanvas().style.cursor = ''; });
+
+    const start = (e: MapMouseEvent | MapTouchEvent) => {
+      if ((e as MapTouchEvent).points && (e as MapTouchEvent).points.length > 1) return;
+      const f = this.hitStop(e.point, 14);
+      if (!f) return;
+      const id = f.properties!.id as string;
+      // touch: only drag the selected stop so panning stays easy with gloves
+      if ((e as MapTouchEvent).points && ui.get().selectedId !== id) return;
+      e.preventDefault();
+      this.drag = { id, i: engine.indexOf(id) };
+      m.dragPan.disable();
+      m.getCanvas().style.cursor = 'grabbing';
+    };
+    const move = (e: MapMouseEvent | MapTouchEvent) => {
+      if (!this.drag) return;
+      const p: LngLat = [e.lngLat.lng, e.lngLat.lat];
+      const { i } = this.drag;
+      const S = engine.stops;
+      const feats: GeoJSON.Feature[] = [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } }];
+      const line: LngLat[] = [];
+      if (S[i - 1]) line.push([S[i - 1].lng, S[i - 1].lat]);
+      line.push(p);
+      if (S[i + 1]) line.push([S[i + 1].lng, S[i + 1].lat]);
+      if (line.length > 1) feats.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: line } });
+      this.src(DRAG)?.setData({ type: 'FeatureCollection', features: feats });
+    };
+    const end = async (e: MapMouseEvent | MapTouchEvent) => {
+      if (!this.drag) return;
+      const { id } = this.drag;
+      this.drag = null;
+      m.dragPan.enable();
+      m.getCanvas().style.cursor = '';
+      const raw: LngLat = [e.lngLat.lng, e.lngLat.lat];
+      await act(null, async () => engine.moveStop(id, await this.snap(raw)));
+      this.src(DRAG)?.setData(empty());
+    };
+    m.on('mousedown', start); m.on('touchstart', start);
+    m.on('mousemove', move); m.on('touchmove', move);
+    m.on('mouseup', end); m.on('touchend', end);
+  }
+}
