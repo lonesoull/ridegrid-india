@@ -35,8 +35,7 @@ jobs:
           java -Xmx10g -jar planetiler.jar --osm-path=zone.osm.pbf --download --output=${{ matrix.zone }}.pmtiles \
             --maxzoom=14 --nodemap-type=sparsearray --storage=mmap --force
           ls -la *.pmtiles
-          stat -c '{"zone":"%n","bytes":%s}' ${{ matrix.zone }}.pmtiles | sed 's/\.pmtiles//' > ${{ matrix.zone }}.tiles.json
-          date -u +'"%Y-%m-%dT%H:%M:%SZ"' | xargs -I{} sed -i 's/}$/,"generated":{}}/' ${{ matrix.zone }}.tiles.json
+          echo "{\"zone\":\"${{ matrix.zone }}\",\"bytes\":$(stat -c %s ${{ matrix.zone }}.pmtiles),\"generated\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > ${{ matrix.zone }}.tiles.json
           cat ${{ matrix.zone }}.tiles.json
       - name: Publish to the "india-tiles" release
         uses: softprops/action-gh-release@v2
