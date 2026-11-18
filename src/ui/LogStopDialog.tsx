@@ -5,6 +5,7 @@ import { nav } from '../nav/navigator';
 import { myLocation } from '../nav/directions';
 import { logStop, STOP_LABEL } from '../nav/logbook';
 import { ui, useUI, act, toast } from './state';
+import { team } from '../team/team';
 
 const TYPES: StopType[] = ['daystart', 'dayend', 'overnight', 'police', 'fuel', 'other'];
 const HINT: Partial<Record<StopType, string>> = {
@@ -29,6 +30,7 @@ export function LogStopDialog() {
     let pos = nav.pos, acc = nav.accuracy;
     if (!pos) { pos = await myLocation(); acc = 0; }
     await logStop({ tripId: engine.trip!.id, rideId: nav.ride?.id, type, at: Date.now(), lng: pos[0], lat: pos[1], acc, odoKm: odo ? +odo : undefined, note: note || undefined, photos });
+    if (team.settings) void team.send({ type: 'stop', from: team.settings.deviceId, name: team.settings.name, label: STOP_LABEL[type], pos, t: Date.now() });
     toast(`${STOP_LABEL[type]} logged with GPS, time${odo ? ', odometer' : ''}${photos.length ? ` and ${photos.length} photo(s)` : ''} — see the Logbook tab`);
     close();
   });

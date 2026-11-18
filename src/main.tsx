@@ -13,6 +13,7 @@ if (navigator.storage?.persist) navigator.storage.persist().catch(() => undefine
 import { engine } from './core/engine';
 import { app } from './core/app';
 import { nav } from './nav/navigator';
-(window as any).__rg = { engine, app, nav };
+import { team } from './team/team';
+(window as any).__rg = { engine, app, nav, team };
 import { mapCtl } from './ui/App';
 setTimeout(() => { (window as any).__map = mapCtl?.map; }, 500);

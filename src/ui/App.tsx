@@ -11,6 +11,11 @@ import { Drawer } from './Drawer';
 import { FpsMeter } from './FpsMeter';
 import { StopSheet } from './StopSheet';
 import { SearchBar } from './SearchBar';
+import { MirrorPanel } from './MirrorPanel';
+import { SosModal, RouteOfferModal } from './TeamModals';
+import { team } from '../team/team';
+import { startTelemetry } from '../team/telemetry';
+import { startTeamEvents } from '../team/actions';
 import { PlaceCard } from './PlaceCard';
 import { Icon } from './Icon';
 import { useNav } from './navHooks';
@@ -38,6 +43,9 @@ export function App() {
       await nav.loadSettings();
       await google.load();
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
+      startTelemetry(); startTeamEvents();
+      void team.load();
+      if (location.hash.startsWith('#join=')) ui.set({ drawer: true, tab: 'team' });
       await applyBase(mapCtl!);
       window.addEventListener('online', () => mapCtl && applyBase(mapCtl));
       window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
@@ -73,6 +81,9 @@ export function App() {
       {ready && <Controls />}
       {ready && <StopSheet />}
       {ready && <PlaceCard />}
+      {ready && <MirrorPanel />}
+      {ready && <SosModal />}
+      {ready && <RouteOfferModal />}
       {ready && <NavPanel />}
       {ready && <Drawer />}
       {ready && <LogStopDialog />}

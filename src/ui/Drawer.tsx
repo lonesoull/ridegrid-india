@@ -17,6 +17,7 @@ import { google, testGoogleKey, type KeyTest } from '../core/google';
 import { applyBase } from '../map/googleBase';
 import { RideTab } from './RideTab';
 import { LogbookTab } from './LogbookTab';
+import { TeamTab } from './TeamTab';
 
 export function Drawer() {
   const open = useUI((s) => s.drawer);
@@ -30,9 +31,9 @@ export function Drawer() {
           <button className="x" onClick={() => ui.set({ drawer: false })}>✕</button>
         </div>
         <nav className="tabs">
-          {(['trip', 'stops', 'ride', 'log', 'files', 'tools'] as const).map((t) => (
+          {(['trip', 'stops', 'ride', 'log', 'team', 'files', 'tools'] as const).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => ui.set({ tab: t })}>
-              {{ trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', files: 'Files', tools: 'Tools' }[t]}
+              {{ trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', team: 'Team', files: 'Files', tools: 'Tools' }[t]}
             </button>
           ))}
         </nav>
@@ -41,6 +42,7 @@ export function Drawer() {
           {open && tab === 'stops' && <StopsTab />}
           {open && tab === 'ride' && <RideTab />}
           {open && tab === 'log' && <LogbookTab />}
+          {open && tab === 'team' && <TeamTab />}
           {open && tab === 'files' && <FilesTab />}
           {open && tab === 'tools' && <ToolsTab />}
         </div>

@@ -2,6 +2,7 @@ import { Map as MLMap, setWorkerUrl, type GeoJSONSource, type MapMouseEvent, typ
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { GoogleUnderlay } from './googleJs';
+import { nav } from '../nav/navigator';
 import { engine, type Leg, type LegDiff } from '../core/engine';
 import { bounds, type LngLat } from '../core/geo';
 import { ui, toast, act } from '../ui/state';
@@ -14,7 +15,8 @@ export const STYLES = {
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 
-const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues', PLACES = 'rg-places';
+const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues', PLACES = 'rg-places', PEERS = 'rg-peers', PEERTRK = 'rg-peer-tracks';
+export const ROLE_COLOR: Record<string, string> = { primary: '#f97316', secondary: '#14b8a6', laptop: '#64748b' };
 const FONT = ['Noto Sans Bold'];
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 
@@ -29,13 +31,13 @@ function legFeature(l: Leg): GeoJSON.Feature {
 const lineFeature = (c: LngLat[]): GeoJSON.Feature => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } });
 
 /** Navigation arrow (drawn once into an image, rotated on the GPU). */
-function arrowImage() {
+function arrowImage(color = '#0ea5e9') {
   const size = 64, c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d')!;
   g.translate(size / 2, size / 2);
   g.beginPath(); g.arc(0, 0, 26, 0, Math.PI * 2); g.fillStyle = '#ffffff'; g.fill();
-  g.beginPath(); g.arc(0, 0, 22, 0, Math.PI * 2); g.fillStyle = '#0ea5e9'; g.fill();
+  g.beginPath(); g.arc(0, 0, 22, 0, Math.PI * 2); g.fillStyle = color; g.fill();
   g.beginPath(); g.moveTo(0, -16); g.lineTo(12, 13); g.lineTo(0, 6); g.lineTo(-12, 13); g.closePath(); g.fillStyle = '#ffffff'; g.fill();
   return c.getContext("2d")!.getImageData(0, 0, size, size);
 }
@@ -237,6 +239,16 @@ export class MapController {
     m.addLayer({ id: 'rg-next', type: 'circle', source: NEXT,
       paint: { 'circle-radius': 20, 'circle-color': 'rgba(34,197,94,0.18)', 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 4 } });
     if (!m.hasImage('rg-arrow')) m.addImage('rg-arrow', arrowImage(), { pixelRatio: 2 });
+    for (const [role, col] of Object.entries(ROLE_COLOR)) if (!m.hasImage(`rg-arrow-${role}`)) m.addImage(`rg-arrow-${role}`, arrowImage(col), { pixelRatio: 2 });
+    // team devices: their ridden tracks and live arrows
+    m.addSource(PEERTRK, { type: 'geojson', data: this.peerFc?.tracks ?? empty() });
+    m.addLayer({ id: 'rg-peer-tracks', type: 'line', source: PEERTRK, layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2, 14, 5], 'line-opacity': 0.75 } }, 'rg-clusters');
+    m.addSource(PEERS, { type: 'geojson', data: this.peerFc?.pts ?? empty() });
+    m.addLayer({ id: 'rg-peers', type: 'symbol', source: PEERS,
+      layout: { 'icon-image': ['concat', 'rg-arrow-', ['get', 'role']], 'icon-rotate': ['get', 'hd'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'text-field': ['get', 'label'], 'text-font': FONT, 'text-size': 12, 'text-offset': [0, 1.6], 'text-anchor': 'top', 'text-allow-overlap': true },
+      paint: { 'text-color': ['get', 'col'], 'text-halo-color': '#fff', 'text-halo-width': 1.5, 'icon-opacity': ['case', ['get', 'stale'], 0.45, 1] } });
     m.addLayer({ id: 'rg-puck-halo', type: 'circle', source: PUCK,
       paint: { 'circle-radius': ['get', 'accPx'], 'circle-color': 'rgba(14,165,233,0.12)', 'circle-stroke-color': 'rgba(14,165,233,0.4)', 'circle-stroke-width': 1 } });
     m.addLayer({ id: 'rg-puck', type: 'symbol', source: PUCK,
@@ -338,6 +350,23 @@ export class MapController {
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
+  // ---------- team devices ----------
+  private peerFc: { pts: GeoJSON.FeatureCollection; tracks: GeoJSON.FeatureCollection } | null = null;
+  followPeerId: string | null = null;
+  setPeers(list: { id: string; name: string; role: string; pos?: LngLat; hd?: number; spd?: number; lastSeen: number; track: LngLat[]; online: boolean }[]) {
+    const now = Date.now();
+    this.peerFc = {
+      pts: { type: 'FeatureCollection', features: list.filter((p) => p.pos && p.online).map((p) => ({ type: 'Feature', properties: {
+        role: p.role, hd: p.hd ?? 0, col: ROLE_COLOR[p.role] ?? '#64748b', stale: now - p.lastSeen > 30000,
+        label: `${p.name}${p.spd ? ` · ${Math.round(p.spd * 3.6)} km/h` : ''}` }, geometry: { type: 'Point', coordinates: p.pos! } })) },
+      tracks: { type: 'FeatureCollection', features: list.filter((p) => p.track.length > 1).map((p) => ({ type: 'Feature', properties: { col: ROLE_COLOR[p.role] ?? '#64748b' }, geometry: { type: 'LineString', coordinates: p.track } })) },
+    };
+    this.src(PEERS)?.setData(this.peerFc.pts);
+    this.src(PEERTRK)?.setData(this.peerFc.tracks);
+    const f = this.followPeerId && list.find((p) => p.id === this.followPeerId);
+    if (f && f.pos && nav.mode === 'off') this.map.easeTo({ center: f.pos, bearing: f.hd ?? this.map.getBearing(), zoom: Math.max(this.map.getZoom(), 14.5), duration: 800 });
+  }
+
   private placesFc: GeoJSON.FeatureCollection | null = null;
   /** Search results on the map (selected one highlighted); fits them into view. */
   setPlaces(list: { id: string; name: string; p?: LngLat }[], selected: string | null, fit = true) {

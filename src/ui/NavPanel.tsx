@@ -9,6 +9,9 @@ import { useNav } from './navHooks';
 import { mapCtl } from './App';
 import { Icon, TurnIcon } from './Icon';
 import { isNativeApp } from '../nav/gps';
+import { team } from '../team/team';
+import { sendSos } from '../team/actions';
+import { useRef, useState } from 'react';
 
 const fmtDist = (m: number) => (m < 1000 ? `${m < 100 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m` : fmtKm(m));
 const fmtDur = (s: number) => {
@@ -117,6 +120,7 @@ export function NavPanel() {
           {sim && SIM_SPEEDS.map((m) => <button key={m} className={nav.mult === m ? 'on' : ''} onClick={() => nav.setMult(m)}>{m}×</button>)}
           {!following && <button onClick={() => { ui.set({ following: true }); mapCtl?.startFollow(nav.pos); }}><Icon name="target" /> Re-centre</button>}
           {!sim && <button className="logbtn" onClick={() => ui.set({ logStop: true })}>Log stop</button>}
+          {team.settings && <SosHold />}
           {st && <button title="Open this 10-leg stage in Google Maps (backup)" onClick={() => window.open(st.url, '_blank', 'noopener')}><Icon name="gmaps" size={18} /> G-Maps</button>}
           <button className="danger" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: 'append' }))}><Icon name="stop" /> Exit</button>
         </div>
@@ -132,4 +136,13 @@ export function NavPanel() {
       </div>
     </>
   );
+}
+
+/** SOS while riding: hold 1.5 s (no accidental taps with gloves). */
+function SosHold() {
+  const t = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hold, setHold] = useState(false);
+  const start = () => { setHold(true); t.current = setTimeout(() => { setHold(false); void act('Sending SOS…', async () => { await sendSos(); toast('SOS sent to the team'); }); }, 1500); };
+  const cancel = () => { setHold(false); if (t.current) clearTimeout(t.current); };
+  return <button className={`sosbtn ${hold ? 'holding' : ''}`} onPointerDown={start} onPointerUp={cancel} onPointerLeave={cancel}>{hold ? 'Keep holding…' : 'Hold for SOS'}</button>;
 }

@@ -59,6 +59,14 @@ Rules are built from publicly known Guinness requirements; thresholds are settin
 
 Capacitor shell loading the live web app (`capacitor.config.ts`), so web updates reach the app automatically. Native: background GPS foreground service, fake-GPS (mock location) blocking, camera. APK built by `.github/workflows/android.yml` → https://github.com/lonesoull/ridegrid-india/releases/download/android-latest/RideGrid-India.apk
 
+## Team link (step 3, done)
+
+Up to 10 devices (2 phones + laptop in practice), paired with a 25-character code. End-to-end AES-256-GCM over a free public MQTT relay (`wss://broker.emqx.io:8084/mqtt`, configurable) — the relay only sees random bytes.
+- Live position / speed / heading / battery / navigation state ~1/sec while riding (retained, so a device joining later sees it immediately); positions buffered offline and sent on reconnect.
+- Laptop **mirror panel**: turn, next waypoint, speed, ETA, off-route / proximity alerts of the riding phone; follow camera.
+- **Route push** (gzip, chunked, encrypted) with load / replace / ignore prompt; **SOS** (hold 1.5 s while riding) with alarm + “I'm responding”; logged stops shown to the team.
+Code: `src/team/` (crypto, team, telemetry, actions), `src/ui/TeamTab.tsx`, `MirrorPanel.tsx`, `TeamModals.tsx`.
+
 ## Next phases
 
 3. On-device offline router (per-state road graphs) + Guinness/India compliance modules
