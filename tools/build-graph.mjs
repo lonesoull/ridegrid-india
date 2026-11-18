@@ -5,7 +5,7 @@
 // Roads: everything a motorcycle may legally use, EXCEPT motorways / expressways (banned for two-wheelers
 // in India unless tagged motorcycle=yes), private/no-access roads, tracks, paths and service roads.
 //
-// Binary layout (little-endian, every block 4-byte aligned):
+// Format v3 (written below): header + varint/zig-zag delta streams; see section 6. Older layout notes:
 //   'RGG1' | u32 version | u32 V | u32 U (undirected edges) | u32 A (adjacency entries) | u32 S (shape points) | f64 bbox[4]
 //   i32 lon[V]  i32 lat[V]                         (degrees * 1e6)
 //   u32 adjStart[V+1]  u32 adjTo[A]  u32 adjEdge[A]  u8 adjFlag[A]   (flag 1: may go self→to, 2: may go to→self)
@@ -60,6 +60,7 @@ for await (const line of rl) {
     const t = tags(line.slice(ti + 2, nI));
     const hw = t.highway;
     if (!KMH[hw]) continue;
+    if (process.argv[3] === 'main' && (hw === 'residential' || hw === 'living_street')) continue; // main-roads tier
     const mc = t.motorcycle ?? t.motor_vehicle ?? t.vehicle ?? t.access;
     if (mc === 'no' || mc === 'private' || t.access === 'no' && t.motorcycle !== 'yes' || t.access === 'private' && t.motorcycle !== 'yes') { skipped.access++; continue; }
     if (hw.startsWith('motorway') && t.motorcycle !== 'yes') { skipped.motorway++; continue; } // two-wheeler ban
@@ -87,7 +88,27 @@ log('vertices', V);
 const R = 6371008.8, RAD = Math.PI / 180;
 const dist = (a, b) => { const la1 = nlat[a] / 1e6 * RAD, la2 = nlat[b] / 1e6 * RAD, dl = (nlon[b] - nlon[a]) / 1e6 * RAD;
   const x = Math.sin((la2 - la1) / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dl / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
-const eFrom = [], eTo = [], eLen = [], eCls = [], eKmh = [], eName = [], eOne = [], shapeStart = [0], shape = [];
+// simplify each edge's shape to ~2 m (Douglas–Peucker) — invisible on a phone, ~40% fewer points
+const simplify = (pts, tolM = 2) => {
+  if (pts.length <= 2) return pts;
+  const kx = Math.cos((pts[0][1] / 1e6) * RAD) * R * RAD / 1e6, ky = R * RAD / 1e6;
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let md = 0, mi = -1;
+    const ax = pts[a][0] * kx, ay = pts[a][1] * ky, bx = pts[b][0] * kx, by = pts[b][1] * ky, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    for (let i = a + 1; i < b; i++) {
+      const px = pts[i][0] * kx, py = pts[i][1] * ky;
+      const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+      const d = Math.hypot(px - ax - t * dx, py - ay - t * dy);
+      if (d > md) { md = d; mi = i; }
+    }
+    if (md > tolM) { keep[mi] = 1; stack.push([a, mi], [mi, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+};
+const eFrom = [], eTo = [], eLen = [], eCls = [], eKmh = [], eName = [], shapeStart = [0], shape = [];
 for (const w of ways) {
   let start = 0, len = 0;
   for (let k = 1; k < w.refs.length; k++) {
@@ -96,52 +117,59 @@ for (const w of ways) {
       const a = vOf[w.refs[start]], b = vOf[w.refs[k]];
       if (a !== b || k - start > 1) {
         eFrom.push(a); eTo.push(b); eLen.push(Math.max(1, Math.round(len * 10))); eCls.push(w.cls | (w.oneway ? 0x80 : 0)); eKmh.push(w.kmh); eName.push(w.name);
-        for (let j = start + 1; j < k; j++) shape.push(nlon[w.refs[j]], nlat[w.refs[j]]);
+        const pts = []; for (let j = start; j <= k; j++) pts.push([nlon[w.refs[j]], nlat[w.refs[j]]]);
+        const simp = simplify(pts);
+        for (let j = 1; j < simp.length - 1; j++) shape.push(simp[j][0], simp[j][1]);
         shapeStart.push(shape.length / 2);
-        eOne.push(w.oneway);
       }
       start = k; len = 0;
     }
   }
 }
 const U = eFrom.length;
-log('edges', U, 'shape points', shape.length / 2);
+log('edges', U, 'shape points (simplified)', shape.length / 2);
 
-// ---- 5. adjacency (both endpoints, with direction flags) in CSR form
-const deg = new Uint32Array(V + 1);
-for (let e = 0; e < U; e++) { deg[eFrom[e]]++; deg[eTo[e]]++; }
-const adjStart = new Uint32Array(V + 1);
-for (let v = 0; v < V; v++) adjStart[v + 1] = adjStart[v] + deg[v];
-const A = adjStart[V];
-const adjTo = new Uint32Array(A), adjEdge = new Uint32Array(A), adjFlag = new Uint8Array(A), fill = adjStart.slice(0, V);
-for (let e = 0; e < U; e++) {
-  const a = eFrom[e], b = eTo[e];
-  let i = fill[a]++; adjTo[i] = b; adjEdge[i] = e; adjFlag[i] = eOne[e] ? 1 : 3;
-  i = fill[b]++; adjTo[i] = a; adjEdge[i] = e; adjFlag[i] = eOne[e] ? 2 : 3;
-}
-
-// ---- 6. vertex coordinates + bbox
-const vlon = new Int32Array(V), vlat = new Int32Array(V);
+// ---- 5. vertex coordinates, then renumber vertices along a Morton (Z-order) curve so neighbours get
+//         nearby numbers — that makes the delta-encoded file much smaller
+const vlon0 = new Int32Array(V), vlat0 = new Int32Array(V);
 let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-for (let i = 0; i < nodeCount; i++) { const v = vOf[i]; if (v < 0) continue; vlon[v] = nlon[i]; vlat[v] = nlat[i];
+for (let i = 0; i < nodeCount; i++) { const v = vOf[i]; if (v < 0) continue; vlon0[v] = nlon[i]; vlat0[v] = nlat[i];
   minX = Math.min(minX, nlon[i]); maxX = Math.max(maxX, nlon[i]); minY = Math.min(minY, nlat[i]); maxY = Math.max(maxY, nlat[i]); }
+const morton = (x, y) => { let k = 0; for (let b = 19; b >= 0; b--) k = k * 4 + ((y >> b) & 1) * 2 + ((x >> b) & 1); return k; };
+const keys = new Float64Array(V);
+for (let v = 0; v < V; v++) keys[v] = morton(Math.floor((vlon0[v] - minX) / 50), Math.floor((vlat0[v] - minY) / 50)); // ~5 m cells
+const order = Uint32Array.from({ length: V }, (_, i) => i).sort((a, b) => keys[a] - keys[b]);
+const newId = new Uint32Array(V); order.forEach((old, n) => { newId[old] = n; });
+const eOrder = Uint32Array.from({ length: U }, (_, i) => i).sort((x, y) => (newId[eFrom[x]] - newId[eFrom[y]]) || (newId[eTo[x]] - newId[eTo[y]]));
 
-// ---- 7. write
+// ---- 6. write format v3: varint / zig-zag delta streams (adjacency is rebuilt on the device)
+const tier = process.argv[3] === 'main' ? 'main' : 'full';
+let buf = Buffer.alloc(64 << 20), n = 0;
+const need = (k) => { if (n + k > buf.length) { const nb = Buffer.alloc(buf.length * 2); buf.copy(nb, 0, 0, n); buf = nb; } };
+const u = (v) => { need(10); while (v >= 0x80) { buf[n++] = (v % 0x80) | 0x80; v = Math.floor(v / 0x80); } buf[n++] = v; };
+const z = (v) => u(v < 0 ? -2 * v - 1 : 2 * v);
 const namesJson = Buffer.from(JSON.stringify([...names.keys()]));
 const S = shape.length / 2;
-const pad4 = (n) => (n + 3) & ~3;
-const blocks = [];
-const head = Buffer.alloc(24 + 32);
-head.write('RGG1', 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(V, 8); head.writeUInt32LE(U, 12); head.writeUInt32LE(A, 16); head.writeUInt32LE(S, 20);
-[minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6].forEach((x, i) => head.writeDoubleLE(x, 24 + i * 8));
-blocks.push(head);
-const push = (ta) => { const b = Buffer.from(ta.buffer, ta.byteOffset, ta.byteLength); blocks.push(b); const p = pad4(b.length) - b.length; if (p) blocks.push(Buffer.alloc(p)); };
-push(vlon); push(vlat); push(adjStart); push(adjTo); push(adjEdge); push(adjFlag);
-push(Uint32Array.from(eFrom)); push(Uint32Array.from(eTo)); push(Uint32Array.from(eLen)); push(Uint8Array.from(eCls)); push(Uint8Array.from(eKmh)); push(Uint32Array.from(eName)); push(Uint32Array.from(shapeStart)); push(Int32Array.from(shape));
-const nb = Buffer.alloc(4); nb.writeUInt32LE(namesJson.length); blocks.push(nb, namesJson);
-const file = Buffer.concat(blocks);
-await writeFile(`${OUT}/${zone}.rgg`, file);
+need(64); buf.write('RGG1', 0); buf.writeUInt32LE(3, 4); buf.writeUInt32LE(V, 8); buf.writeUInt32LE(U, 12); buf.writeUInt32LE(S, 16); buf.writeUInt32LE(tier === 'main' ? 1 : 0, 20);
+[minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6].forEach((x, i) => buf.writeDoubleLE(x, 24 + i * 8));
+n = 56;
+let px = 0, py = 0;
+for (const old of order) { z(vlon0[old] - px); z(vlat0[old] - py); px = vlon0[old]; py = vlat0[old]; }
+let pa = 0;
+for (const e of eOrder) {
+  const a = newId[eFrom[e]], b = newId[eTo[e]];
+  u(a - pa); z(b - a); pa = a;
+  u(eLen[e]); u(eCls[e]); u(eKmh[e]); u(eName[e]);
+  const s0 = shapeStart[e], s1 = shapeStart[e + 1];
+  u(s1 - s0);
+  let qx = vlon0[eFrom[e]], qy = vlat0[eFrom[e]];
+  for (let s = s0; s < s1; s++) { z(shape[2 * s] - qx); z(shape[2 * s + 1] - qy); qx = shape[2 * s]; qy = shape[2 * s + 1]; }
+}
+need(4 + namesJson.length); buf.writeUInt32LE(namesJson.length, n); n += 4; namesJson.copy(buf, n); n += namesJson.length;
+const file = buf.subarray(0, n);
+const name = tier === 'main' ? `${zone}-main` : zone;
+await writeFile(`${OUT}/${name}.rgg`, file);
 const km = eLen.reduce((a, b) => a + b, 0) / 10000;
-const stats = { zone, generated: new Date().toISOString(), nodes: nodeCount, ways: ways.length, skipped, vertices: V, edges: U, adjacency: A, shapePoints: S, names: names.size, km: Math.round(km), bytes: file.length, bbox: [minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6], seconds: Math.round((Date.now() - t0) / 1000) };
-await writeFile(`${OUT}/${zone}.json`, JSON.stringify(stats, null, 1));
+const stats = { zone, tier, generated: new Date().toISOString(), nodes: nodeCount, ways: ways.length, skipped, vertices: V, edges: U, shapePoints: S, names: names.size, km: Math.round(km), bytes: file.length, bbox: [minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6], seconds: Math.round((Date.now() - t0) / 1000) };
+await writeFile(`${OUT}/${name}.json`, JSON.stringify(stats, null, 1));
 log(JSON.stringify(stats));

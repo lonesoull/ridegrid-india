@@ -23,24 +23,48 @@ export class Graph {
   }
   private static CELL = 0.005;
 
+  tier: 'main' | 'full';
   constructor(buf: ArrayBuffer) {
     const dv = new DataView(buf);
     const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
-    if (magic !== 'RGG1' || dv.getUint32(4, true) !== 2) throw new Error('Not a RideGrid road graph (v2)');
-    this.V = dv.getUint32(8, true); this.U = dv.getUint32(12, true); this.A = dv.getUint32(16, true); this.S = dv.getUint32(20, true);
+    if (magic !== 'RGG1' || dv.getUint32(4, true) !== 3) throw new Error('Not a RideGrid road graph (v3)');
+    const V = (this.V = dv.getUint32(8, true)), U = (this.U = dv.getUint32(12, true)), S = (this.S = dv.getUint32(16, true));
+    this.tier = dv.getUint32(20, true) === 1 ? 'main' : 'full';
     this.bbox = [dv.getFloat64(24, true), dv.getFloat64(32, true), dv.getFloat64(40, true), dv.getFloat64(48, true)];
+    const b = new Uint8Array(buf);
     let o = 56;
-    const take = <T>(C: { new (b: ArrayBuffer, o: number, n: number): T; BYTES_PER_ELEMENT: number }, n: number): T => {
-      const a = new C(buf, o, n); o += (n * C.BYTES_PER_ELEMENT + 3) & ~3; return a;
-    };
-    const { V, U, A, S } = this;
-    this.lon = take(Int32Array, V); this.lat = take(Int32Array, V);
-    this.adjStart = take(Uint32Array, V + 1); this.adjTo = take(Uint32Array, A); this.adjEdge = take(Uint32Array, A); this.adjFlag = take(Uint8Array, A);
-    this.ea = take(Uint32Array, U); this.eb = take(Uint32Array, U);
-    this.len = take(Uint32Array, U); this.cls = take(Uint8Array, U); this.kmh = take(Uint8Array, U); this.name = take(Uint32Array, U);
-    this.shapeStart = take(Uint32Array, U + 1); this.shape = take(Int32Array, 2 * S);
-    const nb = dv.getUint32(o, true);
+    const u = () => { let v = 0, m = 1, c; do { c = b[o++]; v += (c & 0x7f) * m; m *= 128; } while (c & 0x80); return v; };
+    const z = () => { const v = u(); return v % 2 ? -(v + 1) / 2 : v / 2; };
+    this.lon = new Int32Array(V); this.lat = new Int32Array(V);
+    let x = 0, y = 0;
+    for (let v = 0; v < V; v++) { x += z(); y += z(); this.lon[v] = x; this.lat[v] = y; }
+    this.ea = new Uint32Array(U); this.eb = new Uint32Array(U); this.len = new Uint32Array(U); this.cls = new Uint8Array(U); this.kmh = new Uint8Array(U);
+    this.name = new Uint32Array(U); this.shapeStart = new Uint32Array(U + 1); this.shape = new Int32Array(2 * S);
+    let a = 0, sp = 0;
+    for (let e = 0; e < U; e++) {
+      a += u(); const bb = a + z();
+      this.ea[e] = a; this.eb[e] = bb;
+      this.len[e] = u(); this.cls[e] = u(); this.kmh[e] = u(); this.name[e] = u();
+      const k = u();
+      let qx = this.lon[a], qy = this.lat[a];
+      for (let i = 0; i < k; i++) { qx += z(); qy += z(); this.shape[2 * sp] = qx; this.shape[2 * sp + 1] = qy; sp++; }
+      this.shapeStart[e + 1] = sp;
+    }
+    const nb = new DataView(buf, o, 4).getUint32(0, true);
     this.names = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, o + 4, nb)));
+    // adjacency (both endpoints, direction flags) rebuilt here instead of being downloaded
+    const deg = new Uint32Array(V + 1);
+    for (let e = 0; e < U; e++) { deg[this.ea[e]]++; deg[this.eb[e]]++; }
+    this.adjStart = new Uint32Array(V + 1);
+    for (let v = 0; v < V; v++) this.adjStart[v + 1] = this.adjStart[v] + deg[v];
+    const A = (this.A = this.adjStart[V]);
+    this.adjTo = new Uint32Array(A); this.adjEdge = new Uint32Array(A); this.adjFlag = new Uint8Array(A);
+    const fill = this.adjStart.slice(0, V);
+    for (let e = 0; e < U; e++) {
+      const one = (this.cls[e] & 0x80) !== 0, p = this.ea[e], q = this.eb[e];
+      let i = fill[p]++; this.adjTo[i] = q; this.adjEdge[i] = e; this.adjFlag[i] = one ? 1 : 3;
+      i = fill[q]++; this.adjTo[i] = p; this.adjEdge[i] = e; this.adjFlag[i] = one ? 2 : 3;
+    }
     this.buildGrid();
   }
 

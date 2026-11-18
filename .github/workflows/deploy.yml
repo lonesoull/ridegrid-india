@@ -38,7 +38,8 @@ jobs:
       - name: Fetch on-device routing graphs from the "india-graph" release
         run: |
           mkdir -p public/graphs
-          for z in southern-zone western-zone northern-zone central-zone eastern-zone north-eastern-zone; do
+          # main-roads tier for every zone; all-streets tier only while the site stays well under GitHub Pages' 1 GB
+          for z in southern-zone-main western-zone-main northern-zone-main central-zone-main eastern-zone-main north-eastern-zone-main; do
             curl -fsSL -o public/graphs/$z.rgg.gz https://github.com/${{ github.repository }}/releases/download/india-graph/$z.rgg.gz || rm -f public/graphs/$z.rgg.gz
             curl -fsSL -o public/graphs/$z.json https://github.com/${{ github.repository }}/releases/download/india-graph/$z.json || rm -f public/graphs/$z.json
           done

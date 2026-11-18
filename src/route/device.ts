@@ -68,6 +68,9 @@ export const device = {
     await db.graphs.put({ zone, blob: new Blob([raw]), bytes: raw.byteLength, at: Date.now(), generated: meta?.generated });
     const r = await call({ type: 'load', zone, buf: raw }, [raw]);
     this.loaded.add(zone); this.boxes.set(zone, r.bbox);
+    // one detail level per region: drop the other tier of the same region
+    const other = zone.endsWith('-main') ? zone.slice(0, -5) : `${zone}-main`;
+    if (this.loaded.has(other) || (await db.graphs.get(other))) await this.remove(other);
     this.emit();
   },
 

@@ -18,15 +18,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        zone: [southern-zone]
+        zone: [southern-zone, western-zone, northern-zone, central-zone, eastern-zone, north-eastern-zone]
+        tier: [main, full]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
-      - run: node --max-old-space-size=6000 tools/build-graph.mjs ${{ matrix.zone }}
-      - run: gzip -9 -k graph-out/${{ matrix.zone }}.rgg && ls -la graph-out
+      - name: Build ${{ matrix.zone }} (${{ matrix.tier }})
+        id: b
+        run: |
+          node --max-old-space-size=6000 tools/build-graph.mjs ${{ matrix.zone }} ${{ matrix.tier }}
+          n=${{ matrix.zone }}; [ "${{ matrix.tier }}" = main ] && n=$n-main
+          gzip -9 -k graph-out/$n.rgg && ls -la graph-out
+          echo "n=$n" >> "$GITHUB_OUTPUT"
       - name: Publish to the "india-graph" release
         uses: softprops/action-gh-release@v2
         with:
@@ -34,5 +40,5 @@ jobs:
           name: India routing graphs
           body: On-device routing graphs built from OpenStreetMap (© OpenStreetMap contributors, ODbL). Two-wheeler-banned roads removed.
           files: |
-            graph-out/${{ matrix.zone }}.rgg.gz
-            graph-out/${{ matrix.zone }}.json
+            graph-out/${{ steps.b.outputs.n }}.rgg.gz
+            graph-out/${{ steps.b.outputs.n }}.json
