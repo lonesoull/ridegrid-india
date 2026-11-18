@@ -221,3 +221,6 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
 .thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: zoom-in; }
 .bigphoto { max-width: 96vw; max-height: 90vh; border-radius: 12px; }
+
+.btnlink { display: flex; align-items: center; justify-content: center; min-height: 48px; border-radius: 12px; text-decoration: none; font-weight: 700; }
+.btnlink.primary { background: var(--accent); color: #fff; }

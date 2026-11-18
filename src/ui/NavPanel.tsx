@@ -8,6 +8,7 @@ import { ui, useUI, act, toast } from './state';
 import { useNav } from './navHooks';
 import { mapCtl } from './App';
 import { Icon, TurnIcon } from './Icon';
+import { isNativeApp } from '../nav/gps';
 
 const fmtDist = (m: number) => (m < 1000 ? `${m < 100 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m` : fmtKm(m));
 const fmtDur = (s: number) => {
@@ -110,7 +111,8 @@ export function NavPanel() {
           <button className="danger" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: 'append' }))}><Icon name="stop" /> Exit</button>
         </div>
         <div className="navfoot muted">
-          {sim ? 'Simulation' : `GPS ±${Math.round(nav.accuracy)} m`} · {nav.wake.active ? 'screen kept on ✓' : nav.wake.supported ? 'screen lock not held' : 'keep-awake not supported'}
+          {sim ? 'Simulation' : `GPS ±${Math.round(nav.accuracy)} m`} · {!sim && isNativeApp() ? 'background GPS ✓' : nav.wake.active ? 'screen kept on ✓' : nav.wake.supported ? 'screen lock not held' : 'keep-awake not supported'}
+          {nav.mockFixes > 0 && <span className="danger-text"> · FAKE GPS blocked ×{nav.mockFixes}</span>}
           {nav.ride ? ` · logging ${fmtKm(nav.ride.distM)}` : sim ? ' · not logged' : ''}
           {nav.reroutes > 0 && ` · re-routed ${nav.reroutes}×`}
           {nav.routeUpdates > 0 && <span className="warn"> · planned route changed {nav.routeUpdates}× during this ride</span>}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { T, isExpedition } from '../core/terms';
 import { RouteChecker } from './RouteChecker';
+import { isNativeApp, openAppSettings } from '../nav/gps';
 import { engine } from '../core/engine';
 import { app, DEFAULT_ROUTER, type RouterSettings } from '../core/app';
 import { db } from '../core/db';
@@ -352,6 +353,8 @@ function ToolsTab() {
         <p className="muted">Public servers are free but rate-limited: each is paced to ~1 request/sec with up to 99 legs per request, and every leg is stored forever on this device. Point the URL at your own OSRM/Valhalla anytime.</p>
       </section>
 
+      <AndroidAppPanel />
+
       <GoogleSettingsPanel />
 
       <section>
@@ -410,6 +413,38 @@ function GoogleSettingsPanel() {
           <li>Credentials → Create API key → <b>Application restrictions: Websites</b> → add <code>https://lonesoull.github.io/*</code> (and <code>http://localhost:*</code> for testing).</li>
           <li><b>API restrictions</b> → restrict key to Map Tiles API + Routes API only.</li>
           <li>Quotas: cap requests per day (e.g. Map Tiles 20,000/day, Routes computeRoutes 1,000/day) and add a ₹1 budget alert, so usage stays inside the free monthly limits.</li>
+        </ol>
+      </details>
+    </section>
+  );
+}
+
+const APK_URL = 'https://github.com/lonesoull/ridegrid-india/releases/download/android-latest/RideGrid-India.apk';
+function AndroidAppPanel() {
+  if (isNativeApp()) {
+    return (
+      <section>
+        <h3>Android app <span className="pill">installed</span></h3>
+        <p className="muted">Background GPS is on: rides keep recording with the screen off (a “RideGrid is recording” notification shows while riding).
+          App updates arrive automatically each time you open it.</p>
+        <button onClick={() => void openAppSettings()}>Open app permissions</button>
+      </section>
+    );
+  }
+  return (
+    <section>
+      <h3>Android app</h3>
+      <p className="muted">Install the app on your phone so GPS keeps recording with the screen off or while using other apps — essential for a gap-free record log.
+        It loads this same app, so every update reaches it automatically.</p>
+      <a className="btnlink primary" href={APK_URL}>Download Android app (.apk)</a>
+      <details>
+        <summary className="muted">How to install</summary>
+        <ol className="muted small">
+          <li>Open this page on your Android phone and tap <b>Download</b>.</li>
+          <li>Open the downloaded <b>RideGrid-India.apk</b>. If asked, allow <b>“Install unknown apps”</b> for your browser/Files app.</li>
+          <li>Open RideGrid → when navigation starts, allow <b>Location: Precise, While using the app</b> and <b>Notifications</b>.</li>
+          <li>Settings → Apps → RideGrid → Battery → <b>Unrestricted</b> (stops Android from killing GPS on long rides).</li>
+          <li>Your trips in Chrome don't move automatically: Files → Download backup in Chrome, then Restore in the app.</li>
         </ol>
       </details>
     </section>

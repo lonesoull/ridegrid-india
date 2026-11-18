@@ -7,6 +7,7 @@ import { isExpedition, T } from '../core/terms';
 import { directionsTo } from './directions';
 import { BreakDetector } from './logbook';
 import { inIndia } from '../core/india';
+import { watchGps, type GpsFix } from './gps';
 import { SegIndex, isParallel } from './spatial';
 import { cleanPath, deriveTurns, safeRoute, type SafeRoute } from './detour';
 import { sounds, say, unlockAudio, WakeLock } from './audio';
@@ -58,7 +59,9 @@ export class Navigator {
   private raf = 0;
   private lastT = 0;
   private simClock = 0;
-  private watchId: number | null = null;
+  private stopGps: (() => void) | null = null;
+  /** GPS fixes flagged by Android as coming from a mock-location (fake GPS) app */
+  mockFixes = 0;
   private matchIdx = 0;
   private offCount = 0;
   private lastOffAlarm = 0;
@@ -191,14 +194,9 @@ export class Navigator {
       this.raf = requestAnimationFrame((ts) => this.tick(ts));
       if (this.settings.voice) say(this.approach ? `Simulation started. Heading to stop ${fromStop + 1}` : `Simulation started from stop ${fromStop + 1}`);
     } else {
-      if (!navigator.geolocation) throw new Error('GPS is not available on this device.');
-      this.pos = null;
-      this.watchId = navigator.geolocation.watchPosition(
-        (p) => this.onFix(p),
-        (e) => { this.gpsError = e.code === 1 ? 'Location permission denied — allow location for this site.' : `GPS: ${e.message}`; this.emit(); },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
-      );
-      if (this.settings.voice) say(`Navigation started. Heading to stop ${this.next + 1}`);
+      this.pos = null; this.mockFixes = 0;
+      this.stopGps = await watchGps((f) => this.onFix(f), (msg) => { this.gpsError = msg; this.emit(); });
+      if (this.settings.voice) say(`Navigation started. Heading to ${T().one} ${this.next + 1}`);
     }
     this.emit();
   }
@@ -206,8 +204,7 @@ export class Navigator {
   async stop() {
     if (this.mode === 'off') return;
     cancelAnimationFrame(this.raf);
-    if (this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
-    this.watchId = null;
+    this.stopGps?.(); this.stopGps = null;
     this.playing = false;
     await this.breaks.close();
     await this.flushLog(true);
@@ -264,26 +261,33 @@ export class Navigator {
   }
 
   // ---------------------------------------------------------------- live GPS
-  private onFix(f: GeolocationPosition) {
+  private onFix(f: GpsFix) {
     if (this.mode !== 'live' || !this.line) return;
-    const p: LngLat = [f.coords.longitude, f.coords.latitude];
+    const p: LngLat = [f.lng, f.lat];
+    // record integrity: positions from a fake-GPS app are never used or counted
+    if (f.mock) {
+      this.mockFixes++;
+      this.gpsError = 'FAKE GPS detected (mock-location app). These positions are ignored and not logged — turn the mock app off.';
+      this.emit();
+      return;
+    }
     // a Wi-Fi / IP (or VPN) location is not usable for riding: keep the last good position and say why
-    if (f.coords.accuracy > 1500 || !inIndia(p)) {
-      this.gpsError = `Location from Wi-Fi/internet, not GPS (±${(f.coords.accuracy / 1000).toFixed(1)} km${inIndia(p) ? '' : ', outside India — VPN on?'}). Waiting for a real GPS fix…`;
+    if (f.acc > 1500 || !inIndia(p)) {
+      this.gpsError = `Location from Wi-Fi/internet, not GPS (±${(f.acc / 1000).toFixed(1)} km${inIndia(p) ? '' : ', outside India — VPN on?'}). Waiting for a real GPS fix…`;
       this.emit();
       return;
     }
     const prev = this.pos;
     this.pos = p;
-    this.accuracy = f.coords.accuracy;
+    this.accuracy = f.acc;
     this.gpsError = '';
-    this.speedMps = f.coords.speed ?? (prev ? 0 : 0);
-    if (f.coords.heading != null && !Number.isNaN(f.coords.heading) && (f.coords.speed ?? 0) > 1) this.heading = f.coords.heading;
+    this.speedMps = f.speed ?? 0;
+    if (f.heading != null && !Number.isNaN(f.heading) && (f.speed ?? 0) > 1) this.heading = f.heading;
     else if (prev && haversine(prev, p) > 3) this.heading = bearingDeg(prev, p);
 
-    const good = f.coords.accuracy <= MAX_ACC_M;
-    this.addTrackPoint(p, f.timestamp, f.coords.accuracy, f.coords.speed ?? 0, good);
-    if (good) void this.breaks.onFix(p, f.timestamp, f.coords.speed ?? 0, f.coords.accuracy);
+    const good = f.acc <= MAX_ACC_M;
+    this.addTrackPoint(p, f.time, f.acc, f.speed ?? 0, good);
+    if (good) void this.breaks.onFix(p, f.time, f.speed ?? 0, f.acc);
     if (good && this.tryJoin(p)) { this.checkArrivals(); this.emit(); return; }
     const exp = isExpedition();
     if (good) {
