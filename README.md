@@ -36,6 +36,18 @@ Routing engine is switchable (Tools tab): OSRM or Valhalla (motorcycle), public 
 | 26 | Google Maps backup: exact stop order in 10-leg two-wheeler links (origin + 9 waypoints + destination), list + .csv | `src/nav/gmaps.ts`, Ride tab |
 | — | Ride logs with UTC timestamp per GPS point → “Covered” distance, timestamped GPX 1.1 export | `src/nav/rides.ts` |
 
+## Expedition vs Daily modes (step 1, done)
+
+| Area | Expedition (record attempt) | Daily ride |
+|---|---|---|
+| Points | **Waypoints** pin the exact roads, passed silently; missed waypoint = alarm | Real stops with arrival announcements |
+| Off route | **Detour mode**: departure point remembered, proximity guard keeps ≥ 30 m (20–100) from every other planned road incl. crossings, sub-roads, flyovers/subways and parallel carriageways; *Return the way I came* or *Safe way back* (Valhalla with no-go strips, double-checked) | Auto re-route to next stop |
+| Logbook | Log stop (overnight / police signature / fuel / other) with GPS, UTC time, odometer, photos; automatic breaks; daily summary; evidence pack .zip (logbook.csv, daily_summary.csv, timestamped GPX, photos) | same |
+| Planning | **Route checker**: scans the whole route against itself for crossings, repeated road, < gap proximity and parallel roads | — |
+
+Code: `src/nav/spatial.ts` (segment grid index), `src/nav/detour.ts`, `src/nav/checker.ts`, `src/nav/logbook.ts`, `src/core/terms.ts`.
+Rules are built from publicly known Guinness requirements; thresholds are settings and will be aligned with the official guideline document when received.
+
 ## Next phases
 
 3. On-device offline router (per-state road graphs) + Guinness/India compliance modules

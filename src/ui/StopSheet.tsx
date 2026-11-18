@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { T } from '../core/terms';
 import { engine } from '../core/engine';
 import { fmtKm, haversine } from '../core/geo';
 import { nav } from '../nav/navigator';
@@ -28,7 +29,7 @@ export function StopSheet() {
   if (insertAt !== null && nav.mode === 'off') {
     return (
       <div className="sheet glass">
-        <b>Tap the map to insert a stop at position #{insertAt + 1}</b>
+        <b>Tap the map to insert a {T().one} at position #{insertAt + 1}</b>
         <button onClick={() => ui.set({ insertAt: null })}>Cancel</button>
       </div>
     );
@@ -54,7 +55,7 @@ export function StopSheet() {
     <div className="sheet glass">
       <div className="sheet-head">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <b>Stop #{(i + 1).toLocaleString('en-IN')}</b>{s.name ? <span> · {s.name}</span> : null}
+          <b>{T().One} #{(i + 1).toLocaleString('en-IN')}</b>{s.name ? <span> · {s.name}</span> : null}
           <div className="muted mono">{s.lat.toFixed(6)}, {s.lng.toFixed(6)}</div>
         </div>
         <button className="x" aria-label="Close" onClick={() => ui.set({ selectedId: null })}><Icon name="close" size={18} /></button>
@@ -73,7 +74,7 @@ export function StopSheet() {
         <button className={dir ? 'primary' : ''} onClick={() => start('live')}><Icon name="play" /> Start</button>
         <button onClick={() => start('sim')}><Icon name="sim" /> Simulate</button>
       </div>
-      <p className="hint">{i < N - 1 ? `Start = ride from where you are to this stop, then continue the planned route #${i + 1} → #${N}.` : 'Start = ride from where you are to this stop.'}</p>
+      <p className="hint">{i < N - 1 ? `Start = ride from where you are to this ${T().one}, then continue the planned route #${i + 1} → #${N}.` : `Start = ride from where you are to this ${T().one}.`}</p>
 
       <div className="btns sm">
         {i > 0 && <button onClick={() => mapCtl?.flyToStop(i - 1)}>◀ #{i}</button>}
@@ -84,14 +85,14 @@ export function StopSheet() {
 
       {more && <>
         <div className="btns sm">
-          <button onClick={() => { ui.set({ insertAt: i, selectedId: null }); toast(`Tap the map to insert a stop before #${i + 1}`); }}>＋ Insert before</button>
-          <button onClick={() => { ui.set({ insertAt: i + 1, selectedId: null }); toast(`Tap the map to insert a stop after #${i + 1}`); }}>＋ Insert after</button>
+          <button onClick={() => { ui.set({ insertAt: i, selectedId: null }); toast(`Tap the map to insert a ${T().one} before #${i + 1}`); }}>＋ Insert before</button>
+          <button onClick={() => { ui.set({ insertAt: i + 1, selectedId: null }); toast(`Tap the map to insert a ${T().one} after #${i + 1}`); }}>＋ Insert after</button>
           <button onClick={() => navigator.clipboard?.writeText(`${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}`).then(() => toast('Coordinates copied'))}>Copy coords</button>
           <button className="danger" onClick={() => { ui.set({ selectedId: null }); void act(null, () => engine.deleteStop(s.id)); }}>Delete</button>
         </div>
-        <input value={name} placeholder="Name this stop (optional)" onChange={(e) => setName(e.target.value)}
+        <input value={name} placeholder={`Name this ${T().one} (optional)`} onChange={(e) => setName(e.target.value)}
           onBlur={() => name !== (s.name ?? '') && act(null, () => engine.renameStop(s.id, name))} />
-        <div className="hint">Drag the highlighted stop on the map to move it — only the two legs next to it are recalculated.</div>
+        <div className="hint">Drag the highlighted point on the map to move it — only the two legs next to it are recalculated.</div>
       </>}
     </div>
   );

@@ -3,8 +3,8 @@ import { engine } from './engine';
 import { app } from './app';
 import { stressWalk } from './india';
 
-export async function createTrip(name: string, targetKm?: number): Promise<Trip> {
-  const t: Trip = { id: uid(), name, targetKm, createdAt: Date.now(), updatedAt: Date.now(), sequenceLock: true, historyCursor: 0, historyTop: 0, coveredM: 0 };
+export async function createTrip(name: string, targetKm?: number, kind: 'expedition' | 'daily' = 'expedition'): Promise<Trip> {
+  const t: Trip = { id: uid(), name, targetKm, kind, createdAt: Date.now(), updatedAt: Date.now(), sequenceLock: kind === 'expedition', historyCursor: 0, historyTop: 0, coveredM: 0 };
   await db.trips.put(t);
   await db.drafts.put({ tripId: t.id, stops: [], updatedAt: Date.now(), cursor: 0 });
   return t;

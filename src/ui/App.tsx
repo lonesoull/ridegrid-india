@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { T } from '../core/terms';
 import { MapController } from '../map/MapController';
 import { engine } from '../core/engine';
 import { app } from '../core/app';
@@ -14,6 +15,7 @@ import { useNav } from './navHooks';
 import { google } from '../core/google';
 import { applyBase } from '../map/googleBase';
 import { GoogleAttribution } from './GoogleAttribution';
+import { LogStopDialog } from './LogStopDialog';
 import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
@@ -21,7 +23,7 @@ import { nav } from '../nav/navigator';
 export let mapCtl: MapController | null = null;
 
 const TAP_NEXT: Record<TapMode, TapMode> = { append: 'insert', insert: 'off', off: 'append' };
-const TAP_LABEL: Record<TapMode, string> = { append: 'Tap: add stop at end', insert: 'Tap: insert on route line', off: 'Tap: view only' };
+const TAP_LABEL = (m: TapMode) => ({ append: `Tap: add ${T().one} at end`, insert: 'Tap: insert on route line', off: 'Tap: view only' }[m]);
 const TAP_ICON: Record<TapMode, string> = { append: 'plus', insert: 'insert', off: 'hand' };
 
 export function App() {
@@ -72,6 +74,7 @@ export function App() {
       {ready && <NavPanel />}
       {ready && <Drawer />}
       {ready && <GoogleAttribution />}
+      {ready && <LogStopDialog />}
       <Toast />
       <FpsMeterGate />
     </div>
@@ -87,9 +90,9 @@ function Hud() {
   const pending = engine.pendingLegs, errors = engine.errorLegs;
   return (
     <div className="hud glass" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
-      <div className="hud-title">{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
+      <div className="hud-title"><span className={`kind ${t?.kind === 'daily' ? 'daily' : 'exp'}`}>{t?.kind === 'daily' ? 'Daily' : 'Expedition'}</span>{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
       <div className="hud-stats">
-        <span><b>{engine.stops.length.toLocaleString('en-IN')}</b> {engine.stops.length === 1 ? 'stop' : 'stops'}</span>
+        <span><b>{engine.stops.length.toLocaleString('en-IN')}</b> {T().n(engine.stops.length)}</span>
         <span><b>{fmtKm(engine.routedM)}</b> mapped</span>
         <span><b>{fmtKm(covered)}</b> covered</span>
         {target > 0 && <span><b>{fmtKm(Math.max(0, target - covered))}</b> left</span>}
@@ -147,7 +150,7 @@ function Controls() {
       <div className="fabs">
         <button className="fab glass" title="Undo (Ctrl+Z)" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}><Icon name="undo" /></button>
         <button className="fab glass" title="Redo (Ctrl+Y)" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}><Icon name="redo" /></button>
-        <button className={`fab glass tap-${tapMode}`} title={TAP_LABEL[tapMode]} onClick={() => { const n = TAP_NEXT[tapMode]; ui.set({ tapMode: n }); toast(TAP_LABEL[n]); }}><Icon name={TAP_ICON[tapMode]} /></button>
+        <button className={`fab glass tap-${tapMode}`} title={TAP_LABEL(tapMode)} onClick={() => { const n = TAP_NEXT[tapMode]; ui.set({ tapMode: n }); toast(TAP_LABEL(n)); }}><Icon name={TAP_ICON[tapMode]} /></button>
         <button className="fab glass go" title="Ride / simulate this route" onClick={() => ui.set({ drawer: true, tab: 'ride' })}><Icon name="bike" size={26} /></button>
         <TrafficFab />
         <button className="fab glass" title="Fit route" onClick={() => mapCtl?.fitRoute()}><Icon name="fit" /></button>

@@ -13,7 +13,7 @@ export const STYLES = {
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 
-const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach';
+const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues';
 const FONT = ['Noto Sans Bold'];
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 
@@ -171,6 +171,12 @@ export class MapController {
       paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 4, 14, 9] } }, 'rg-clusters');
     m.addLayer({ id: 'rg-approach', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': '#f97316', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6], 'line-dasharray': [1.5, 1] } }, 'rg-clusters');
+    m.addSource(ISSUES, { type: 'geojson', data: this.issues ?? empty() });
+    m.addLayer({ id: 'rg-issues-link', type: 'line', source: ISSUES, filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': '#dc2626', 'line-width': 2, 'line-dasharray': [1, 1] } });
+    m.addLayer({ id: 'rg-issues', type: 'circle', source: ISSUES, filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 14, 10], 'circle-color': ['match', ['get', 'k'], 'parallel', '#f59e0b', '#dc2626'],
+        'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
     m.addSource(TRACK, { type: 'geojson', data: empty() });
     m.addSource(NEXT, { type: 'geojson', data: empty() });
     m.addSource(PUCK, { type: 'geojson', data: empty() });
@@ -280,6 +286,16 @@ export class MapController {
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
+  private issues: GeoJSON.FeatureCollection | null = null;
+  /** Route-checker results as red (crossing/close/overlap) and amber (parallel) markers. */
+  setIssues(list: { kind: string; p: LngLat; p2: LngLat }[] | null) {
+    this.issues = list ? { type: 'FeatureCollection', features: list.flatMap((x) => [
+      { type: 'Feature', properties: { k: x.kind }, geometry: { type: 'Point', coordinates: x.p } } as GeoJSON.Feature,
+      { type: 'Feature', properties: { k: x.kind }, geometry: { type: 'LineString', coordinates: [x.p, x.p2] } } as GeoJSON.Feature,
+    ]) } : null;
+    this.src(ISSUES)?.setData(this.issues ?? empty());
+  }
+
   private approach: LngLat[] | null = null;
   /** Orange dashed "how to get there" path from the rider to a stop. */
   setApproach(coords: LngLat[] | null, fit = false) {

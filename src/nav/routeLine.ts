@@ -115,7 +115,7 @@ export function sliceLine(L: RouteLine, s0: number, s1: number): LngLat[] {
  * Prefix the route with an approach path (e.g. from the rider's current location to stop `from`),
  * dropping everything before that stop. Stops before `from` get stopS = -1 (never "next").
  */
-export function withApproach(L: RouteLine, ap: Approach, from: number): RouteLine {
+export function withApproach(L: RouteLine, ap: Approach, from: number, startAt?: number): RouteLine {
   const approach = ap.coords;
   const turns: LineTurn[] = [];
   const xs: number[] = [], ys: number[] = [], cum: number[] = [];
@@ -130,14 +130,14 @@ export function withApproach(L: RouteLine, ap: Approach, from: number): RouteLin
   for (const p of approach) { push(p[0], p[1]); at.push(cum.length - 1); }
   for (const t of ap.turns ?? []) { const j = at[t.i]; if (j !== undefined) turns.push({ s: cum[j], c: t.c, n: t.n, x: t.x, txt: t.txt }); }
   const approachLen = d;
-  const startS = L.stopS[from];
+  const startS = startAt ?? L.stopS[from];
   const k = L.n > 1 ? segAt(L, startS) : 0;
   const start = pointAt(L, startS).p;
   push(start[0], start[1]);
   for (let i = k + 1; i < L.n; i++) push(L.x[i], L.y[i]);
   const stopS = new Float64Array(L.stopS.length);
   const offset = approachLen + (d - approachLen - (L.total - startS)) - startS;
-  for (let i = 0; i < stopS.length; i++) stopS[i] = i < from ? -1 : L.stopS[i] + offset;
+  for (let i = 0; i < stopS.length; i++) stopS[i] = i < from || L.stopS[i] < startS - 0.5 ? -1 : L.stopS[i] + offset;
   for (const t of L.turns) if (t.s > startS + 1) turns.push({ ...t, s: t.s + offset });
   return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d, turns };
 }

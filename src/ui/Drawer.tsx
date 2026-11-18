@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { T, isExpedition } from '../core/terms';
+import { RouteChecker } from './RouteChecker';
 import { engine } from '../core/engine';
 import { app, DEFAULT_ROUTER, type RouterSettings } from '../core/app';
 import { db } from '../core/db';
@@ -28,7 +30,7 @@ export function Drawer() {
         <nav className="tabs">
           {(['trip', 'stops', 'ride', 'files', 'tools'] as const).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => ui.set({ tab: t })}>
-              {{ trip: 'Trip', stops: 'Stops', ride: 'Ride', files: 'Files', tools: 'Tools' }[t]}
+              {{ trip: 'Trip', stops: T().Many, ride: 'Ride', files: 'Files', tools: 'Tools' }[t]}
             </button>
           ))}
         </nav>
@@ -52,6 +54,7 @@ function TripTab() {
   const [routes, reloadRoutes] = useAsync(() => trips.listRoutes(t.id), [t.id, t.draftSourceRouteId]);
   const [newName, setNewName] = useState('');
   const [newTarget, setNewTarget] = useState('');
+  const [newKind, setNewKind] = useState<'expedition' | 'daily'>('daily');
   const source = routes?.find((r) => r.id === t.draftSourceRouteId);
   const covered = t.coveredM, target = (t.targetKm ?? 0) * 1000;
 
@@ -60,7 +63,7 @@ function TripTab() {
       <section>
         <h3>Active trip</h3>
         <select value={t.id} onChange={(e) => act('Loading trip…', () => trips.switchTrip(e.target.value))}>
-          {list?.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          {list?.map((x) => <option key={x.id} value={x.id}>{x.kind === 'daily' ? '🏍 ' : '🏁 '}{x.name}</option>)}
         </select>
         <div className="grid3">
           <Stat label="Mapped" v={fmtKm(engine.routedM)} />
@@ -76,13 +79,13 @@ function TripTab() {
         </label>
         <label className="check">
           <input type="checkbox" checked={t.sequenceLock} onChange={(e) => act(null, () => engine.updateTrip({ sequenceLock: e.target.checked }))} />
-          <span><b>Sequence Lock</b> — keep stops exactly in the order I mapped them (#1 → #2 → #3…). Blocks reverse and any reordering.</span>
+          <span><b>Sequence Lock</b> — keep points exactly in the order I mapped them (#1 → #2 → #3…). Blocks reverse and any reordering.</span>
         </label>
       </section>
 
       <section>
         <h3>Working draft <span className="pill">auto-saved</span></h3>
-        <p className="muted">{engine.stops.length.toLocaleString('en-IN')} stops · {source ? <>from “{source.name}”</> : 'not saved to library yet'}</p>
+        <p className="muted">{engine.stops.length.toLocaleString('en-IN')} {T().n(engine.stops.length)} · {source ? <>from “{source.name}”</> : 'not saved to library yet'}</p>
         <div className="btns">
           <button onClick={() => { const n = prompt('Route name', source ? `${source.name} v2` : `Route ${new Date().toLocaleDateString('en-IN')}`); if (n) void act(null, () => trips.saveDraftAsRoute(n)).then(() => { reloadRoutes(); toast('Saved to library'); }); }}>Save as new route</button>
           {source && <button onClick={() => act(null, () => trips.overwriteRoute(source.id)).then(() => { reloadRoutes(); toast(`Updated “${source.name}”`); })}>Update “{source.name}”</button>}
@@ -108,11 +111,15 @@ function TripTab() {
 
       <section>
         <h3>New trip</h3>
+        <div className="seg">
+          <button className={newKind === 'expedition' ? 'on' : ''} onClick={() => setNewKind('expedition')}><b>Expedition</b><span className="muted">Fixed record route · waypoints · Guinness rules</span></button>
+          <button className={newKind === 'daily' ? 'on' : ''} onClick={() => setNewKind('daily')}><b>Daily ride</b><span className="muted">Real stops · faster routes · live traffic</span></button>
+        </div>
         <input placeholder="Trip name" value={newName} onChange={(e) => setNewName(e.target.value)} />
         <input placeholder="Target km (optional)" type="number" inputMode="numeric" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} />
         <div className="btns">
           <button className="primary" disabled={!newName.trim()} onClick={() => act(null, async () => {
-            const nt = await trips.createTrip(newName.trim(), newTarget ? +newTarget : undefined);
+            const nt = await trips.createTrip(newName.trim(), newTarget ? +newTarget : undefined, newKind);
             await trips.switchTrip(nt.id); setNewName(''); setNewTarget(''); reload();
           })}>Create & switch</button>
           {(list?.length ?? 0) > 1 && <button className="danger" onClick={() => confirm(`Delete trip “${t.name}” with all its routes and history?`) && act(null, async () => {
@@ -153,6 +160,7 @@ function StopsTab() {
 
   return (
     <div className="stack">
+      {isExpedition() && <RouteChecker />}
       <section>
         <h3>Route tools</h3>
         <div className="btns">
@@ -164,14 +172,14 @@ function StopsTab() {
       </section>
 
       <section>
-        <h3>Add stop by coordinates</h3>
+        <h3>Add {T().one} by coordinates</h3>
         <div className="grid2">
           <input placeholder="Latitude e.g. 28.613939" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
           <input placeholder="Longitude e.g. 77.209023" inputMode="decimal" value={lng} onChange={(e) => setLng(e.target.value)} />
           <input placeholder="Name (optional)" value={nm} onChange={(e) => setNm(e.target.value)} />
           <input placeholder={`Insert at # (default ${n + 1})`} inputMode="numeric" value={pos} onChange={(e) => setPos(e.target.value)} />
         </div>
-        <button className="primary" onClick={addOne}>Add stop</button>
+        <button className="primary" onClick={addOne}>Add {T().one}</button>
       </section>
 
       <section>
@@ -184,7 +192,7 @@ function StopsTab() {
       </section>
 
       <section>
-        <h3>Stop inspector <span className="muted">({n.toLocaleString('en-IN')})</span></h3>
+        <h3>{T().One} inspector <span className="muted">({n.toLocaleString('en-IN')})</span></h3>
         <div className="pager">
           <button disabled={pg === 0} onClick={() => setPage(pg - 1)}>◀ Prev 100</button>
           <span>{n ? `${(pg * PAGE + 1).toLocaleString('en-IN')}–${Math.min(n, pg * PAGE + PAGE).toLocaleString('en-IN')}` : '0'}</span>
@@ -192,7 +200,7 @@ function StopsTab() {
         </div>
         <div className="row">
           <input placeholder="Jump to stop #" inputMode="numeric" value={jump} onChange={(e) => setJump(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget.nextSibling as HTMLButtonElement)?.click()} />
-          <button onClick={() => { const k = parseInt(jump) - 1; if (k >= 0 && k < n) { setPage(Math.floor(k / PAGE)); mapCtl?.flyToStop(k); ui.set({ drawer: false }); } else toast('No such stop', 'error'); }}>Go</button>
+          <button onClick={() => { const k = parseInt(jump) - 1; if (k >= 0 && k < n) { setPage(Math.floor(k / PAGE)); mapCtl?.flyToStop(k); ui.set({ drawer: false }); } else toast(`No such ${T().one}`, 'error'); }}>Go</button>
         </div>
         <div className="list">
           {rows.map((s, j) => {

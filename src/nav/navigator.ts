@@ -1,9 +1,13 @@
 import { db, uid, getSetting, putSetting, type Ride, type RidePoint } from '../core/db';
 import { engine } from '../core/engine';
-import { haversine, type LngLat } from '../core/geo';
+import { distToSegmentM, haversine, type LngLat } from '../core/geo';
 import { buildRouteLine, matchToRoute, pointAt, withApproach, type Approach, type LineTurn, type RouteLine } from './routeLine';
 import { turnText } from '../core/turns';
+import { isExpedition, T } from '../core/terms';
 import { directionsTo } from './directions';
+import { BreakDetector } from './logbook';
+import { SegIndex, isParallel } from './spatial';
+import { cleanPath, deriveTurns, safeRoute, type SafeRoute } from './detour';
 import { sounds, say, unlockAudio, WakeLock } from './audio';
 
 export type NavMode = 'off' | 'live' | 'sim';
@@ -15,8 +19,10 @@ export interface NavSettings {
   logSim: boolean;     // count simulated rides as "covered" (testing only)
   simKmh: number;      // 1× simulation speed
   reroute: boolean;    // when off route, plan a road way back to the next stop
+  breakMin: number;    // stationary this long = automatic break log
+  gapM: number;        // expedition: minimum distance to keep from any other planned road
 }
-export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true };
+export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30 };
 export const SIM_SPEEDS = [1, 10, 50, 500] as const;
 
 const MAX_ACC_M = 50;          // ignore GPS fixes worse than this for "covered" distance
@@ -45,6 +51,7 @@ export class Navigator {
   missed: number[] = [];
   version = 0;
   wake = new WakeLock();
+  breaks = new BreakDetector(() => ({ tripId: engine.trip!.id, rideId: this.ride?.id, minMinutes: this.settings.breakMin }));
 
   private listeners = new Set<Listener>();
   private raf = 0;
@@ -158,6 +165,7 @@ export class Navigator {
     fromStop = Math.max(0, Math.min(fromStop, engine.stops.length - 1));
     this.approach = approach && approach.coords.length >= 2 ? approach : null;
     this.spoken = new Map(); this.rerouting = false; this.lastReroute = 0; this.reroutes = 0; this.joinedAt = null; this.lastJoinCheck = 0;
+    this.detour = null; this.guard = null; this.approachStartS = null; this.joinWin = null; this.parRun = 0;
     this.fromStop = fromStop;
     this.line = this.composeLine();
     this.mode = mode;
@@ -200,6 +208,7 @@ export class Navigator {
     if (this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
     this.watchId = null;
     this.playing = false;
+    await this.breaks.close();
     await this.flushLog(true);
     this.mode = 'off';
     await this.wake.off();
@@ -267,20 +276,45 @@ export class Navigator {
 
     const good = f.coords.accuracy <= MAX_ACC_M;
     this.addTrackPoint(p, f.timestamp, f.coords.accuracy, f.coords.speed ?? 0, good);
+    if (good) void this.breaks.onFix(p, f.timestamp, f.coords.speed ?? 0, f.coords.accuracy);
     if (good && this.tryJoin(p)) { this.checkArrivals(); this.emit(); return; }
+    const exp = isExpedition();
     if (good) {
-      const m = matchToRoute(this.line, p, this.matchIdx);
+      // Expedition: never "snap" to a far-away part of the planned route (that would skip waypoints).
+      // On a detour, only the departure area counts as rejoining.
+      const dep = this.detour && !this.approach ? this.detour : null;
+      const hint = dep ? pointAt(this.line, dep.depS).idx : this.matchIdx;
+      let m = matchToRoute(this.line, p, hint, exp ? Infinity : 300);
+      if (dep && (m.s < dep.depS - 150 || m.s > dep.depS + 300)) m = { ...m, d: Math.max(m.d, this.settings.offRouteM + 1) };
       this.offDist = m.d;
       const thr = this.settings.offRouteM;
       if (m.d > thr) {
-        if (++this.offCount >= 2 && !this.offRoute) { this.offRoute = true; this.alarmOff(true); }
-        else if (this.offRoute && Date.now() - this.lastOffAlarm > OFF_REPEAT_MS) this.alarmOff(false);
+        if (++this.offCount >= 2 && !this.offRoute) {
+          this.offRoute = true;
+          if (exp && !this.approach && !this.detour) {
+            // expedition: leaving the planned road starts a detour (stop/signature) — remember exactly where
+            this.detour = { depS: this.s, depPt: pointAt(this.line, this.s).p, track: [pointAt(this.line, this.s).p, p], startedAt: Date.now() };
+            if (this.settings.beep) sounds.offRoute();
+            if (this.settings.voice) say('Left the planned route. Detour mode on. Keep away from your other planned roads.');
+          } else this.alarmOff(true);
+        } else if (this.offRoute && !exp && Date.now() - this.lastOffAlarm > OFF_REPEAT_MS) this.alarmOff(false);
       } else if (m.d < thr * 0.7) {
         this.offCount = 0;
-        if (this.offRoute) { this.offRoute = false; if (this.settings.beep) sounds.backOnRoute(); if (this.settings.voice) say('Back on route'); }
+        if (this.offRoute) {
+          this.offRoute = false;
+          if (this.detour && !this.approach) {
+            const d = this.detour;
+            this.detour = null; this.guard = null;
+            if (m.s < d.depS - 50 && this.settings.voice) say('Warning. You rejoined behind where you left. This repeats road.');
+            else if (this.settings.voice) say('Back on the planned route');
+          } else if (this.settings.voice) say('Back on route');
+          if (this.settings.beep) sounds.backOnRoute();
+        }
       }
       if (!this.offRoute) { this.s = m.s; this.matchIdx = m.idx; this.announceTurns(); }
-      else void this.reroute();
+      else if (!exp) void this.reroute();
+      if (this.detour && (!prev || haversine(prev, p) > 5)) this.detour.track.push(p);
+      if (exp) this.runGuard(p, prev ? haversine(prev, p) : 0);
       this.checkArrivals();
     }
     this.emit();
@@ -308,10 +342,14 @@ export class Navigator {
       else arrived = this.next;
       this.next++;
     }
+    const exp = isExpedition(), t = T();
     if (missedNow.length) {
       this.missed.push(...missedNow);
       if (this.settings.beep) sounds.offRoute();
-      if (this.settings.voice) say(missedNow.length === 1 ? `Stop ${missedNow[0] + 1} missed` : `${missedNow.length} stops missed`);
+      if (this.settings.voice) say(missedNow.length === 1 ? `${t.One} ${missedNow[0] + 1} missed` : `${missedNow.length} ${t.many} missed`);
+    } else if (exp) {
+      // expedition: waypoints only pin the road — pass silently, announce only the end of the route
+      if (arrived >= 0 && this.next >= S.length && this.settings.voice) say('End of planned route');
     } else if (arrived >= 0 && (this.mode === 'live' || this.mult <= 50)) {
       // at high sim speeds many stops pass per second; only chime when it's audible
       if (this.settings.beep) sounds.arrival();
@@ -359,10 +397,119 @@ export class Navigator {
   private lastJoinCheck = 0;
   joinedAt: number | null = null;
 
+  // ---------------------------------------------------------------- expedition detour mode
+  /** where the rider left the planned route (along-route distance + point) and the path ridden since */
+  detour: { depS: number; depPt: LngLat; track: LngLat[]; startedAt: number; returning?: 'same' | 'safe' } | null = null;
+  /** proximity guard: how close the rider is to another part of the planned route */
+  guard: { level: 'warn' | 'danger' | 'parallel'; d: number } | null = null;
+  private approachStartS: number | null = null;
+  private joinWin: [number, number] | null = null;
+  private idx: SegIndex | null = null;
+  private parRun = 0;
+  private lastGuardSay = 0;
+  private lastGuardLevel: string | null = null;
+
+  private index() {
+    if (!this.idx && this.fullLine) this.idx = new SegIndex(this.fullLine);
+    return this.idx;
+  }
+
+  /** Part of the planned route the rider is allowed to be near right now. */
+  private guardSkip(): [number, number] | null {
+    const F = this.fullLine;
+    if (!F) return null;
+    if (this.approach) { const st = this.approachStartS ?? F.stopS[this.fromStop]; return [st - 300, st + 300]; }
+    if (this.detour) return [this.detour.depS - 150, this.detour.depS + 150];
+    return null;
+  }
+
+  /** Expedition rule: off the planned route, keep ≥ gap from every other planned road (incl. parallel carriageways). */
+  private runGuard(p: LngLat, moved: number) {
+    const skip = this.guardSkip();
+    const idx = skip ? this.index() : null;
+    if (!skip || !idx) { this.guard = null; this.parRun = 0; return; }
+    const gap = this.settings.gapM, acc = Math.min(this.accuracy || 0, 25);
+    const near = idx.nearest(p, gap + acc + 60, [skip]);
+    let g: Navigator['guard'] = null;
+    if (near && near.d < gap + acc) g = { level: 'danger', d: near.d };
+    else if (near && near.d < gap + acc + 40) g = { level: 'warn', d: near.d };
+    const par = idx.nearest(p, 80, [skip]);
+    if (par && this.speedMps > 2 && isParallel(this.heading, par.bearing)) this.parRun += moved; else this.parRun = 0;
+    if (this.parRun >= 100 && (!g || g.level !== 'danger')) g = { level: 'parallel', d: par!.d };
+    this.guard = g;
+    const now = Date.now();
+    const lvl = g?.level ?? null;
+    if (lvl && (lvl !== this.lastGuardLevel || (lvl !== 'warn' && now - this.lastGuardSay > 6000))) {
+      this.lastGuardSay = now;
+      if (this.settings.beep) sounds.offRoute();
+      if (this.settings.voice) say(lvl === 'danger' ? `Too close to your planned road. ${Math.round(g!.d)} metres. Keep away.`
+        : lvl === 'parallel' ? 'You are riding parallel to your planned road. Move away.'
+        : `Planned road ahead, ${Math.round(g!.d)} metres`);
+    }
+    this.lastGuardLevel = lvl;
+  }
+
+  /** First waypoint at or after along-route distance s. */
+  private stopAfter(s: number) {
+    const F = this.fullLine!;
+    let k = 0;
+    while (k < this.stopCount && F.stopS[k] < s) k++;
+    return k;
+  }
+
+  private applyReturn(coords: LngLat[], turns: import('../core/turns').Turn[], how: 'same' | 'safe') {
+    if (!this.fullLine) return;
+    const d = this.detour;
+    if (!d || !this.fullLine) return;
+    // announce the turn back onto the planned road at the departure point
+    const tailFrom = coords.slice(-8);
+    const onto = deriveTurns([...tailFrom, pointAt(this.fullLine, d.depS + 40).p]).filter((t) => t.i === tailFrom.length - 1);
+    if (onto.length && !turns.some((t) => t.i >= coords.length - 2)) turns = [...turns, { ...onto[0], i: coords.length - 1, txt: `${turnText(onto[0])} back onto your planned route` }];
+    this.approach = { coords, turns };
+    this.approachStartS = d.depS;
+    this.fromStop = this.stopAfter(d.depS);
+    this.joinWin = [d.depS - 100, d.depS + 300];
+    this.line = this.composeLine();
+    this.s = 0; this.matchIdx = 0; this.next = this.fromStop;
+    this.offRoute = false; this.offCount = 0; this.spoken = new Map();
+    d.returning = how;
+    this.emit();
+  }
+
+  /** Guide back exactly along the path ridden since leaving the route (guaranteed not to touch other planned roads). */
+  returnSameWay() {
+    const d = this.detour;
+    if (!d || !this.pos) return false;
+    // join the recorded track at the point closest to where the rider is now (skips any dead-end bit ridden after it)
+    // earliest recorded segment the rider is standing on (within 25 m); else the closest earlier point
+    const tr = d.track, me = this.pos;
+    let k = -1;
+    for (let i = 0; i < tr.length - 1 && k < 0; i++) if (distToSegmentM(me, tr[i], tr[i + 1]) < 25) k = i;
+    if (k < 0) { let best = Infinity; for (let i = 0; i < Math.max(1, tr.length - 3); i++) { const dd = haversine(tr[i], me); if (dd < best) { best = dd; k = i; } } }
+    const coords = cleanPath([this.pos, ...d.track.slice(0, k + 1).reverse(), d.depPt]);
+    if (coords.length < 2) return false;
+    this.applyReturn(coords, deriveTurns(coords), 'same');
+    if (this.settings.voice) say('Returning the way you came');
+    return true;
+  }
+
+  /** Shortest way back to the departure point that keeps the gap from all other planned roads. */
+  async planSafeWayBack(): Promise<SafeRoute> {
+    const d = this.detour, idx = this.index();
+    if (!d || !this.pos || !this.fullLine || !idx) throw new Error('Not on a detour');
+    return safeRoute(this.pos, d.depPt, this.fullLine, idx, [d.depS - 150, d.depS + 150], this.settings.gapM);
+  }
+  useSafeWayBack(r: SafeRoute) {
+    const d = this.detour;
+    if (!d || !this.pos) return;
+    this.applyReturn(cleanPath([this.pos, ...r.coords, d.depPt], 2), r.turns.map((t) => ({ ...t, i: t.i + 1 })), 'safe');
+    if (this.settings.voice) say('Returning by the safe route');
+  }
+
   private composeLine(): RouteLine {
     const L = buildRouteLine();
-    this.fullLine = L;
-    return this.approach ? withApproach(L, this.approach, this.fromStop) : L;
+    if (this.fullLine !== L) { this.fullLine = L; this.idx = null; }
+    return this.approach ? withApproach(L, this.approach, this.fromStop, this.approachStartS ?? undefined) : L;
   }
 
   /**
@@ -375,21 +522,21 @@ export class Navigator {
     if (!this.approach || !F || F.n < 2 || Date.now() - this.lastJoinCheck < 1500) return false;
     this.lastJoinCheck = Date.now();
     const from = this.fromStop;
-    const lo = from > 0 ? F.stopS[from - 1] : 0;
-    const hi = Math.max(F.stopS[from] + 3000, F.stopS[Math.min(from + 3, this.stopCount - 1)]);
-    const hint = pointAt(F, F.stopS[from]).idx;
+    const [lo, hi] = this.joinWin ?? [from > 0 ? F.stopS[from - 1] : 0, Math.max(F.stopS[from] + 3000, F.stopS[Math.min(from + 3, this.stopCount - 1)])];
+    const hint = pointAt(F, this.approachStartS ?? F.stopS[from]).idx;
     const m = matchToRoute(F, p, hint, 25);
     if (m.d > Math.min(25, this.settings.offRouteM * 0.6) || m.s < lo || m.s > hi) return false;
-    this.approach = null;
+    const wasDetour = !!this.detour;
+    this.approach = null; this.approachStartS = null; this.joinWin = null; this.detour = null; this.guard = null;
     this.line = F;
     this.s = m.s; this.matchIdx = m.idx;
-    let k = from;
+    let k = wasDetour ? 0 : from;
     while (k < this.stopCount && F.stopS[k] <= m.s + 1) k++;
-    this.next = Math.max(from, k);
-    this.joinedAt = this.next;
+    this.next = wasDetour ? k : Math.max(from, k);
+    if (!wasDetour) this.joinedAt = this.next;
     this.offRoute = false; this.offCount = 0; this.spoken = new Map();
     if (this.settings.beep) sounds.backOnRoute();
-    if (this.settings.voice) say(this.done ? 'Joined the route at its end' : `Joined the route. Next stop ${this.next + 1}`);
+    if (this.settings.voice) say(wasDetour ? 'Back on the planned route' : this.done ? 'Joined the route at its end' : `Joined the route. Next ${T().one} ${this.next + 1}`);
     return true;
   }
 

@@ -34,6 +34,9 @@ textarea { resize: vertical; font-family: ui-monospace, monospace; font-size: 13
 .hud { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 74px; right: 74px; margin: 0 auto; max-width: 560px;
   padding: 8px 14px; cursor: pointer; z-index: 5; }
 .hud-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-title .kind { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; margin-right: 8px; vertical-align: 2px; }
+.hud-title .kind.exp { background: #7c3aed; color: #fff; }
+.hud-title .kind.daily { background: #0ea5e9; color: #fff; }
 .hud-title .lock { margin-left: 6px; font-size: 12px; }
 .hud-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
 .hud-stats b { color: var(--text); }
@@ -183,3 +186,20 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 /* keep a clear strip at the bottom for map attribution (Google requires it to be visible) */
 .navpanel, .sheet { bottom: calc(26px + env(safe-area-inset-bottom)); }
 .gattr { bottom: calc(4px + env(safe-area-inset-bottom)); }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.seg > button { display: grid; justify-items: start; text-align: left; gap: 2px; padding: 10px; }
+.seg > button.on { border: 2px solid var(--accent); background: rgba(30,144,255,.08); }
+
+/* modal + log stop */
+.modal-wrap { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.45); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(460px, 100%); max-height: 90vh; overflow: auto; padding: 16px; display: grid; gap: 10px; }
+.typegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.typegrid > button { min-height: 56px; font-weight: 700; }
+.typegrid > button.on { background: var(--accent); color: #fff; }
+.photo-btn { display: flex; align-items: center; justify-content: center; min-height: 52px; border: 2px dashed var(--line); border-radius: 12px; cursor: pointer; font-weight: 600; }
+.logbtn { background: #7c3aed !important; color: #fff; font-weight: 700; }
+
+.turnbar.detour { background: #6d28d9; }
+
+.danger-text { color: var(--danger); }
