@@ -9,7 +9,7 @@
 //   'RGG1' | u32 version | u32 V | u32 U (undirected edges) | u32 A (adjacency entries) | u32 S (shape points) | f64 bbox[4]
 //   i32 lon[V]  i32 lat[V]                         (degrees * 1e6)
 //   u32 adjStart[V+1]  u32 adjTo[A]  u32 adjEdge[A]  u8 adjFlag[A]   (flag 1: may go self→to, 2: may go to→self)
-//   u32 len_dm[U]  u8 cls[U]  u8 kmh[U]  u32 name[U]  u32 shapeStart[U+1]
+//   u32 edgeA[U]  u32 edgeB[U]  u32 len_dm[U]  u8 cls[U] (bit7 = one-way A→B)  u8 kmh[U]  u32 name[U]  u32 shapeStart[U+1]
 //   i32 shape[2*S]                                 (intermediate points of each edge, from its first endpoint)
 //   u32 namesBytes | names JSON (array of strings)
 import { createReadStream } from 'node:fs';
@@ -132,12 +132,12 @@ const S = shape.length / 2;
 const pad4 = (n) => (n + 3) & ~3;
 const blocks = [];
 const head = Buffer.alloc(24 + 32);
-head.write('RGG1', 0); head.writeUInt32LE(1, 4); head.writeUInt32LE(V, 8); head.writeUInt32LE(U, 12); head.writeUInt32LE(A, 16); head.writeUInt32LE(S, 20);
+head.write('RGG1', 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(V, 8); head.writeUInt32LE(U, 12); head.writeUInt32LE(A, 16); head.writeUInt32LE(S, 20);
 [minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6].forEach((x, i) => head.writeDoubleLE(x, 24 + i * 8));
 blocks.push(head);
 const push = (ta) => { const b = Buffer.from(ta.buffer, ta.byteOffset, ta.byteLength); blocks.push(b); const p = pad4(b.length) - b.length; if (p) blocks.push(Buffer.alloc(p)); };
 push(vlon); push(vlat); push(adjStart); push(adjTo); push(adjEdge); push(adjFlag);
-push(Uint32Array.from(eLen)); push(Uint8Array.from(eCls)); push(Uint8Array.from(eKmh)); push(Uint32Array.from(eName)); push(Uint32Array.from(shapeStart)); push(Int32Array.from(shape));
+push(Uint32Array.from(eFrom)); push(Uint32Array.from(eTo)); push(Uint32Array.from(eLen)); push(Uint8Array.from(eCls)); push(Uint8Array.from(eKmh)); push(Uint32Array.from(eName)); push(Uint32Array.from(shapeStart)); push(Int32Array.from(shape));
 const nb = Buffer.alloc(4); nb.writeUInt32LE(namesJson.length); blocks.push(nb, namesJson);
 const file = Buffer.concat(blocks);
 await writeFile(`${OUT}/${zone}.rgg`, file);
