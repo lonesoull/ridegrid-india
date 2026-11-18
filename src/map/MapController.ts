@@ -13,7 +13,7 @@ export const STYLES = {
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 
-const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next';
+const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach';
 const FONT = ['Noto Sans Bold'];
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 
@@ -24,6 +24,8 @@ function legFeature(l: Leg): GeoJSON.Feature {
     geometry: { type: 'LineString', coordinates: l.status === 'ok' && l.coords ? l.coords : [l.from, l.to] },
   };
 }
+
+const lineFeature = (c: LngLat[]): GeoJSON.Feature => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } });
 
 /** Navigation arrow (drawn once into an image, rotated on the GPU). */
 function arrowImage() {
@@ -144,6 +146,11 @@ export class MapController {
       paint: { 'circle-radius': 9, 'circle-color': '#0ea5e9', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
 
     // ---- navigation layers (Phase 2)
+    m.addSource(APPROACH, { type: 'geojson', data: this.approach ? lineFeature(this.approach) : empty() });
+    m.addLayer({ id: 'rg-approach-casing', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 4, 14, 9] } }, 'rg-clusters');
+    m.addLayer({ id: 'rg-approach', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#f97316', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6], 'line-dasharray': [1.5, 1] } }, 'rg-clusters');
     m.addSource(TRACK, { type: 'geojson', data: empty() });
     m.addSource(NEXT, { type: 'geojson', data: empty() });
     m.addSource(PUCK, { type: 'geojson', data: empty() });
@@ -253,6 +260,16 @@ export class MapController {
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
+  private approach: LngLat[] | null = null;
+  /** Orange dashed "how to get there" path from the rider to a stop. */
+  setApproach(coords: LngLat[] | null, fit = false) {
+    this.approach = coords;
+    this.src(APPROACH)?.setData(coords && coords.length > 1 ? lineFeature(coords) : empty());
+    if (coords && fit) {
+      const b = bounds(coords);
+      if (b) this.map.fitBounds(b, { padding: { top: 110, bottom: 330, left: 60, right: 90 }, maxZoom: 16, duration: 700 });
+    }
+  }
   startFollow(pos?: LngLat | null) {
     this.follow = true;
     this.map.jumpTo({ center: pos ?? this.map.getCenter(), zoom: Math.max(this.map.getZoom(), 15.5), pitch: 55 });
@@ -305,6 +322,15 @@ export class MapController {
       }
       const st = this.hitStop(e.point, pad);
       if (st) { ui.set({ selectedId: st.properties!.id, drawer: false }); return; }
+      const insertAt = ui.get().insertAt;
+      if (insertAt !== null) {
+        const p = await this.snap([e.lngLat.lng, e.lngLat.lat]);
+        ui.set({ insertAt: null });
+        await act(null, () => engine.addStop(p, insertAt));
+        const s = engine.stops[insertAt];
+        if (s) ui.set({ selectedId: s.id });
+        return;
+      }
       if (ui.get().selectedId) { ui.set({ selectedId: null }); return; }
       const mode = ui.get().tapMode;
       if (mode === 'off') return;

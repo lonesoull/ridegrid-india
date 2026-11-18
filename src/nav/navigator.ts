@@ -1,7 +1,7 @@
 import { db, uid, getSetting, putSetting, type Ride, type RidePoint } from '../core/db';
 import { engine } from '../core/engine';
 import { haversine, type LngLat } from '../core/geo';
-import { buildRouteLine, matchToRoute, pointAt, type RouteLine } from './routeLine';
+import { buildRouteLine, matchToRoute, pointAt, withApproach, type RouteLine } from './routeLine';
 import { sounds, say, unlockAudio, WakeLock } from './audio';
 
 export type NavMode = 'off' | 'live' | 'sim';
@@ -77,15 +77,21 @@ export class Navigator {
   get done() { return this.next >= this.stopCount; }
 
   // ---------------------------------------------------------------- start / stop
-  async start(mode: 'live' | 'sim', fromStop = 0) {
-    if (engine.stops.length < 2) throw new Error('Add at least 2 stops first.');
+  /** Road path from the rider's position to the first stop (null = start exactly at that stop). */
+  approach: LngLat[] | null = null;
+  private fromStop = 0;
+
+  async start(mode: 'live' | 'sim', fromStop = 0, approach: LngLat[] | null = null) {
+    if (!engine.stops.length || (engine.stops.length < 2 && !approach)) throw new Error('Add at least 2 stops first.');
     await this.stop();
     unlockAudio();
-    this.line = buildRouteLine();
-    this.mode = mode;
     fromStop = Math.max(0, Math.min(fromStop, engine.stops.length - 1));
-    this.s = this.line.stopS[fromStop];
-    this.next = fromStop + 1;
+    this.approach = approach && approach.length >= 2 ? approach : null;
+    this.fromStop = fromStop;
+    this.line = this.composeLine();
+    this.mode = mode;
+    this.s = this.approach ? 0 : this.line.stopS[fromStop];
+    this.next = this.approach ? fromStop : fromStop + 1;
     this.matchIdx = pointAt(this.line, this.s).idx;
     this.offRoute = false; this.offDist = 0; this.offCount = 0; this.missed = [];
     this.track = []; this.lastLogged = null; this.chunk = []; this.pendingCovered = 0;
@@ -103,7 +109,7 @@ export class Navigator {
       this.playing = true;
       this.lastT = 0;
       this.raf = requestAnimationFrame((ts) => this.tick(ts));
-      if (this.settings.voice) say(`Simulation started from stop ${fromStop + 1}`);
+      if (this.settings.voice) say(this.approach ? `Simulation started. Heading to stop ${fromStop + 1}` : `Simulation started from stop ${fromStop + 1}`);
     } else {
       if (!navigator.geolocation) throw new Error('GPS is not available on this device.');
       this.pos = null;
@@ -112,7 +118,7 @@ export class Navigator {
         (e) => { this.gpsError = e.code === 1 ? 'Location permission denied — allow location for this site.' : `GPS: ${e.message}`; this.emit(); },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
       );
-      if (this.settings.voice) say(`Navigation started. Next stop ${this.next + 1}`);
+      if (this.settings.voice) say(`Navigation started. Heading to stop ${this.next + 1}`);
     }
     this.emit();
   }
@@ -274,10 +280,15 @@ export class Navigator {
   }
 
   // ---------------------------------------------------------------- route edits while navigating
+  private composeLine(): RouteLine {
+    const L = buildRouteLine();
+    return this.approach ? withApproach(L, this.approach, this.fromStop) : L;
+  }
+
   private rebuildLine() {
     if (this.mode === 'off') return;
     const prevNext = this.next;
-    this.line = buildRouteLine();
+    this.line = this.composeLine();
     if (this.pos) {
       const m = matchToRoute(this.line, this.pos, 0, 0);
       this.s = m.s; this.matchIdx = m.idx;

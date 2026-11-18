@@ -182,6 +182,18 @@ export class RouteEngine {
     if (update.length) this.emit(false, { add: [], remove: [], update });
   }
 
+  /** Leg from stop i to stop i+1. */
+  legAt(i: number): Leg | undefined {
+    const S = this.stops;
+    return i >= 0 && i < S.length - 1 ? this.legs.get(this.legKey(S[i], S[i + 1])) : undefined;
+  }
+  /** Distance along the route to stop i (road distance where routed, estimate otherwise). */
+  kmMark(i: number): number {
+    let d = 0;
+    for (let x = 0; x < i; x++) { const l = this.legAt(x); d += l?.status === 'ok' ? l.distM : l ? haversine(l.from, l.to) * 1.3 : 0; }
+    return d;
+  }
+
   indexOf(id: string): number {
     if (!this.idx) { this.idx = new Map(); this.stops.forEach((s, i) => this.idx!.set(s.id, i)); }
     return this.idx.get(id) ?? -1;

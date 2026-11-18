@@ -8,10 +8,10 @@ import { ui, useUI, toast, act, type TapMode } from './state';
 import { useEngine, useRouterStatus } from './hooks';
 import { Drawer } from './Drawer';
 import { FpsMeter } from './FpsMeter';
+import { StopSheet } from './StopSheet';
 import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
-import { useNav } from './navHooks';
 
 export let mapCtl: MapController | null = null;
 
@@ -78,7 +78,7 @@ function Hud() {
     <div className="hud glass" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
       <div className="hud-title">{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
       <div className="hud-stats">
-        <span><b>{engine.stops.length.toLocaleString('en-IN')}</b> stops</span>
+        <span><b>{engine.stops.length.toLocaleString('en-IN')}</b> {engine.stops.length === 1 ? 'stop' : 'stops'}</span>
         <span><b>{fmtKm(engine.routedM)}</b> mapped</span>
         <span><b>{fmtKm(covered)}</b> covered</span>
         {target > 0 && <span><b>{fmtKm(Math.max(0, target - covered))}</b> left</span>}
@@ -120,6 +120,7 @@ function Controls() {
         <button className="fab glass" title="Undo (Ctrl+Z)" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}>↶</button>
         <button className="fab glass" title="Redo (Ctrl+Y)" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}>↷</button>
         <button className={`fab glass tap-${tapMode}`} title={TAP_LABEL[tapMode]} onClick={() => { const n = TAP_NEXT[tapMode]; ui.set({ tapMode: n }); toast(TAP_LABEL[n]); }}>{TAP_ICON[tapMode]}</button>
+        <button className="fab glass go" title="Ride / simulate this route" onClick={() => ui.set({ drawer: true, tab: 'ride' })}>🏍</button>
         <button className="fab glass" title="Fit route" onClick={() => mapCtl?.fitRoute()}>⤢</button>
         <button className="fab glass" title="Tilt 3D / flat" onClick={() => mapCtl?.tilt()}>⛰</button>
         <button className="fab glass" title="North up, flat" onClick={() => mapCtl?.snapView()}>🧭</button>
@@ -127,35 +128,6 @@ function Controls() {
         <button className="fab glass" title="Day / Night" onClick={() => ui.set({ night: !night })}>{night ? '☀' : '☾'}</button>
       </div>
     </>
-  );
-}
-
-function StopSheet() {
-  useEngine(); useNav();
-  const id = useUI((s) => s.selectedId);
-  const [name, setName] = useState('');
-  const i = id ? engine.indexOf(id) : -1;
-  const s = engine.stops[i];
-  useEffect(() => setName(s?.name ?? ''), [id, s?.name]);
-  if (!s || nav.mode !== 'off') return null;
-  return (
-    <div className="sheet glass">
-      <div className="sheet-head">
-        <b>Stop #{(i + 1).toLocaleString('en-IN')}</b>
-        <span className="muted">{s.lat.toFixed(6)}, {s.lng.toFixed(6)}</span>
-        <button className="x" onClick={() => ui.set({ selectedId: null })}>✕</button>
-      </div>
-      <div className="row">
-        <input value={name} placeholder="Name (optional)" onChange={(e) => setName(e.target.value)}
-          onBlur={() => name !== (s.name ?? '') && act(null, () => engine.renameStop(s.id, name))} />
-      </div>
-      <div className="row btns">
-        <button onClick={() => mapCtl?.flyToStop(i - 1)} disabled={i === 0}>◀ Prev</button>
-        <button onClick={() => mapCtl?.flyToStop(i + 1)} disabled={i === engine.stops.length - 1}>Next ▶</button>
-        <button className="danger" onClick={() => { ui.set({ selectedId: null }); void act(null, () => engine.deleteStop(s.id)); }}>Delete</button>
-      </div>
-      <div className="hint">Drag the highlighted stop to move it. Only the two legs next to it are recalculated.</div>
-    </div>
   );
 }
 

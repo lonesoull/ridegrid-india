@@ -101,3 +101,28 @@ export function sliceLine(L: RouteLine, s0: number, s1: number): LngLat[] {
   out.push(b.p);
   return out;
 }
+
+/**
+ * Prefix the route with an approach path (e.g. from the rider's current location to stop `from`),
+ * dropping everything before that stop. Stops before `from` get stopS = -1 (never "next").
+ */
+export function withApproach(L: RouteLine, approach: LngLat[], from: number): RouteLine {
+  const xs: number[] = [], ys: number[] = [], cum: number[] = [];
+  let d = 0;
+  const push = (x: number, y: number) => {
+    const n = xs.length;
+    if (n && xs[n - 1] === x && ys[n - 1] === y) return;
+    if (n) d += haversine([xs[n - 1], ys[n - 1]], [x, y]);
+    xs.push(x); ys.push(y); cum.push(d);
+  };
+  for (const p of approach) push(p[0], p[1]);
+  const approachLen = d;
+  const startS = L.stopS[from];
+  const k = L.n > 1 ? segAt(L, startS) : 0;
+  const start = pointAt(L, startS).p;
+  push(start[0], start[1]);
+  for (let i = k + 1; i < L.n; i++) push(L.x[i], L.y[i]);
+  const stopS = new Float64Array(L.stopS.length);
+  for (let i = 0; i < stopS.length; i++) stopS[i] = i < from ? -1 : L.stopS[i] - startS + approachLen + (d - approachLen - (L.total - startS));
+  return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d };
+}

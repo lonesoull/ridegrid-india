@@ -134,3 +134,14 @@ input[type=range] { padding: 0; min-height: 36px; accent-color: var(--accent); b
   .next .big { font-size: 28px; }
   .navstats b { font-size: 15px; }
 }
+
+/* stop card */
+.mono { font-family: ui-monospace, monospace; font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--btn); border-radius: 999px; padding: 4px 10px; font-size: 12px; color: var(--muted); }
+.chip b { color: var(--text); }
+.chip.accent { background: rgba(249, 115, 22, 0.15); color: #c2410c; }
+:root[data-theme='dark'] .chip.accent { color: #fdba74; }
+.main-actions > button { min-height: 52px; font-size: 16px; font-weight: 600; }
+.btns.sm > button { min-height: 40px; padding: 6px 10px; font-size: 14px; }
+.fab.go { font-size: 24px; }
