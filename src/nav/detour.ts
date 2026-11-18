@@ -95,6 +95,7 @@ export async function safeRoute(from: LngLat, to: LngLat, L: RouteLine, idx: Seg
   const body = {
     locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }],
     costing: 'motorcycle', directions_type: 'maneuvers', units: 'kilometers',
+    costing_options: { motorcycle: { use_highways: 0 } }, // never onto expressways (two-wheeler ban)
     ...(polys.length ? { exclude_polygons: polys } : {}),
   };
   const r = await fetch(`${base}/route`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

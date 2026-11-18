@@ -8,42 +8,27 @@ import { execSync } from 'node:child_process';
 
 const OUT = 'data-out';
 await mkdir(OUT, { recursive: true });
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const r5 = (x) => Math.round(x * 1e5) / 1e5;
 
-async function overpass(q) {
-  for (const url of OVERPASS) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(q),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ridegrid-india-data-build (github.com/lonesoull/ridegrid-india)' },
-      });
-      if (res.ok) return res.json();
-      console.error(url, res.status, (await res.text()).slice(0, 300));
-    } catch (e) { console.error(url, e.message); }
-  }
-  throw new Error('Overpass unavailable');
+// ---- expressways: from the Geofabrik India extract, filtered locally with osmium (no query server needed)
+const PBF = '/tmp/india.osm.pbf';
+execSync(`curl -sSL --retry 3 -o ${PBF} https://download.geofabrik.de/asia/india-latest.osm.pbf`, { stdio: 'inherit' });
+execSync(`osmium tags-filter ${PBF} w/highway=motorway,motorway_link w/motorcycle=no -o /tmp/roads.osm.pbf --overwrite`, { stdio: 'inherit' });
+execSync(`osmium export /tmp/roads.osm.pbf -f geojsonseq --geometry-types=linestring -o /tmp/roads.geojsonseq --overwrite`, { stdio: 'inherit' });
+const NOT_ROADS = /^(footway|path|cycleway|pedestrian|steps|track|service|bridleway|corridor|platform|construction|proposed)$/;
+const features = [];
+for (const line of (await readFile('/tmp/roads.geojsonseq', 'utf8')).split('\n')) {
+  const txt = line.replace(/^\x1e/, '').trim();
+  if (!txt) continue;
+  const f = JSON.parse(txt);
+  const t = f.properties ?? {};
+  if (!t.highway || NOT_ROADS.test(t.highway)) continue;
+  // two-wheelers: banned when tagged "no"; untagged motorways are treated as banned (Indian rule); "yes" is allowed
+  const mc = t.motorcycle ?? (t.highway.startsWith('motorway') ? 'default-no' : 'unknown');
+  if (mc === 'yes' || mc === 'unknown') continue;
+  features.push({ type: 'Feature', properties: { n: t.name ?? t.ref ?? '', r: t.ref ?? '', h: t.highway, mc },
+    geometry: { type: 'LineString', coordinates: f.geometry.coordinates.map(([x, y]) => [r5(x), r5(y)]) } });
 }
-
-// ---- expressways: every motorway in India + any other road explicitly closed to motorcycles
-const q = `[out:json][timeout:1200][maxsize:1073741824];
-area["ISO3166-1"="IN"][admin_level=2]->.in;
-( way["highway"~"^(motorway|motorway_link)$"](area.in);
-  way["highway"]["motorcycle"="no"]["highway"!~"^(footway|path|cycleway|pedestrian|steps|track|service)$"](area.in); );
-out tags geom;`;
-const ov = await overpass(q);
-const ways = ov.elements.filter((e) => e.type === 'way' && e.geometry?.length > 1);
-const features = ways.map((w) => {
-  const t = w.tags ?? {};
-  // two-wheelers: banned when tagged "no"; motorways without a tag are treated as banned (Indian rule)
-  const mc = t.motorcycle ?? (t.highway?.startsWith('motorway') ? 'default-no' : 'unknown');
-  return {
-    type: 'Feature',
-    properties: { n: t.name ?? t.ref ?? '', r: t.ref ?? '', h: t.highway, mc },
-    geometry: { type: 'LineString', coordinates: w.geometry.map((g) => [r5(g.lon), r5(g.lat)]) },
-  };
-}).filter((f) => f.properties.mc !== 'yes');
 await writeFile(`${OUT}/expressways.json`, JSON.stringify({ type: 'FeatureCollection', generated: new Date().toISOString(), source: '© OpenStreetMap contributors (ODbL)', features }));
 
 // ---- states: Natural Earth admin-1 (10m), India only, simplified with mapshaper

@@ -21,6 +21,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
       - run: node tools/build-data.mjs
       - name: Publish to the "india-data" release
         uses: softprops/action-gh-release@v2
