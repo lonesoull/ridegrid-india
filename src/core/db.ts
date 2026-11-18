@@ -16,7 +16,7 @@ export interface Trip {
   coveredM: number;      // filled by ride logging in Phase 2
   isStress?: boolean;    // throw-away trip for scale testing (never auto-routed)
 }
-export interface Draft { tripId: string; stops: StopTuple[]; updatedAt: number }
+export interface Draft { tripId: string; stops: StopTuple[]; updatedAt: number; cursor?: number /* history seq this snapshot reflects */ }
 export interface SavedRoute { id: string; tripId: string; name: string; stops: StopTuple[]; distM: number; createdAt: number }
 export interface HistoryEntry { id?: number; tripId: string; seq: number; cmd: unknown }
 export interface LegCacheEntry { key: string; poly: string; distM: number; provider: string; at: number }

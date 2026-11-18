@@ -6,7 +6,7 @@ import { stressWalk } from './india';
 export async function createTrip(name: string, targetKm?: number): Promise<Trip> {
   const t: Trip = { id: uid(), name, targetKm, createdAt: Date.now(), updatedAt: Date.now(), sequenceLock: true, historyCursor: 0, historyTop: 0, coveredM: 0 };
   await db.trips.put(t);
-  await db.drafts.put({ tripId: t.id, stops: [], updatedAt: Date.now() });
+  await db.drafts.put({ tripId: t.id, stops: [], updatedAt: Date.now(), cursor: 0 });
   return t;
 }
 
@@ -40,7 +40,7 @@ export async function switchTrip(id: string) {
 }
 
 // ---------- stress test sandbox ----------
-export const STRESS_NAME = '⚙ Stress Test';
+export const STRESS_NAME = '⚙ Stress Test (test stops only)';
 
 /** Switch to (or create) the dedicated stress-test trip so real trips are never touched. */
 export async function enterStressTrip() {

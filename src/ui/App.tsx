@@ -79,7 +79,7 @@ function Hud() {
       </div>
       {t?.isStress && (
         <div className="hud-stress" onClick={(e) => e.stopPropagation()}>
-          <span>⚙ Stress test — not routed</span>
+          <span>⚙ Viewing STRESS TEST trip (test stops only, not routed). Your real stops are in your own trip.</span>
           <button className="sm" onClick={() => act(null, () => leaveStressTrip()).then(() => setTimeout(() => mapCtl?.fitRoute(), 300))}>Back to my trip</button>
           <button className="sm danger" onClick={() => confirm('Clear ALL stress-test stops and delete the Stress Test trip?') && act('Clearing stress test…', () => deleteStressTrip())}>Clear all</button>
         </div>

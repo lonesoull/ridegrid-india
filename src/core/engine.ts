@@ -74,11 +74,36 @@ export class RouteEngine {
     const draft = await db.drafts.get(tripId);
     this.trip = trip;
     this.stops = (draft?.stops ?? []).map(fromTuple);
+    await this.reconcile(draft?.cursor);
     const removed = [...this.legs.values()];
     this.legs.clear(); this.routedM = 0; this.pendingLegs = 0; this.errorLegs = 0; this.priority.clear();
     this.idx = null;
     const add = await this.buildLegs(0, this.stops.length - 1);
     this.emit(true, { add, remove: removed, update: [] });
+  }
+
+  /**
+   * The draft snapshot is written lazily, the history log immediately. If the app closed before the
+   * snapshot caught up, replay (or rewind) the logged commands so no edit is ever lost.
+   */
+  private async reconcile(draftCursor: number | undefined) {
+    const t = this.trip!;
+    if (draftCursor === undefined || draftCursor === t.historyCursor) return;
+    const lo = Math.min(draftCursor, t.historyCursor) + 1, hi = Math.max(draftCursor, t.historyCursor);
+    const rows = await db.history.where('[tripId+seq]').between([t.id, lo], [t.id, hi], true, true).sortBy('seq');
+    const forward = t.historyCursor > draftCursor;
+    for (const h of forward ? rows : rows.reverse()) this.applyStops(forward ? (h.cmd as Cmd) : invert(h.cmd as Cmd));
+    await this.flush();
+  }
+
+  /** Stop-list-only application of a command (no leg bookkeeping) — used for replay before legs are built. */
+  private applyStops(c: Cmd) {
+    const S = this.stops;
+    if (c.t === 'ins') S.splice(c.i, 0, ...c.s.map(fromTuple));
+    else if (c.t === 'del') S.splice(c.i, c.s.length);
+    else if (c.t === 'mov') { S[c.i].lng = c.to[0]; S[c.i].lat = c.to[1]; }
+    else if (c.t === 'ren') S[c.i].name = c.to;
+    else this.stops = c.after.map(fromTuple);
   }
 
   async updateTrip(patch: Partial<Trip>) {
@@ -307,7 +332,7 @@ export class RouteEngine {
   async flush() {
     if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; }
     if (!this.trip) return;
-    await db.drafts.put({ tripId: this.trip.id, stops: this.snapshot(), updatedAt: Date.now() });
+    await db.drafts.put({ tripId: this.trip.id, stops: this.snapshot(), updatedAt: Date.now(), cursor: this.trip.historyCursor });
   }
 
   /** Total planned distance including straight-line estimate for legs not yet routed. */

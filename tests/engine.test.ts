@@ -116,3 +116,21 @@ describe('engine', () => {
     expect(engine.legs.size).toBe(99998);
   }, 60000);
 });
+
+describe('crash safety', () => {
+  it('replays edits whose draft snapshot was never written', async () => {
+    await engine.addMany(pts(3));            // never flushed: snapshot is still the empty one from createTrip
+    await engine.addStop([78, 28]);
+    await engine.deleteAt(0);
+    await engine.undo();
+    // simulate closing the tab before the 600 ms snapshot timer fires
+    (engine as any).saveTimer && clearTimeout((engine as any).saveTimer);
+    (engine as any).saveTimer = null;
+    const id = engine.trip!.id;
+    (engine as any).trip = null;
+    await engine.loadTrip(id);
+    expect(engine.stops.length).toBe(4);
+    await engine.undo();
+    expect(engine.stops.length).toBe(3);
+  });
+});

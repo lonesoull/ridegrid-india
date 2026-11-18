@@ -310,7 +310,9 @@ function ToolsTab() {
       <section>
         <h3>Road snapping engine</h3>
         <p className="muted">Status: <b>{status}</b> · {engine.pendingLegs.toLocaleString('en-IN')} pending · {engine.errorLegs} failed · {app.queue.requests} requests this session · {cacheCount?.toLocaleString('en-IN') ?? '…'} legs cached on device{app.queue.lastError ? ` · last error: ${app.queue.lastError}` : ''}</p>
-        <label className="check"><input type="checkbox" disabled={isStress} checked={app.queue.autoRoute} onChange={(e) => { app.queue.setAuto(e.target.checked); setR({ ...r }); }} /><span>Auto-route new legs (paced, cached, rate-limit safe){isStress ? ' — always off in the Stress Test trip' : ''}</span></label>
+        {isStress
+          ? <p className="warn">You are viewing the <b>Stress Test</b> trip. Road snapping is switched off here on purpose, so test stops never hit the routing server. Your real trips and stops are safe — tap <b>Back to my trip</b> below.</p>
+          : <label className="check"><input type="checkbox" checked={app.queue.autoRoute} onChange={(e) => { app.queue.setAuto(e.target.checked); setR({ ...r }); }} /><span>Auto-route new legs (paced, cached, rate-limit safe)</span></label>}
         <label className="check"><input type="checkbox" checked={snap} onChange={(e) => ui.set({ snapToRoad: e.target.checked })} /><span>Snap tapped / dragged stops to the nearest road</span></label>
         <div className="grid2">
           <label className="field">Engine
