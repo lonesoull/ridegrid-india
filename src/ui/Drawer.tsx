@@ -21,6 +21,7 @@ import { google, testGoogleKey, type KeyTest } from '../core/google';
 import { applyBase } from '../map/googleBase';
 import { RideTab } from './RideTab';
 import { LogbookTab } from './LogbookTab';
+import { mode, MODE_LABEL } from '../core/mode';
 import { TeamTab } from './TeamTab';
 
 export function Drawer() {
@@ -32,12 +33,15 @@ export function Drawer() {
       <aside className={`drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
         <div className="drawer-head">
           <b>RideGrid India</b>
+          <button className={`modebtn ${mode.current}`} onClick={() => ui.set({ modePicker: true })}>{MODE_LABEL[mode.current]} ⇄</button>
           <button className="x" onClick={() => ui.set({ drawer: false })}>✕</button>
         </div>
         <nav className="tabs">
           {(['trip', 'stops', 'ride', 'log', 'team', 'files', 'tools'] as const).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => ui.set({ tab: t })}>
-              {{ trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', team: 'Team', files: 'Files', tools: 'Tools' }[t]}
+              {(mode.current === 'daily'
+                ? { trip: 'Rides', stops: 'Stops', ride: 'Navigate', log: 'Diary', team: 'Team', files: 'Files', tools: 'Tools' }
+                : { trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', team: 'Team', files: 'Files', tools: 'Tools' })[t]}
             </button>
           ))}
         </nav>
@@ -59,20 +63,20 @@ export function Drawer() {
 function TripTab() {
   useEngine();
   const t = engine.trip!;
-  const [list, reload] = useAsync(() => trips.listTrips(), [t.id]);
+  const [list, reload] = useAsync(() => trips.listModeTrips(), [t.id]);
+  const daily = mode.current === 'daily';
   const [routes, reloadRoutes] = useAsync(() => trips.listRoutes(t.id), [t.id, t.draftSourceRouteId]);
   const [newName, setNewName] = useState('');
   const [newTarget, setNewTarget] = useState('');
-  const [newKind, setNewKind] = useState<'expedition' | 'daily'>('daily');
   const source = routes?.find((r) => r.id === t.draftSourceRouteId);
   const covered = t.coveredM, target = (t.targetKm ?? 0) * 1000;
 
   return (
     <div className="stack">
       <section>
-        <h3>Active trip</h3>
+        <h3>{daily ? 'Active ride plan' : 'Active trip'}</h3>
         <select value={t.id} onChange={(e) => act('Loading trip…', () => trips.switchTrip(e.target.value))}>
-          {list?.map((x) => <option key={x.id} value={x.id}>{x.kind === 'daily' ? '🏍 ' : '🏁 '}{x.name}</option>)}
+          {list?.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
         </select>
         <div className="grid3">
           <Stat label="Mapped" v={fmtKm(engine.routedM)} />
@@ -86,13 +90,13 @@ function TripTab() {
         <label className="field">Distance target (km, optional)
           <input type="number" inputMode="numeric" defaultValue={t.targetKm ?? ''} key={t.id + 't'} onBlur={(e) => act(null, () => engine.updateTrip({ targetKm: e.target.value ? +e.target.value : undefined }))} />
         </label>
-        <label className="check">
+        {!daily && <label className="check">
           <input type="checkbox" checked={t.sequenceLock} onChange={(e) => act(null, () => engine.updateTrip({ sequenceLock: e.target.checked }))} />
           <span><b>Sequence Lock</b> — keep points exactly in the order I mapped them (#1 → #2 → #3…). Blocks reverse and any reordering.</span>
-        </label>
+        </label>}
       </section>
 
-      <StateTracker />
+      {!daily && <StateTracker />}
 
       <section>
         <h3>Working draft <span className="pill">auto-saved</span></h3>
@@ -121,20 +125,16 @@ function TripTab() {
       </section>
 
       <section>
-        <h3>New trip</h3>
-        <div className="seg">
-          <button className={newKind === 'expedition' ? 'on' : ''} onClick={() => setNewKind('expedition')}><b>Expedition</b><span className="muted">Fixed record route · waypoints · Guinness rules</span></button>
-          <button className={newKind === 'daily' ? 'on' : ''} onClick={() => setNewKind('daily')}><b>Daily ride</b><span className="muted">Real stops · faster routes · live traffic</span></button>
-        </div>
-        <input placeholder="Trip name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <h3>{daily ? 'New ride plan' : 'New expedition trip'}</h3>
+        <input placeholder={daily ? 'Ride name (e.g. Office, Weekend to Nandi Hills)' : 'Trip name'} value={newName} onChange={(e) => setNewName(e.target.value)} />
         <input placeholder="Target km (optional)" type="number" inputMode="numeric" value={newTarget} onChange={(e) => setNewTarget(e.target.value)} />
         <div className="btns">
           <button className="primary" disabled={!newName.trim()} onClick={() => act(null, async () => {
-            const nt = await trips.createTrip(newName.trim(), newTarget ? +newTarget : undefined, newKind);
+            const nt = await trips.createTrip(newName.trim(), newTarget ? +newTarget : undefined, mode.current);
             await trips.switchTrip(nt.id); setNewName(''); setNewTarget(''); reload();
           })}>Create & switch</button>
           {(list?.length ?? 0) > 1 && <button className="danger" onClick={() => confirm(`Delete trip “${t.name}” with all its routes and history?`) && act(null, async () => {
-            await trips.deleteTrip(t.id); const rest = await trips.listTrips(); await trips.switchTrip(rest[0].id); reload();
+            await trips.deleteTrip(t.id); const rest = await trips.listModeTrips(); await trips.switchTrip(rest[0].id); reload();
           })}>Delete this trip</button>}
         </div>
       </section>
@@ -368,7 +368,7 @@ function ToolsTab() {
 
       <GoogleSettingsPanel />
 
-      <section>
+      {mode.current === 'expedition' && <section>
         <h3>Scale stress test</h3>
         <p className="muted">Adds random-walk test stops on Indian land inside a separate <b>Stress Test</b> trip, so your real trips are never touched and no routing requests are made. One undo step per batch.</p>
         <div className="btns">
@@ -384,7 +384,7 @@ function ToolsTab() {
         )}
         <button className="danger" onClick={() => confirm('Clear ALL stress-test stops and delete the Stress Test trip?') && act('Clearing stress test…', () => trips.deleteStressTrip()).then(() => toast('Stress test cleared'))}>Clear all stress tests</button>
         <label className="check"><input type="checkbox" checked={fps} onChange={(e) => ui.set({ fps: e.target.checked })} /><span>Show FPS meter</span></label>
-      </section>
+      </section>}
 
       <section>
         <h3>Storage</h3>

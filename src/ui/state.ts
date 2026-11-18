@@ -8,6 +8,8 @@ export interface UIState {
   night: boolean;
   drawer: boolean;
   tab: 'trip' | 'stops' | 'ride' | 'log' | 'team' | 'files' | 'tools';
+  /** the Expedition / Daily ride picker is open */
+  modePicker: boolean;
   following: boolean;
   /** next map tap inserts a stop at this index */
   insertAt: number | null;
@@ -28,7 +30,7 @@ export interface UIState {
 let state: UIState = {
   selectedId: null, tapMode: 'append', snapToRoad: true,
   night: typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches,
-  drawer: false, tab: 'trip', following: true, insertAt: null, gtick: 0, sos: null, routeOffer: null, places: [], place: null, logStop: false, toast: null, fps: false, busy: null,
+  drawer: false, tab: 'trip', modePicker: false, following: true, insertAt: null, gtick: 0, sos: null, routeOffer: null, places: [], place: null, logStop: false, toast: null, fps: false, busy: null,
 };
 const subs = new Set<() => void>();
 

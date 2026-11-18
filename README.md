@@ -82,3 +82,10 @@ Data: `tools/build-data.mjs` + `.github/workflows/data.yml` filter the Geofabrik
 3. On-device offline router (per-state road graphs) + Guinness/India compliance modules
 4. Supabase live telemetry for ≤10 devices, route push, offline POIs, SOS
 5. Packaging: Android APK (Capacitor), desktop (Tauri), iOS PWA
+
+## License
+
+RideGrid India is free software, licensed under the **GNU General Public License v3.0** (see `LICENSE`).
+Daily ride mode re-implements features inspired by and derived from [OsmAnd](https://github.com/osmandapp/OsmAnd)
+(GPLv3) — "OsmAnd" is a trademark of its owners and is not used for this app's name or branding.
+Map and road data © OpenStreetMap contributors (ODbL).

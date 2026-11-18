@@ -30,6 +30,8 @@ import { LogStopDialog } from './LogStopDialog';
 import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
+import { ModePicker } from './ModePicker';
+import { mode, MODE_LABEL } from '../core/mode';
 
 export let mapCtl: MapController | null = null;
 
@@ -71,6 +73,8 @@ export function App() {
       window.addEventListener('online', () => mapCtl && applyBase(mapCtl));
       window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
       await bootTrips();
+      document.documentElement.dataset.mode = mode.current;
+      if (!mode.chosen) ui.set({ modePicker: true });
       void reminder.start();
       setReady(true);
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
@@ -109,6 +113,7 @@ export function App() {
       {ready && <NavPanel />}
       {ready && <Drawer />}
       {ready && <LogStopDialog />}
+      {ready && <ModePicker />}
       <Toast />
       <FpsMeterGate />
     </div>
@@ -125,7 +130,7 @@ function Hud() {
   return (
     <div className="hud glass">
       <SearchBar />
-      <div className="hud-title" onClick={() => ui.set({ drawer: true, tab: 'trip' })}><span className={`kind ${t?.kind === 'daily' ? 'daily' : 'exp'}`}>{t?.kind === 'daily' ? 'Daily' : 'Expedition'}</span>{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
+      <div className="hud-title" onClick={() => ui.set({ drawer: true, tab: 'trip' })}><span className={`kind ${t?.kind === 'daily' ? 'daily' : 'exp'}`} title="Switch mode" onClick={(e) => { e.stopPropagation(); ui.set({ modePicker: true }); }}>{MODE_LABEL[mode.current]} ⇄</span>{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
       <div className="hud-stats" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
         <span><b>{engine.stops.length.toLocaleString('en-IN')}</b> {T().n(engine.stops.length)}</span>
         <span><b>{fmtKm(engine.routedM)}</b> mapped</span>

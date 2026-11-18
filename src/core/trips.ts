@@ -2,6 +2,7 @@ import { db, uid, type SavedRoute, type Trip } from './db';
 import { engine } from './engine';
 import { app } from './app';
 import { stressWalk } from './india';
+import { mode, tripMode, DEFAULT_TRIP_NAME, type AppMode } from './mode';
 
 export async function createTrip(name: string, targetKm?: number, kind: 'expedition' | 'daily' = 'expedition'): Promise<Trip> {
   const t: Trip = { id: uid(), name, targetKm, kind, createdAt: Date.now(), updatedAt: Date.now(), sequenceLock: kind === 'expedition', historyCursor: 0, historyTop: 0, coveredM: 0 };
@@ -11,6 +12,8 @@ export async function createTrip(name: string, targetKm?: number, kind: 'expedit
 }
 
 export async function listTrips() { return db.trips.orderBy('updatedAt').reverse().toArray(); }
+/** Trips of one mode only (the other mode's trips never show). */
+export async function listModeTrips(m: AppMode = mode.current) { return (await listTrips()).filter((t) => tripMode(t) === m); }
 
 export async function deleteTrip(id: string) {
   await db.transaction('rw', [db.trips, db.drafts, db.routes, db.history], async () => {
@@ -21,21 +24,38 @@ export async function deleteTrip(id: string) {
   });
 }
 
-/** Ensure there is at least one trip and load the most recent one. */
+/** Load the last trip of the current mode (creating that mode's first trip if needed). */
 export async function bootTrips() {
-  let trips = await listTrips();
-  if (!trips.length) { await createTrip('My India Expedition'); trips = await listTrips(); }
-  const last = (await db.settings.get('activeTrip'))?.value as string | undefined;
+  await mode.load();
+  return openMode(mode.current);
+}
+
+async function openMode(m: AppMode) {
+  let trips = await listModeTrips(m);
+  if (!trips.length) { await createTrip(DEFAULT_TRIP_NAME[m], undefined, m); trips = await listModeTrips(m); }
+  const last = (await mode.lastTrip(m)) ?? ((await db.settings.get('activeTrip'))?.value as string | undefined);
   const t = trips.find((x) => x.id === last) ?? trips[0];
-  await engine.loadTrip(t.id);
-  app.applyTripRouting();
+  await switchTrip(t.id);
   return t;
 }
 
+/** Complete mode change: Expedition ⇄ Daily ride. */
+export async function switchMode(m: AppMode) {
+  await mode.save(m);
+  return openMode(m);
+}
+
 export async function switchTrip(id: string) {
+  // opening a trip of the other kind (e.g. a route pushed from a team device) switches the mode too
+  const target = await db.trips.get(id);
+  if (target && !target.isStress && tripMode(target) !== mode.current) {
+    await mode.save(tripMode(target));
+    if (typeof document !== 'undefined') document.documentElement.dataset.mode = mode.current;
+  }
   await engine.loadTrip(id);
   app.applyTripRouting();
   await db.settings.put({ key: 'activeTrip', value: id });
+  if (engine.trip && !engine.trip.isStress) await mode.rememberTrip(tripMode(engine.trip), id);
   if (!engine.trip?.isStress) await db.settings.put({ key: 'lastRealTrip', value: id });
 }
 
@@ -62,7 +82,8 @@ export async function addStressStops(k: number) {
 export async function leaveStressTrip() {
   const all = await db.trips.toArray();
   const last = (await db.settings.get('lastRealTrip'))?.value as string | undefined;
-  const real = all.find((t) => t.id === last && !t.isStress) ?? all.filter((t) => !t.isStress).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? (await createTrip('My India Expedition'));
+  const mine = all.filter((t) => !t.isStress && tripMode(t) === mode.current);
+  const real = mine.find((t) => t.id === last) ?? mine.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? (await createTrip(DEFAULT_TRIP_NAME[mode.current], undefined, mode.current));
   await switchTrip(real.id);
 }
 

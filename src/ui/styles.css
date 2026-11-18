@@ -287,3 +287,16 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .pulse { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255,120,0,.35); } }
 .riderinfo { display: grid; gap: 6px; margin: 8px 0; }
+
+/* app modes */
+.modepick { max-width: 460px; }
+.modecard { display: flex; gap: 14px; align-items: flex-start; width: 100%; text-align: left; padding: 14px; margin: 8px 0; border-radius: 14px; border: 2px solid transparent; }
+.modecard > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.modecard .mi { font-size: 30px; line-height: 1; }
+.modecard.on { border-color: var(--accent); }
+.modecard.daily b { color: #0b8a5f; }
+.modebtn { margin-left: auto; margin-right: 8px; font-size: 13px; padding: 4px 10px; min-height: 0; border-radius: 999px; }
+.modebtn.daily { background: rgba(11,138,95,.15); color: #0b8a5f; }
+.modebtn.expedition { background: rgba(124,58,237,.15); color: #6d28d9; }
+:root[data-mode="daily"] .hud .kind { cursor: pointer; }
+.hud .kind { cursor: pointer; }
