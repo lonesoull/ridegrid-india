@@ -100,3 +100,57 @@ export async function routeOnExpressways(L: RouteLine, onProgress?: (f: number) 
   if (cur && cur.s1End - cur.s1 >= 100) out.push(cur);
   return out;
 }
+
+/** Does this road geometry run ON a banned road (≥ 100 m within 15 m, same direction)? */
+export async function legOnBanned(coords: LngLat[]): Promise<BannedRoad | null> {
+  const data = await loadExpressways();
+  if (!data || coords.length < 2) return null;
+  let run = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i], b = coords[i + 1];
+    const kx = Math.cos(a[1] * RAD) * R * RAD, ky = R * RAD;
+    const segM = Math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * ky);
+    const hd = (Math.atan2((b[0] - a[0]) * kx, (b[1] - a[1]) * ky) / RAD + 360) % 360;
+    const steps = Math.max(1, Math.ceil(segM / 20));
+    for (let k = 0; k < steps; k++) {
+      const p: LngLat = [a[0] + ((b[0] - a[0]) * k) / steps, a[1] + ((b[1] - a[1]) * k) / steps];
+      const h = data.idx.nearest(p, 15);
+      if (h && isParallel(hd, h.bearing, 30)) { run += segM / steps; if (run >= 100) return h.road; } else run = 0;
+    }
+  }
+  return null;
+}
+
+/** No-go rectangles around banned roads near a leg (for Valhalla's exclude_polygons; ~10 km perimeter budget). */
+export async function bannedPolygonsNear(from: LngLat, to: LngLat, widthM = 25, budgetM = 9500): Promise<LngLat[][]> {
+  const data = await loadExpressways();
+  if (!data) return [];
+  const pad = 0.05;
+  const box = [Math.min(from[0], to[0]) - pad, Math.min(from[1], to[1]) - pad, Math.max(from[0], to[0]) + pad, Math.max(from[1], to[1]) + pad];
+  const mid: LngLat = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
+  const segs: { a: LngLat; b: LngLat; d: number }[] = [];
+  for (const f of data.fc.features) {
+    const c = (f.geometry as GeoJSON.LineString).coordinates as LngLat[];
+    for (let i = 0; i < c.length - 1; i++) {
+      const a = c[i], b = c[i + 1];
+      if (Math.max(a[0], b[0]) < box[0] || Math.min(a[0], b[0]) > box[2] || Math.max(a[1], b[1]) < box[1] || Math.min(a[1], b[1]) > box[3]) continue;
+      segs.push({ a, b, d: Math.hypot(a[0] - mid[0], a[1] - mid[1]) });
+    }
+  }
+  segs.sort((x, y) => x.d - y.d);
+  const out: LngLat[][] = [];
+  let used = 0;
+  for (const { a, b } of segs) {
+    const kx = Math.cos(a[1] * RAD) * R * RAD, ky = R * RAD;
+    let dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky;
+    const len = Math.hypot(dx, dy) || 1;
+    if (used + 2 * len + 4 * widthM > budgetM) break;
+    dx /= len; dy /= len;
+    const ox = (-dy * widthM) / kx, oy = (dx * widthM) / ky, ex = (dx * widthM) / kx, ey = (dy * widthM) / ky;
+    const ring: LngLat[] = [[a[0] - ex + ox, a[1] - ey + oy], [b[0] + ex + ox, b[1] + ey + oy], [b[0] + ex - ox, b[1] + ey - oy], [a[0] - ex - ox, a[1] - ey - oy]];
+    ring.push(ring[0]);
+    out.push(ring.map(([x, y]) => [+x.toFixed(6), +y.toFixed(6)] as LngLat));
+    used += 2 * len + 4 * widthM;
+  }
+  return out;
+}

@@ -110,6 +110,20 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
   };
 }
 
+/** Valhalla motorcycle (honours "no motorcycles") with banned roads near the leg blocked out. */
+async function routeAvoidingBanned(from: LngLat, to: LngLat, signal: AbortSignal): Promise<LegResult> {
+  const { bannedPolygonsNear } = await import('../nav/expressways');
+  const polys = await bannedPolygonsNear(from, to);
+  const j = await getJSON('https://valhalla1.openstreetmap.de/route', {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }], costing: 'motorcycle', directions_type: 'maneuvers',
+      costing_options: { motorcycle: { use_highways: 0 } }, ...(polys.length ? { exclude_polygons: polys } : {}) }),
+  });
+  const leg = j.trip.legs[0];
+  const c = decode6(leg.shape);
+  return { coords: c, distM: (leg.summary?.length ?? 0) * 1000 || lineLength(c), turns: (leg.maneuvers ?? []).map(valhallaTurn).filter(Boolean) as Turn[] };
+}
+
 export type RouterStatus = 'idle' | 'routing' | 'offline' | 'paused' | 'backoff';
 
 interface Worker {
@@ -135,6 +149,9 @@ export class RoutingQueue {
   private workers: Worker[] = [];
   private inflight = new Set<string>();
   private solo = new Set<string>();
+  /** legs whose first route used a two-wheeler-banned road → re-route them avoiding banned roads */
+  private avoid = new Set<string>();
+  private avoidTried = new Set<string>();
   private listeners = new Set<() => void>();
 
   constructor(provider: Provider, private eng: RouteEngine = engine) {
@@ -206,6 +223,7 @@ export class RoutingQueue {
         const hasLocal = this.workers.some((x) => x.provider.id === 'device');
         let run = this.eng.nextPendingRun(w.maxLegs, this.inflight, local ? covered : hasLocal ? (l) => !covered(l) : undefined);
         if (!run.length) { w.state = 'idle'; this.refresh(); return; }
+        if (!local && run.some((l) => this.avoid.has(l.key))) run = [run.find((l) => this.avoid.has(l.key))!];
         const si = run.findIndex((l) => this.solo.has(l.key));
         if (si === 0) run = [run[0]]; else if (si > 0) run = run.slice(0, si);
         w.state = 'routing'; this.refresh();
@@ -216,15 +234,24 @@ export class RoutingQueue {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), 30000);
         try {
-          const legs = await w.provider.route(points, ctl.signal);
+          const safe = run.length === 1 && this.avoid.has(run[0].key);
+          const legs = safe ? [await routeAvoidingBanned(points[0], points[1], ctl.signal)] : await w.provider.route(points, ctl.signal);
+          if (safe) { this.avoid.delete(run[0].key); this.avoidTried.add(run[0].key); }
+          // never accept a route along a two-wheeler-banned expressway: send it back for an avoiding re-route
+          const { legOnBanned } = await import('../nav/expressways');
+          for (let i = 0; i < run.length; i++) {
+            const r = legs[i];
+            if (r && !this.avoidTried.has(run[i].key) && (await legOnBanned(r.coords))) { this.avoid.add(run[i].key); legs[i] = undefined as any; }
+          }
           w.backoffMs = 0; this.lastError = '';
           const rows = run.map((l, i) => ({ l, r: legs[i] })).filter((x) => x.r && x.r.coords.length >= 2);
+          const sentBack = run.filter((l, i) => !legs[i] && this.avoid.has(l.key));
           await db.legs.bulkPut(rows.map(({ l, r }) => ({ key: cacheKey(l.from, l.to), poly: encode6(r.coords), distM: r.distM, turns: r.turns, provider: w.provider.id, at: Date.now() })));
           run.forEach((l, i) => {
             this.solo.delete(l.key);
             const r = legs[i];
             if (r && r.coords.length >= 2) this.eng.setLegGeometry(l.key, r.coords, r.distM, 'ok', r.turns);
-            else this.eng.setLegGeometry(l.key, null, 0, 'error');
+            else if (!sentBack.includes(l)) this.eng.setLegGeometry(l.key, null, 0, 'error');
           });
         } catch (e: any) {
           if ((e as any)?.offline) { w.state = 'idle'; continue; } // device can't route these: leave them pending for the servers

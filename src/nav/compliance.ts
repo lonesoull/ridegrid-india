@@ -77,8 +77,8 @@ class Compliance {
   }
 
   /** Called on every position update while riding live. */
-  async onPosition(p: LngLat, speedMps: number, heading: number) {
-    this.updateHalt(p);
+  async onPosition(p: LngLat, speedMps: number, heading: number, sim = false) {
+    if (!sim) this.updateHalt(p);
     if (Date.now() - this.lastCheck < 900) return;
     this.lastCheck = Date.now();
     // --- banned expressway underfoot
@@ -89,7 +89,7 @@ class Compliance {
     } else this.set('expressway', null);
     // --- speed
     const s = this.settings;
-    if (s.speedOn) {
+    if (s.speedOn && !sim) {
       const road = this.currentRoadName();
       const nh = /\bNH\b|\bNH ?\d|National Highway/i.test(road);
       const limit = nh ? s.speedNH : s.speedOther;
@@ -197,11 +197,12 @@ export function startCompliance() {
   void compliance.load();
   let last = '';
   nav.subscribe(() => {
-    if (nav.mode !== 'live' || !nav.pos) return;
+    if (nav.mode === 'off' || !nav.pos) return;
     const k = `${nav.pos[0].toFixed(5)},${nav.pos[1].toFixed(5)}`;
     if (k === last) return;
     last = k;
-    void compliance.onPosition(nav.pos, nav.speedMps, nav.heading);
+    // simulation checks the route too (expressway, permit, night closure) so problems show up at the desk
+    void compliance.onPosition(nav.pos, nav.mode === 'sim' ? 10 : nav.speedMps, nav.heading, nav.mode === 'sim');
   });
   setInterval(() => compliance.checkHalt(), 30000);
   // keep the halt anchor current while the app is open but not navigating
