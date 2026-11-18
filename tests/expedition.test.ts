@@ -126,5 +126,9 @@ describe('evidence checks', () => {
     expect(day2.startGapKm!).toBeGreaterThan(4);
     expect(day2.issues.join('\n')).toMatch(/continuous/);
     expect(day2.issues.join('\n')).not.toMatch(/No witness/);
+    expect(day2.issues.join('\n')).toMatch(/no photo of the signed page/);
+    expect(day2.issues.join('\n')).not.toMatch(/not marked independent/);
+    const strict = await daySummaries(t.id, { witnessesPerDay: 2 });
+    expect(strict[0].issues.join('\n')).toMatch(/Only 1 of 2 witness/);
   });
 });

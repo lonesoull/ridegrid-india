@@ -54,7 +54,7 @@ export function LogStopDialog() {
     // back up the day's evidence off the phone straight away
     if (wasEnd && confirm("Day logged. Download today's evidence pack now and keep a copy on your laptop / Google Drive?")) {
       const t = engine.trip!, d = dayKey(Date.now());
-      download(`${safeName(t.name)}_evidence_${d}.zip`, await evidencePack(t.id, t.name, d));
+      download(`${safeName(t.name)}_evidence_${d}.zip`, await evidencePack(t.id, t.name, d, { witnessesPerDay: nav.settings.witnessesPerDay }));
       markBackup(t.id, d);
     }
   });

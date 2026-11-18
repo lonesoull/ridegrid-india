@@ -100,7 +100,11 @@ export interface DaySummary {
 }
 export const dayKey = (t: number) => new Date(t).toLocaleDateString('en-CA'); // YYYY-MM-DD local
 
-export async function daySummaries(tripId: string): Promise<DaySummary[]> {
+/** How strict the daily checks are (old Guinness journey rules asked for two witness signatures a day). */
+export interface EvidenceRules { witnessesPerDay: number }
+export const DEFAULT_RULES: EvidenceRules = { witnessesPerDay: 1 };
+
+export async function daySummaries(tripId: string, rules: EvidenceRules = DEFAULT_RULES): Promise<DaySummary[]> {
   const statesOk = await loadStates();
   const days = new Map<string, DaySummary>();
   const get = (t: number) => {
@@ -161,11 +165,15 @@ export async function daySummaries(tripId: string): Promise<DaySummary[]> {
     if (d.km > 1) {
       if (!d.start) d.issues.push('No "Start of day" entry (odometer + photo)');
       if (!d.end) d.issues.push('No "End of day" entry (odometer + photo)');
-      if (!d.witnesses) d.issues.push('No witness signature / statement today');
+      if (d.witnesses < rules.witnessesPerDay) d.issues.push(d.witnesses ? `Only ${d.witnesses} of ${rules.witnessesPerDay} witness signatures today` : 'No witness signature / statement today');
       const hours = Math.floor(d.movingMin / 60);
       if (hours >= 1 && d.evidence < hours) d.issues.push(`Only ${d.evidence} evidence photo/video for ${hours} h of riding (aim: one every hour)`);
       if (d.start && d.start.odoKm === undefined) d.issues.push('Start-of-day odometer missing');
       if (d.end && d.end.odoKm === undefined) d.issues.push('End-of-day odometer missing');
+      if (d.start && !d.start.photos?.length) d.issues.push('No photo with the start-of-day entry (odometer, bike with number plate)');
+      if (d.end && !d.end.photos?.length) d.issues.push('No photo with the end-of-day entry (odometer)');
+      for (const x of d.stops) if (['police', 'witness'].includes(x.type) && !x.photos?.length) d.issues.push(`${STOP_LABEL[x.type]} at ${new Date(x.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} has no photo of the signed page`);
+      for (const x of d.stops) if (['police', 'witness'].includes(x.type) && x.witness && !x.witness.independent) d.issues.push(`Witness ${x.witness.name} is not marked independent`);
     }
     if (d.startGapKm !== undefined && d.startGapKm > 1) d.issues.push(`Day started ${d.startGapKm.toFixed(1)} km from where the previous day ended — the journey must be continuous`);
     for (const g of d.gaps) d.issues.push(`GPS not recording ${new Date(g.from).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}–${new Date(g.to).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} while moving ${g.km.toFixed(1)} km (not counted)`);
@@ -208,9 +216,9 @@ async function dayGPX(tripId: string, tripName: string, d: DaySummary) {
  * ZIP for the examiner: logbook, witnesses, bills, media, checks, one GPX per day, a KML of the
  * whole journey and every photo/video. `date` limits it to one day (small enough for a daily backup).
  */
-export async function evidencePack(tripId: string, tripName: string, date?: string): Promise<Blob> {
+export async function evidencePack(tripId: string, tripName: string, date?: string, rules: EvidenceRules = DEFAULT_RULES): Promise<Blob> {
   const zip = new JSZip();
-  const all = await daySummaries(tripId);
+  const all = await daySummaries(tripId, rules);
   const days = (date ? all.filter((d) => d.date === date) : all).slice().sort((a, b) => a.date.localeCompare(b.date));
   const stops = (await listStopLogs(tripId)).filter((s) => !date || dayKey(s.at) === date);
   const rows = ['type,auto,start_utc,end_utc,duration_min,place,lat,lng,gps_accuracy_m,odometer_km,witness,note,link,files'];

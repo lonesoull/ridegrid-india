@@ -24,7 +24,7 @@ export function LogbookTab() {
   useNav();
   const trip = engine.trip!;
   const dialogOpen = useUI((x) => !!x.logStop);
-  const [days, reload] = useAsync(() => daySummaries(trip.id), [trip.id, nav.mode, nav.version >> 6, dialogOpen]);
+  const [days, reload] = useAsync(() => daySummaries(trip.id, { witnessesPerDay: nav.settings.witnessesPerDay }), [trip.id, nav.settings.witnessesPerDay, nav.mode, nav.version >> 6, dialogOpen]);
   // place names arrive a moment after saving — refresh once more
   useEffect(() => { if (!dialogOpen) { const t = setTimeout(reload, 2500); return () => clearTimeout(t); } }, [dialogOpen]);
   const [open, setOpen] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export function LogbookTab() {
   const today = dayKey(Date.now());
   const notBacked = (days ?? []).filter((d) => d.date !== today && d.km > 1 && !saved.includes(d.date));
   const dayPack = (d: DaySummary) => act(`Building Day ${d.dayNo} evidence…`, async () => {
-    download(`${safeName(trip.name)}_evidence_day${String(d.dayNo).padStart(3, '0')}_${d.date}.zip`, await evidencePack(trip.id, trip.name, d.date));
+    download(`${safeName(trip.name)}_evidence_day${String(d.dayNo).padStart(3, '0')}_${d.date}.zip`, await evidencePack(trip.id, trip.name, d.date, { witnessesPerDay: s.witnessesPerDay }));
     markBackup(trip.id, d.date); bump((x) => x + 1);
   });
 
@@ -65,11 +65,14 @@ export function LogbookTab() {
           <button onClick={() => ui.set({ logStop: 'media' })}>Media</button>
         </div>
         <div className="btns">
-          <button onClick={() => act('Building printable logbook…', async () => printLogbook(trip.name, (await daySummaries(trip.id)).slice().reverse()))}>Print / save as PDF</button>
-          <button onClick={() => act('Building evidence pack…', async () => download(`${safeName(trip.name)}_evidence_all_${new Date().toISOString().slice(0, 10)}.zip`, await evidencePack(trip.id, trip.name)))}>Whole-journey evidence (.zip)</button>
+          <button onClick={() => act('Building printable logbook…', async () => printLogbook(trip.name, (await daySummaries(trip.id, { witnessesPerDay: s.witnessesPerDay })).slice().reverse()))}>Print / save as PDF</button>
+          <button onClick={() => act('Building evidence pack…', async () => download(`${safeName(trip.name)}_evidence_all_${new Date().toISOString().slice(0, 10)}.zip`, await evidencePack(trip.id, trip.name, undefined, { witnessesPerDay: s.witnessesPerDay })))}>Whole-journey evidence (.zip)</button>
         </div>
         <label className="field">Automatic break after standing still <b>{s.breakMin} min</b>
           <input type="range" min={2} max={30} step={1} value={s.breakMin} onChange={(e) => void nav.setSettings({ breakMin: +e.target.value })} />
+        </label>
+        <label className="field">Witness signatures needed per riding day <b>{s.witnessesPerDay}</b>
+          <input type="range" min={1} max={3} step={1} value={s.witnessesPerDay} onChange={(e) => void nav.setSettings({ witnessesPerDay: +e.target.value })} />
         </label>
         <label className="field">Evidence photo reminder while riding <b>{s.evidenceMin ? `every ${s.evidenceMin} min` : 'off'}</b>
           <input type="range" min={0} max={180} step={15} value={s.evidenceMin} onChange={(e) => void nav.setSettings({ evidenceMin: +e.target.value })} />
