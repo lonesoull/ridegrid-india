@@ -157,7 +157,7 @@ export class Navigator {
     unlockAudio();
     fromStop = Math.max(0, Math.min(fromStop, engine.stops.length - 1));
     this.approach = approach && approach.coords.length >= 2 ? approach : null;
-    this.spoken = new Map(); this.rerouting = false; this.lastReroute = 0; this.reroutes = 0;
+    this.spoken = new Map(); this.rerouting = false; this.lastReroute = 0; this.reroutes = 0; this.joinedAt = null; this.lastJoinCheck = 0;
     this.fromStop = fromStop;
     this.line = this.composeLine();
     this.mode = mode;
@@ -267,6 +267,7 @@ export class Navigator {
 
     const good = f.coords.accuracy <= MAX_ACC_M;
     this.addTrackPoint(p, f.timestamp, f.coords.accuracy, f.coords.speed ?? 0, good);
+    if (good && this.tryJoin(p)) { this.checkArrivals(); this.emit(); return; }
     if (good) {
       const m = matchToRoute(this.line, p, this.matchIdx);
       this.offDist = m.d;
@@ -353,9 +354,43 @@ export class Navigator {
   }
 
   // ---------------------------------------------------------------- route edits while navigating
+  /** The planned route without any approach prefix (used to detect joining it early). */
+  private fullLine: RouteLine | null = null;
+  private lastJoinCheck = 0;
+  joinedAt: number | null = null;
+
   private composeLine(): RouteLine {
     const L = buildRouteLine();
+    this.fullLine = L;
     return this.approach ? withApproach(L, this.approach, this.fromStop) : L;
+  }
+
+  /**
+   * While heading to the start stop: if the rider reaches the planned route anywhere from the leg
+   * before that stop up to ~3 km / 3 stops past it, drop the approach and continue from there.
+   * The rider's position becomes the start; following stops continue in order (none marked missed).
+   */
+  private tryJoin(p: LngLat): boolean {
+    const F = this.fullLine;
+    if (!this.approach || !F || F.n < 2 || Date.now() - this.lastJoinCheck < 1500) return false;
+    this.lastJoinCheck = Date.now();
+    const from = this.fromStop;
+    const lo = from > 0 ? F.stopS[from - 1] : 0;
+    const hi = Math.max(F.stopS[from] + 3000, F.stopS[Math.min(from + 3, this.stopCount - 1)]);
+    const hint = pointAt(F, F.stopS[from]).idx;
+    const m = matchToRoute(F, p, hint, 25);
+    if (m.d > Math.min(25, this.settings.offRouteM * 0.6) || m.s < lo || m.s > hi) return false;
+    this.approach = null;
+    this.line = F;
+    this.s = m.s; this.matchIdx = m.idx;
+    let k = from;
+    while (k < this.stopCount && F.stopS[k] <= m.s + 1) k++;
+    this.next = Math.max(from, k);
+    this.joinedAt = this.next;
+    this.offRoute = false; this.offCount = 0; this.spoken = new Map();
+    if (this.settings.beep) sounds.backOnRoute();
+    if (this.settings.voice) say(this.done ? 'Joined the route at its end' : `Joined the route. Next stop ${this.next + 1}`);
+    return true;
   }
 
   private rebuildLine() {

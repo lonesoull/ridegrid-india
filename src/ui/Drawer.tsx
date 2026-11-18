@@ -10,6 +10,8 @@ import { ui, useUI, toast, act } from './state';
 import { useAsync, useEngine, useRouterStatus } from './hooks';
 import { mapCtl } from './App';
 import { StressRouteButton } from './StressRouteButton';
+import { google } from '../core/google';
+import { applyBase } from '../map/googleBase';
 import { RideTab } from './RideTab';
 
 export function Drawer() {
@@ -340,7 +342,7 @@ function ToolsTab() {
         <p className="muted">Public servers are free but rate-limited: each is paced to ~1 request/sec with up to 99 legs per request, and every leg is stored forever on this device. Point the URL at your own OSRM/Valhalla anytime.</p>
       </section>
 
-      <TrafficSettings />
+      <GoogleSettingsPanel />
 
       <section>
         <h3>Scale stress test</h3>
@@ -374,22 +376,32 @@ function StorageInfo() {
   return <p className="muted">{est ? `${((est.usage ?? 0) / 1048576).toFixed(1)} MB used of ${((est.quota ?? 0) / 1073741824).toFixed(1)} GB available.` : 'Storage estimate unavailable.'} {persisted ? 'Persistent storage granted ✓' : 'Persistent storage not yet granted (install the app to keep data safe).'}</p>;
 }
 
-function TrafficSettings() {
-  const key = useUI((s) => s.trafficKey);
-  const on = useUI((s) => s.traffic);
-  const [k, setK] = useState(key);
+
+function GoogleSettingsPanel() {
+  const [g, setG] = useState(google.settings);
+  const [k, setK] = useState(google.settings.key);
+  const save = (p: Partial<typeof g>) => act(null, async () => { setG(await google.save(p)); if (mapCtl) await applyBase(mapCtl, true); });
   return (
     <section>
-      <h3>Live traffic</h3>
-      <p className="muted">Colours roads green / orange / red by current speed, refreshed every 2 minutes. Uses TomTom's free plan
-        (about 50,000 map tiles a day — plenty for a few devices). Free key: sign up at developer.tomtom.com → Dashboard → copy the API key.</p>
-      <input placeholder="Paste TomTom API key" value={k} onChange={(e) => setK(e.target.value.trim())} />
+      <h3>Google Maps mode</h3>
+      <p className="muted">Uses your Google Maps Platform key for: Google's map with <b>live traffic</b>, and <b>traffic-aware two-wheeler directions</b> for “from my location” and re-routes.
+        Your planned expedition route stays on OSRM (Google allows only 25 waypoints and no long-term storage). Offline, the app switches back to the OpenStreetMap map automatically.</p>
+      <input type="password" autoComplete="off" placeholder="Paste Google Maps API key (stays on this device only)" value={k} onChange={(e) => setK(e.target.value.trim())} />
       <div className="btns">
-        <button className="primary" disabled={!k} onClick={() => { ui.set({ trafficKey: k, traffic: true }); toast('Live traffic on'); }}>Save & show traffic</button>
-        {key && <button onClick={() => ui.set({ traffic: !on })}>{on ? 'Hide traffic' : 'Show traffic'}</button>}
-        {key && <button className="danger" onClick={() => { setK(''); ui.set({ trafficKey: '', traffic: false }); }}>Remove key</button>}
+        <button className="primary" disabled={!k || (k === g.key && g.on)} onClick={() => save({ key: k, on: true })}>Save key & turn on</button>
+        {g.key && <button onClick={() => save({ on: !g.on })}>{g.on ? 'Turn Google mode off' : 'Turn Google mode on'}</button>}
+        {g.key && <button className="danger" onClick={() => { setK(''); void save({ key: '', on: false }); }}>Remove key</button>}
       </div>
-      <p className="muted">Honest limit: no free source matches Google's crowd-sourced traffic. For traffic-aware ETAs, the Google Maps button opens the current stage in Google with live traffic.</p>
+      {g.key && <label className="check"><input type="checkbox" checked={g.traffic} onChange={(e) => save({ traffic: e.target.checked })} /><span>Show live traffic on the map (refreshed every 10 min)</span></label>}
+      <details>
+        <summary className="muted">How to create the key and keep it at ₹0</summary>
+        <ol className="muted small">
+          <li>console.cloud.google.com → new project → enable <b>Map Tiles API</b> and <b>Routes API</b> (billing account required).</li>
+          <li>Credentials → Create API key → <b>Application restrictions: Websites</b> → add <code>https://lonesoull.github.io/*</code> (and <code>http://localhost:*</code> for testing).</li>
+          <li><b>API restrictions</b> → restrict key to Map Tiles API + Routes API only.</li>
+          <li>Quotas: cap requests per day (e.g. Map Tiles 20,000/day, Routes computeRoutes 1,000/day) and add a ₹1 budget alert, so usage stays inside the free monthly limits.</li>
+        </ol>
+      </details>
     </section>
   );
 }

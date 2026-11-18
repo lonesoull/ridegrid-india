@@ -5,7 +5,7 @@
 export type TurnCode =
   | 'straight' | 'slight-right' | 'right' | 'sharp-right' | 'uturn' | 'sharp-left' | 'left' | 'slight-left'
   | 'roundabout' | 'keep-left' | 'keep-right' | 'merge' | 'ramp-left' | 'ramp-right' | 'exit-left' | 'exit-right';
-export interface Turn { i: number; c: TurnCode; n?: string; x?: number }
+export interface Turn { i: number; c: TurnCode; n?: string; x?: number; /** ready-made instruction (Google) */ txt?: string }
 
 const MOD: Record<string, TurnCode> = {
   'uturn': 'uturn', 'sharp right': 'sharp-right', 'right': 'right', 'slight right': 'slight-right',
@@ -50,7 +50,8 @@ export function valhallaTurn(m: any): Turn | null {
 
 const ord = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 
-export function turnText(t: { c: TurnCode; n?: string; x?: number }): string {
+export function turnText(t: { c: TurnCode; n?: string; x?: number; txt?: string }): string {
+  if (t.txt) return t.txt;
   const onto = t.n ? ` onto ${t.n}` : '';
   switch (t.c) {
     case 'left': return `Turn left${onto}`;

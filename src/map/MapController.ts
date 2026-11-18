@@ -82,12 +82,32 @@ export class MapController {
     this.bindInteractions();
   }
 
-  private night = ui.get().night;
-  setNight(night: boolean) {
-    if (night === this.night) return;
-    this.night = night;
+  /** Identifies the current basemap so identical requests don't reload the style. */
+  private baseId = `osm:${ui.get().night ? 'night' : 'day'}`;
+  base: 'osm' | 'google' = 'osm';
+
+  /** OpenStreetMap vector basemap (works offline from cache). */
+  setOsmBase(night: boolean) { this.applyBase(`osm:${night ? 'night' : 'day'}`, night ? STYLES.night : STYLES.day, 'osm'); }
+
+  /** Google 2D tiles (with optional live traffic) as the basemap; our layers are drawn on top. */
+  setGoogleBase(id: string, tiles: string, night: boolean) {
+    const style: StyleSpecification = {
+      version: 8,
+      glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+      sources: { google: { type: 'raster', tiles: [tiles], tileSize: 256, maxzoom: 22 } },
+      layers: [
+        { id: 'bg', type: 'background', paint: { 'background-color': night ? '#1d2c4d' : '#e5e3df' } },
+        { id: 'google', type: 'raster', source: 'google', paint: { 'raster-fade-duration': 0 } },
+      ],
+    };
+    this.applyBase(`google:${id}`, style, 'google');
+  }
+
+  private applyBase(id: string, style: string | StyleSpecification, kind: 'osm' | 'google') {
+    if (id === this.baseId) return;
+    this.baseId = id; this.base = kind;
     this.styleReady = false;
-    this.map.setStyle(night ? STYLES.night : STYLES.day, { diff: false });
+    this.map.setStyle(style, { diff: false });
   }
 
   // ---------- layers ----------
@@ -144,9 +164,6 @@ export class MapController {
       paint: { 'circle-radius': 12, 'circle-color': '#f59e0b', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
     m.addLayer({ id: 'rg-me', type: 'circle', source: ME,
       paint: { 'circle-radius': 9, 'circle-color': '#0ea5e9', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
-
-    // ---- live traffic overlay (TomTom free tier), drawn under the route
-    if (this.trafficKey) this.addTraffic();
 
     // ---- navigation layers (Phase 2)
     m.addSource(APPROACH, { type: 'geojson', data: this.approach ? lineFeature(this.approach) : empty() });
@@ -263,32 +280,6 @@ export class MapController {
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
-  // ---------- live traffic ----------
-  private trafficKey: string | null = null;
-  private trafficTimer: ReturnType<typeof setInterval> | null = null;
-  private trafficUrl() {
-    return `https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${encodeURIComponent(this.trafficKey!)}&tileSize=256&thickness=8&t=${Math.floor(Date.now() / 120000)}`;
-  }
-  private addTraffic() {
-    const m = this.map;
-    if (m.getSource('rg-traffic')) return;
-    m.addSource('rg-traffic', { type: 'raster', tiles: [this.trafficUrl()], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: '© TomTom traffic' });
-    m.addLayer({ id: 'rg-traffic', type: 'raster', source: 'rg-traffic', paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0 } }, 'rg-route-casing');
-  }
-  /** Show / hide the live traffic layer; refreshes every 2 minutes while on. */
-  setTraffic(key: string | null) {
-    this.trafficKey = key;
-    if (this.trafficTimer) { clearInterval(this.trafficTimer); this.trafficTimer = null; }
-    if (!this.styleReady) return;
-    if (!key) {
-      if (this.map.getLayer('rg-traffic')) this.map.removeLayer('rg-traffic');
-      if (this.map.getSource('rg-traffic')) this.map.removeSource('rg-traffic');
-      return;
-    }
-    this.addTraffic();
-    this.trafficTimer = setInterval(() => (this.map.getSource('rg-traffic') as any)?.setTiles([this.trafficUrl()]), 120000);
-  }
-
   private approach: LngLat[] | null = null;
   /** Orange dashed "how to get there" path from the rider to a stop. */
   setApproach(coords: LngLat[] | null, fit = false) {

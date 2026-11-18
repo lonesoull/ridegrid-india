@@ -2,7 +2,7 @@ import { engine, type Leg } from '../core/engine';
 import { haversine, type LngLat } from '../core/geo';
 import type { Turn, TurnCode } from '../core/turns';
 
-export interface LineTurn { s: number; c: TurnCode; n?: string; x?: number }
+export interface LineTurn { s: number; c: TurnCode; n?: string; x?: number; txt?: string }
 export interface Approach { coords: LngLat[]; turns?: Turn[] }
 
 const RAD = Math.PI / 180;
@@ -128,7 +128,7 @@ export function withApproach(L: RouteLine, ap: Approach, from: number): RouteLin
   };
   const at: number[] = [];
   for (const p of approach) { push(p[0], p[1]); at.push(cum.length - 1); }
-  for (const t of ap.turns ?? []) { const j = at[t.i]; if (j !== undefined) turns.push({ s: cum[j], c: t.c, n: t.n, x: t.x }); }
+  for (const t of ap.turns ?? []) { const j = at[t.i]; if (j !== undefined) turns.push({ s: cum[j], c: t.c, n: t.n, x: t.x, txt: t.txt }); }
   const approachLen = d;
   const startS = L.stopS[from];
   const k = L.n > 1 ? segAt(L, startS) : 0;

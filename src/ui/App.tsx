@@ -4,7 +4,6 @@ import { engine } from '../core/engine';
 import { app } from '../core/app';
 import { bootTrips, leaveStressTrip, deleteStressTrip } from '../core/trips';
 import { fmtKm } from '../core/geo';
-import { getSetting, putSetting } from '../core/db';
 import { ui, useUI, toast, act, type TapMode } from './state';
 import { useEngine, useRouterStatus } from './hooks';
 import { Drawer } from './Drawer';
@@ -12,6 +11,9 @@ import { FpsMeter } from './FpsMeter';
 import { StopSheet } from './StopSheet';
 import { Icon } from './Icon';
 import { useNav } from './navHooks';
+import { google } from '../core/google';
+import { applyBase } from '../map/googleBase';
+import { GoogleAttribution } from './GoogleAttribution';
 import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
@@ -31,8 +33,11 @@ export function App() {
     (async () => {
       await app.loadSettings();
       await nav.loadSettings();
-      const tr = await getSetting('traffic', { key: '', on: false });
-      ui.set({ trafficKey: tr.key, traffic: tr.on && !!tr.key });
+      await google.load();
+      google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
+      await applyBase(mapCtl!);
+      window.addEventListener('online', () => mapCtl && applyBase(mapCtl));
+      window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
       await bootTrips();
       setReady(true);
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
@@ -52,19 +57,11 @@ export function App() {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('pagehide', flush); };
   }, []);
 
-  const traffic = useUI((s) => s.traffic);
-  const trafficKey = useUI((s) => s.trafficKey);
-  useEffect(() => {
-    if (!ready) return; // don't overwrite the saved setting before it has been loaded
-    mapCtl?.setTraffic(traffic && trafficKey ? trafficKey : null);
-    void putSetting('traffic', { key: trafficKey, on: traffic });
-  }, [traffic, trafficKey, ready]);
-
   const night = useUI((s) => s.night);
   useEffect(() => {
     document.documentElement.dataset.theme = night ? 'dark' : 'light';
-    mapCtl?.setNight(night);
-  }, [night]);
+    if (ready && mapCtl) void applyBase(mapCtl);
+  }, [night, ready]);
 
   return (
     <div className="app">
@@ -74,6 +71,7 @@ export function App() {
       {ready && <StopSheet />}
       {ready && <NavPanel />}
       {ready && <Drawer />}
+      {ready && <GoogleAttribution />}
       <Toast />
       <FpsMeterGate />
     </div>
@@ -115,11 +113,14 @@ function Hud() {
 }
 
 function TrafficFab() {
-  const on = useUI((s) => s.traffic);
-  const key = useUI((s) => s.trafficKey);
+  useUI((s) => s.gtick);
+  const g = google.settings;
+  if (!g.key || !g.on) return null;
   return (
-    <button className={`fab glass ${on ? 'traffic-on' : ''}`} title={key ? (on ? 'Hide live traffic' : 'Show live traffic') : 'Live traffic — add a free TomTom key in Tools'}
-      onClick={() => (key ? ui.set({ traffic: !on }) : ui.set({ drawer: true, tab: 'tools' }))}><Icon name="traffic" /></button>
+    <button className={`fab glass ${g.traffic ? 'traffic-on' : ''}`} title={g.traffic ? 'Hide live traffic' : 'Show live traffic'}
+      onClick={() => act(null, async () => { await google.save({ traffic: !g.traffic }); if (mapCtl) await applyBase(mapCtl, true); })}>
+      <Icon name="traffic" />
+    </button>
   );
 }
 

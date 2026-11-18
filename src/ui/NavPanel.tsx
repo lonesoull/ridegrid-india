@@ -79,6 +79,7 @@ export function NavPanel() {
           {sim ? 'Simulation' : `GPS ±${Math.round(nav.accuracy)} m`} · {nav.wake.active ? 'screen kept on ✓' : nav.wake.supported ? 'screen lock not held' : 'keep-awake not supported'}
           {nav.ride ? ` · logging ${fmtKm(nav.ride.distM)}` : sim ? ' · not logged' : ''}
           {nav.reroutes > 0 && ` · re-routed ${nav.reroutes}×`}
+          {nav.joinedAt !== null && ` · joined route before #${nav.joinedAt + 1}`}
           {nav.missed.length > 0 && <span className="warn"> · missed: {nav.missed.slice(-5).map((i) => `#${i + 1}`).join(', ')}{nav.missed.length > 5 ? ` (+${nav.missed.length - 5})` : ''}</span>}
         </div>
       </div>

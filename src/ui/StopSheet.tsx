@@ -61,7 +61,7 @@ export function StopSheet() {
       </div>
 
       <div className="chips">
-        {dir && <span className="chip accent">From you: <b>{fmtKm(dir.distM)}</b> · ~{rideMinutes(dir.distM)} min{dir.routed ? '' : ' (straight)'}</span>}
+        {dir && <span className="chip accent">From you: <b>{fmtKm(dir.distM)}</b> · {dir.durS ? `${Math.max(1, Math.round(dir.durS / 60))} min with live traffic` : `~${rideMinutes(dir.distM)} min`}{dir.routed ? '' : ' (straight)'}</span>}
         {i > 0 && <span className="chip">From #{i}: <b>{legKm(prev)}</b></span>}
         {i < N - 1 && <span className="chip">To #{i + 2}: <b>{legKm(next)}</b></span>}
         {i > 0 && <span className="chip">At <b>{fmtKm(engine.kmMark(i))}</b> of route</span>}

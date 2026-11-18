@@ -1,4 +1,5 @@
 import { app } from '../core/app';
+import { google, googleRoute } from '../core/google';
 import { engine } from '../core/engine';
 import { haversine, lineLength, type LngLat } from '../core/geo';
 
@@ -14,7 +15,7 @@ export function myLocation(): Promise<LngLat> {
 }
 
 import type { Turn } from '../core/turns';
-export interface Directions { from: LngLat; coords: LngLat[]; distM: number; routed: boolean; turns?: Turn[] }
+export interface Directions { from: LngLat; coords: LngLat[]; distM: number; routed: boolean; turns?: Turn[]; durS?: number; source?: 'google' | 'osrm' }
 
 /** Road route from the rider's current location to stop i (straight line if the server can't be reached). */
 export async function directionsTo(i: number, from?: LngLat): Promise<Directions> {
@@ -23,12 +24,18 @@ export async function directionsTo(i: number, from?: LngLat): Promise<Directions
   const me = from ?? (await myLocation());
   const to: LngLat = [s.lng, s.lat];
   if (haversine(me, to) < 30) return { from: me, coords: [me, to], distM: haversine(me, to), routed: true };
+  if (google.active) {
+    try {
+      const g = await googleRoute(google.settings.key, me, to);
+      if (g.coords.length >= 2) return { from: me, coords: [me, ...g.coords, to], distM: g.distM, durS: g.durS, routed: true, source: 'google', turns: g.turns.map((t) => ({ ...t, i: t.i + 1 })) };
+    } catch { /* fall back to OSRM below */ }
+  }
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 20000);
     const [leg] = await app.queue.provider.route([me, to], ctl.signal);
     clearTimeout(t);
-    if (leg?.coords.length >= 2) return { from: me, coords: [me, ...leg.coords, to], distM: leg.distM, routed: true, turns: leg.turns?.map((t) => ({ ...t, i: t.i + 1 })) };
+    if (leg?.coords.length >= 2) return { from: me, coords: [me, ...leg.coords, to], distM: leg.distM, routed: true, source: 'osrm', turns: leg.turns?.map((t) => ({ ...t, i: t.i + 1 })) };
   } catch { /* fall through */ }
   return { from: me, coords: [me, to], distM: lineLength([me, to]), routed: false };
 }
