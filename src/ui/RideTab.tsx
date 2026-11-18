@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { daySummaries, evidencePack, listStopLogs, deleteStopLog, STOP_LABEL } from '../nav/logbook';
 import { isExpedition } from '../core/terms';
-import { mapCtl } from './App';
 import { T } from '../core/terms';
 import { nav, type NavSettings } from '../nav/navigator';
 import { sounds, say } from '../nav/audio';
@@ -74,7 +72,11 @@ export function RideTab() {
         </div>
       </section>
 
-      <Logbook />
+      <section>
+        <h3>Logbook</h3>
+        <p className="muted">Start/end of day, stops, breaks, photos and the printable logbook now have their own tab.</p>
+        <button className="logbtn" onClick={() => ui.set({ tab: 'log' })}>Open Logbook</button>
+      </section>
 
       <section>
         <h3>Google Maps backup stages</h3>
@@ -119,52 +121,3 @@ export function RideTab() {
   );
 }
 
-function Logbook() {
-  useNav();
-  const trip = engine.trip!;
-  const [days, reload] = useAsync(() => daySummaries(trip.id), [trip.id, nav.mode, nav.version >> 6]);
-  const [open, setOpen] = useState<string | null>(null);
-  const s = nav.settings;
-  return (
-    <section>
-      <h3>Logbook {isExpedition() && <span className="pill">evidence</span>}</h3>
-      <p className="muted">Real stops (overnight, police signature, fuel) are logged with GPS position, exact time, odometer and photos. Breaks are logged automatically when you stand still for {s.breakMin} min.</p>
-      <div className="btns">
-        <button className="logbtn" onClick={() => ui.set({ logStop: true })}>Log stop now</button>
-        <button onClick={() => act('Building evidence pack…', async () => download(`${safeName(trip.name)}_evidence_${new Date().toISOString().slice(0, 10)}.zip`, await evidencePack(trip.id, trip.name)))}>Download evidence pack (.zip)</button>
-      </div>
-      <label className="field">Automatic break after standing still <b>{s.breakMin} min</b>
-        <input type="range" min={2} max={30} step={1} value={s.breakMin} onChange={(e) => void nav.setSettings({ breakMin: +e.target.value })} />
-      </label>
-      {!days?.length && <p className="muted">Nothing logged yet.</p>}
-      {days?.map((d) => (
-        <div className="item" key={d.date}>
-          <button className="link" onClick={() => setOpen(open === d.date ? null : d.date)}>
-            <b>{new Date(d.date + 'T00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</b>
-            <div className="muted">{d.km.toFixed(1)} km · riding {Math.floor(d.movingMin / 60)} h {Math.round(d.movingMin % 60)} min · {d.breaks} breaks ({Math.round(d.breakMin)} min) · {d.stops.length} stops</div>
-          </button>
-          {open === d.date && <DayStops date={d.date} tripId={trip.id} onChange={reload} />}
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function DayStops({ date, tripId, onChange }: { date: string; tripId: string; onChange: () => void }) {
-  const [list, reload] = useAsync(async () => (await listStopLogs(tripId)).filter((x) => new Date(x.at).toLocaleDateString('en-CA') === date), [date]);
-  return (
-    <div className="list">
-      {list?.map((x) => (
-        <div className="item tight" key={x.id}>
-          <div style={{ flex: 1 }}>
-            <b>{STOP_LABEL[x.type]}</b>{x.auto && <span className="muted"> (auto)</span>}
-            <div className="muted">{new Date(x.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}{x.endAt ? `–${new Date(x.endAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}
-              {x.odoKm !== undefined ? ` · odo ${x.odoKm} km` : ''}{x.photos?.length ? ` · ${x.photos.length} photo(s)` : ''}{x.note ? ` · ${x.note}` : ''}</div>
-          </div>
-          <button className="sm" onClick={() => mapCtl?.map.flyTo({ center: [x.lng, x.lat], zoom: 16 })}>Map</button>
-          <button className="danger sm" onClick={() => confirm('Delete this log entry?') && deleteStopLog(x.id).then(() => { reload(); onChange(); })}>✕</button>
-        </div>
-      ))}
-    </div>
-  );
-}

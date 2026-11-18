@@ -203,3 +203,21 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .turnbar.detour { background: #6d28d9; }
 
 .danger-text { color: var(--danger); }
+
+/* logbook */
+.tabs button { padding: 8px 4px; font-size: 14px; }
+.logday { gap: 6px; }
+.dayhead { padding: 4px 0; }
+.logtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.logtable th { text-align: left; color: var(--muted); font-weight: 600; width: 72px; vertical-align: top; padding: 3px 6px 3px 0; }
+.logtable td { padding: 3px 0; }
+.timeline { display: grid; gap: 6px; border-left: 3px solid var(--line); margin-left: 6px; padding-left: 10px; }
+.entry { display: grid; grid-template-columns: 48px 1fr; gap: 8px; padding: 6px 8px; background: var(--btn); border-radius: 10px; }
+.entry .etime { font: 600 12px ui-monospace, monospace; color: var(--muted); }
+.entry.t-daystart, .entry.t-dayend { border-left: 4px solid var(--accent); }
+.entry.t-police { border-left: 4px solid #7c3aed; }
+.entry.t-break { opacity: .8; }
+.ebody { display: grid; gap: 3px; min-width: 0; }
+.thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: zoom-in; }
+.bigphoto { max-width: 96vw; max-height: 90vh; border-radius: 12px; }

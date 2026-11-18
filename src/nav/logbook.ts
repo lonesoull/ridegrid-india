@@ -4,13 +4,40 @@ import { haversine, type LngLat } from '../core/geo';
 import { rideGPX } from './rides';
 
 export const STOP_LABEL: Record<StopType, string> = {
+  daystart: 'Start of day', dayend: 'End of day',
   overnight: 'Overnight halt', police: 'Police signature', fuel: 'Fuel', other: 'Other stop', break: 'Break',
 };
 
 export async function logStop(p: Omit<StopLog, 'id'>): Promise<StopLog> {
   const s: StopLog = { ...p, id: uid() };
   await db.stopLogs.put(s);
+  // fill in the place name in the background (works later too if offline now)
+  void placeName([s.lng, s.lat]).then((place) => { if (place) void updateStopLog(s.id, { place }); });
   return s;
+}
+
+/** Reverse geocode with OpenStreetMap Nominatim (free, ~1 request/sec). */
+let lastGeo = 0;
+export async function placeName(p: LngLat): Promise<string | undefined> {
+  try {
+    const wait = 1100 - (Date.now() - lastGeo);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastGeo = Date.now();
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${p[1].toFixed(6)}&lon=${p[0].toFixed(6)}&zoom=16&accept-language=en`);
+    if (!r.ok) return undefined;
+    const j = await r.json();
+    const a = j.address ?? {};
+    const parts = [a.road, a.suburb ?? a.neighbourhood ?? a.village ?? a.hamlet, a.city ?? a.town ?? a.county ?? a.state_district, a.state].filter(Boolean);
+    return [...new Set(parts)].join(', ') || j.display_name;
+  } catch { return undefined; }
+}
+
+/** Fill place names for entries logged while offline. */
+export async function fillMissingPlaces(tripId: string) {
+  for (const s of await listStopLogs(tripId)) if (!s.place && s.type !== 'break') {
+    const place = await placeName([s.lng, s.lat]);
+    if (place) await updateStopLog(s.id, { place });
+  }
 }
 export const updateStopLog = (id: string, patch: Partial<StopLog>) => db.stopLogs.update(id, patch);
 export const deleteStopLog = (id: string) => db.stopLogs.delete(id);
@@ -48,8 +75,9 @@ export class BreakDetector {
 
 // ---------------------------------------------------------------- daily summary
 export interface DaySummary {
-  date: string; km: number; firstAt: number; lastAt: number; movingMin: number;
+  date: string; dayNo: number; km: number; firstAt: number; lastAt: number; movingMin: number;
   breaks: number; breakMin: number; stops: StopLog[];
+  start?: StopLog; end?: StopLog; entries: StopLog[];
 }
 const dayKey = (t: number) => new Date(t).toLocaleDateString('en-CA'); // YYYY-MM-DD local
 
@@ -58,7 +86,7 @@ export async function daySummaries(tripId: string): Promise<DaySummary[]> {
   const get = (t: number) => {
     const k = dayKey(t);
     let d = days.get(k);
-    if (!d) days.set(k, (d = { date: k, km: 0, firstAt: t, lastAt: t, movingMin: 0, breaks: 0, breakMin: 0, stops: [] }));
+    if (!d) days.set(k, (d = { date: k, dayNo: 0, km: 0, firstAt: t, lastAt: t, movingMin: 0, breaks: 0, breakMin: 0, stops: [], entries: [] }));
     d.firstAt = Math.min(d.firstAt, t); d.lastAt = Math.max(d.lastAt, t);
     return d;
   };
@@ -78,10 +106,15 @@ export async function daySummaries(tripId: string): Promise<DaySummary[]> {
   }
   for (const s of await listStopLogs(tripId)) {
     const d = get(s.at);
+    d.entries.push(s);
     if (s.type === 'break') { d.breaks++; d.breakMin += ((s.endAt ?? s.at) - s.at) / 60000; }
+    else if (s.type === 'daystart') d.start ??= s;
+    else if (s.type === 'dayend') d.end = s;
     else d.stops.push(s);
   }
-  return [...days.values()].sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+  sorted.forEach((d, i) => { d.dayNo = i + 1; d.entries.sort((a, b) => a.at - b.at); });
+  return sorted.reverse();
 }
 
 // ---------------------------------------------------------------- evidence pack
@@ -92,7 +125,7 @@ const iso = (t?: number) => (t ? new Date(t).toISOString() : '');
 export async function evidencePack(tripId: string, tripName: string): Promise<Blob> {
   const zip = new JSZip();
   const stops = await listStopLogs(tripId);
-  const rows = ['type,auto,start_utc,end_utc,duration_min,lat,lng,gps_accuracy_m,odometer_km,note,photos'];
+  const rows = ['type,auto,start_utc,end_utc,duration_min,place,lat,lng,gps_accuracy_m,odometer_km,note,photos'];
   const photos = zip.folder('photos')!;
   for (const s of stops) {
     const names: string[] = [];
@@ -101,7 +134,7 @@ export async function evidencePack(tripId: string, tripName: string): Promise<Bl
       const name = `${iso(s.at).slice(0, 19).replace(/[:T]/g, '-')}_${s.type}_${i + 1}.${ext}`;
       photos.file(name, b); names.push(name);
     });
-    rows.push([STOP_LABEL[s.type], s.auto ? 'yes' : '', iso(s.at), iso(s.endAt), s.endAt ? ((s.endAt - s.at) / 60000).toFixed(1) : '',
+    rows.push([STOP_LABEL[s.type], s.auto ? 'yes' : '', iso(s.at), iso(s.endAt), s.endAt ? ((s.endAt - s.at) / 60000).toFixed(1) : '', s.place ?? '',
       s.lat.toFixed(7), s.lng.toFixed(7), s.acc ? Math.round(s.acc) : '', s.odoKm ?? '', s.note ?? '', names.join(' ')].map(csvq).join(','));
   }
   zip.file('logbook.csv', rows.join('\n'));

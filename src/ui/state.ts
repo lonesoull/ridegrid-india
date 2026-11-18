@@ -7,13 +7,14 @@ export interface UIState {
   snapToRoad: boolean;
   night: boolean;
   drawer: boolean;
-  tab: 'trip' | 'stops' | 'ride' | 'files' | 'tools';
+  tab: 'trip' | 'stops' | 'ride' | 'log' | 'files' | 'tools';
   following: boolean;
   /** next map tap inserts a stop at this index */
   insertAt: number | null;
   /** bumps when Google settings change (re-render dependants) */
   gtick: number;
-  logStop: boolean;
+  /** open the log-stop dialog (optionally with a preset type) */
+  logStop: boolean | import('../core/db').StopType;
   toast: { msg: string; kind: 'info' | 'error'; at: number } | null;
   fps: boolean;
   busy: string | null;

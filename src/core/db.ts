@@ -27,7 +27,7 @@ export interface Ride { id: string; tripId: string; startedAt: number; endedAt?:
 /** Ride GPS points in chunks: [timeMs, lng, lat, accuracyM, speedMps] */
 export type RidePoint = [number, number, number, number, number];
 export interface RideChunk { id?: number; rideId: string; pts: RidePoint[] }
-export type StopType = 'overnight' | 'police' | 'fuel' | 'other' | 'break';
+export type StopType = 'daystart' | 'dayend' | 'overnight' | 'police' | 'fuel' | 'other' | 'break';
 /** Logbook entry: a real stop (overnight, police signature…) or an automatically detected break. */
 export interface StopLog {
   id: string; tripId: string; rideId?: string;
@@ -35,6 +35,8 @@ export interface StopLog {
   at: number; endAt?: number;
   lng: number; lat: number; acc?: number;
   odoKm?: number; note?: string; photos?: Blob[];
+  /** human place name (reverse geocoded), e.g. "Taramani, Chennai, Tamil Nadu" */
+  place?: string;
 }
 
 export class RideDB extends Dexie {
