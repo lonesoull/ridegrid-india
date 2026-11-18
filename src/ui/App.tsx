@@ -10,6 +10,8 @@ import { useEngine, useRouterStatus } from './hooks';
 import { Drawer } from './Drawer';
 import { FpsMeter } from './FpsMeter';
 import { StopSheet } from './StopSheet';
+import { SearchBar } from './SearchBar';
+import { PlaceCard } from './PlaceCard';
 import { Icon } from './Icon';
 import { useNav } from './navHooks';
 import { google } from '../core/google';
@@ -71,6 +73,7 @@ export function App() {
       {ready && <HudGate />}
       {ready && <Controls />}
       {ready && <StopSheet />}
+      {ready && <PlaceCard />}
       {ready && <NavPanel />}
       {ready && <Drawer />}
       {ready && <GoogleAttribution />}
@@ -89,9 +92,10 @@ function Hud() {
   const covered = t?.coveredM ?? 0;
   const pending = engine.pendingLegs, errors = engine.errorLegs;
   return (
-    <div className="hud glass" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
-      <div className="hud-title"><span className={`kind ${t?.kind === 'daily' ? 'daily' : 'exp'}`}>{t?.kind === 'daily' ? 'Daily' : 'Expedition'}</span>{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
-      <div className="hud-stats">
+    <div className="hud glass">
+      <SearchBar />
+      <div className="hud-title" onClick={() => ui.set({ drawer: true, tab: 'trip' })}><span className={`kind ${t?.kind === 'daily' ? 'daily' : 'exp'}`}>{t?.kind === 'daily' ? 'Daily' : 'Expedition'}</span>{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
+      <div className="hud-stats" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
         <span><b>{engine.stops.length.toLocaleString('en-IN')}</b> {T().n(engine.stops.length)}</span>
         <span><b>{fmtKm(engine.routedM)}</b> mapped</span>
         <span><b>{fmtKm(covered)}</b> covered</span>

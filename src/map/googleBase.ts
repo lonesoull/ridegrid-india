@@ -1,5 +1,7 @@
 import { google, createTileSession, tileUrl, type TileSession } from '../core/google';
 import { toast, ui } from '../ui/state';
+import { nav } from '../nav/navigator';
+import { isExpedition } from '../core/terms';
 import type { MapController } from './MapController';
 
 /**
@@ -9,8 +11,13 @@ import type { MapController } from './MapController';
  */
 let session: TileSession | null = null;
 let sessionKey = '';
-let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 const REFRESH_MS = 10 * 60 * 1000;
+/** Daily ride being navigated → traffic as fresh as possible (1 min); otherwise every 10 min. */
+const refreshMs = () => (nav.mode === 'live' && !isExpedition() ? 60 * 1000 : REFRESH_MS);
+function scheduleRefresh(map: MapController) {
+  refreshTimer = setTimeout(() => { refreshTimer = null; void applyBase(map, true); }, refreshMs());
+}
 
 export async function applyBase(map: MapController, forceNew = false) {
   const night = ui.get().night;
@@ -27,7 +34,7 @@ export async function applyBase(map: MapController, forceNew = false) {
       sessionKey = want;
     }
     map.setGoogleBase(`${want}:${session.session.slice(-12)}`, tileUrl(g.key, session), night);
-    if (g.traffic && !refreshTimer) refreshTimer = setInterval(() => void applyBase(map, true), REFRESH_MS);
+    if (g.traffic && !refreshTimer) scheduleRefresh(map);
     if (!g.traffic) stopRefresh();
   } catch (e: any) {
     toast(`${e?.message || e} — using the OpenStreetMap map instead. Check the key's API restrictions (Map Tiles API).`, 'error');
@@ -36,5 +43,7 @@ export async function applyBase(map: MapController, forceNew = false) {
   }
 }
 
-function stopRefresh() { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; } }
+function stopRefresh() { if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; } }
+/** Call when navigation starts/stops so the refresh speed follows the mode. */
+export function retuneTraffic(map: MapController) { if (refreshTimer && google.active && google.settings.traffic) { stopRefresh(); scheduleRefresh(map); } }
 export const currentSession = () => session;

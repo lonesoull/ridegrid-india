@@ -56,6 +56,11 @@ export function RideTab() {
         <label className="field">{T().One} counts as reached within <b>{s.arrivalM} m</b>
           <input type="range" min={15} max={100} step={5} value={s.arrivalM} onChange={(e) => set({ arrivalM: +e.target.value })} />
         </label>
+        {!isExpedition() && <label className="field">Look for a faster route with live traffic (needs Google mode)
+          <select value={s.fasterSec} onChange={(e) => set({ fasterSec: +e.target.value })}>
+            <option value={60}>Every 1 minute</option><option value={120}>Every 2 minutes</option><option value={300}>Every 5 minutes</option><option value={0}>Off</option>
+          </select>
+        </label>}
         {isExpedition() && <label className="field">Expedition gap: keep at least <b>{s.gapM} m</b> from every other planned road (crossings, sub-roads, flyovers, parallel roads)
           <input type="range" min={20} max={100} step={5} value={s.gapM} onChange={(e) => set({ gapM: +e.target.value })} />
         </label>}

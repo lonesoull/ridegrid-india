@@ -5,6 +5,7 @@ import { buildRouteLine, matchToRoute, pointAt, withApproach, type Approach, typ
 import { turnText } from '../core/turns';
 import { isExpedition, T } from '../core/terms';
 import { directionsTo } from './directions';
+import { google, googleRoute } from '../core/google';
 import { BreakDetector } from './logbook';
 import { inIndia } from '../core/india';
 import { watchGps, type GpsFix } from './gps';
@@ -23,8 +24,9 @@ export interface NavSettings {
   reroute: boolean;    // when off route, plan a road way back to the next stop
   breakMin: number;    // stationary this long = automatic break log
   gapM: number;        // expedition: minimum distance to keep from any other planned road
+  fasterSec: number;   // daily: how often to look for a faster route with live traffic (0 = off)
 }
-export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30 };
+export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30, fasterSec: 60 };
 export const SIM_SPEEDS = [1, 10, 50, 500] as const;
 
 const MAX_ACC_M = 50;          // ignore GPS fixes worse than this for "covered" distance
@@ -196,6 +198,8 @@ export class Navigator {
     } else {
       this.pos = null; this.mockFixes = 0;
       this.stopGps = await watchGps((f) => this.onFix(f), (msg) => { this.gpsError = msg; this.emit(); });
+      this.faster = null; this.liveEta = null; this.fasterQuietUntil = 0;
+      this.scheduleFaster(15000);
       if (this.settings.voice) say(`Navigation started. Heading to ${T().one} ${this.next + 1}`);
     }
     this.emit();
@@ -205,6 +209,8 @@ export class Navigator {
     if (this.mode === 'off') return;
     cancelAnimationFrame(this.raf);
     this.stopGps?.(); this.stopGps = null;
+    if (this.fasterTimer) clearTimeout(this.fasterTimer);
+    this.fasterTimer = null; this.faster = null; this.liveEta = null;
     this.playing = false;
     await this.breaks.close();
     await this.flushLog(true);
@@ -235,6 +241,67 @@ export class Navigator {
     this.lastLogged = null;
     this.emit();
   }
+
+  // ---------------------------------------------------------------- daily: faster routes + live ETA
+  /** a faster way to the next stop found with live traffic, waiting for the rider's decision */
+  faster: { savingS: number; durS: number; coords: LngLat[]; turns: import('../core/turns').Turn[]; at: number } | null = null;
+  /** Google's live-traffic time to the next stop along the current route */
+  liveEta: { toNextS: number; at: number } | null = null;
+  private fasterTimer: ReturnType<typeof setTimeout> | null = null;
+  private fasterQuietUntil = 0;
+  private checking = false;
+
+  private scheduleFaster(delayMs: number) {
+    if (this.fasterTimer) clearTimeout(this.fasterTimer);
+    this.fasterTimer = null;
+    if (this.mode !== 'live' || isExpedition() || !this.settings.fasterSec) return;
+    this.fasterTimer = setTimeout(() => void this.checkFaster().finally(() => this.scheduleFaster(this.settings.fasterSec * 1000)), delayMs);
+  }
+
+  /** Ask Google (live traffic) for the best route to the next stop and the time of the route we're on. */
+  async checkFaster() {
+    if (this.checking || !google.active || !this.pos || !this.line || this.offRoute || this.done) return;
+    const st = engine.stops[this.next];
+    if (!st) return;
+    const to: LngLat = [st.lng, st.lat];
+    const endS = this.line.stopS[this.next];
+    const span = endS - this.s;
+    if (span < 300) return;
+    const via = span > 1500 ? [0.25, 0.5, 0.75].map((f) => pointAt(this.line!, this.s + span * f).p) : [];
+    this.checking = true;
+    try {
+      const key = google.settings.key;
+      const [best, cur] = await Promise.all([googleRoute(key, this.pos, to), via.length ? googleRoute(key, this.pos, to, undefined, via) : Promise.resolve(null)]);
+      const curS = cur?.durS ?? best.durS;
+      this.liveEta = { toNextS: curS, at: Date.now() };
+      const saving = curS - best.durS;
+      if (cur && saving >= Math.max(120, curS * 0.08) && Date.now() > this.fasterQuietUntil) {
+        const isNew = !this.faster;
+        this.faster = { savingS: saving, durS: best.durS, coords: [this.pos, ...best.coords, to], turns: best.turns.map((t) => ({ ...t, i: t.i + 1 })), at: Date.now() };
+        if (isNew) {
+          if (this.settings.beep) sounds.arrival();
+          if (this.settings.voice) say(`Faster route available. Saves ${Math.round(saving / 60)} minutes.`);
+        }
+      } else this.faster = null;
+      this.emit();
+    } catch { /* offline / quota: try again next round */ }
+    finally { this.checking = false; }
+  }
+
+  takeFaster() {
+    const f = this.faster;
+    if (!f || !this.pos) return;
+    this.approach = { coords: f.coords, turns: f.turns };
+    this.approachStartS = null; this.joinWin = null;
+    this.fromStop = this.next;
+    this.line = this.composeLine();
+    this.s = 0; this.matchIdx = 0;
+    this.faster = null; this.spoken = new Map();
+    this.liveEta = { toNextS: f.durS, at: Date.now() };
+    if (this.settings.voice) say('Taking the faster route');
+    this.emit();
+  }
+  ignoreFaster() { this.faster = null; this.fasterQuietUntil = Date.now() + 5 * 60000; this.emit(); }
 
   // ---------------------------------------------------------------- simulation
   private tick(ts: number) {

@@ -13,7 +13,7 @@ export const STYLES = {
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 
-const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues';
+const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues', PLACES = 'rg-places';
 const FONT = ['Noto Sans Bold'];
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 
@@ -171,6 +171,12 @@ export class MapController {
       paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 4, 14, 9] } }, 'rg-clusters');
     m.addLayer({ id: 'rg-approach', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': '#f97316', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6], 'line-dasharray': [1.5, 1] } }, 'rg-clusters');
+    m.addSource(PLACES, { type: 'geojson', data: this.placesFc ?? empty() });
+    m.addLayer({ id: 'rg-places', type: 'circle', source: PLACES,
+      paint: { 'circle-radius': ['case', ['get', 'sel'], 12, 8], 'circle-color': ['case', ['get', 'sel'], '#db2777', '#a855f7'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+    m.addLayer({ id: 'rg-places-label', type: 'symbol', source: PLACES, minzoom: 11,
+      layout: { 'text-field': ['get', 'name'], 'text-font': FONT, 'text-size': 12, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-optional': true },
+      paint: { 'text-color': '#7e22ce', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } });
     m.addSource(ISSUES, { type: 'geojson', data: this.issues ?? empty() });
     m.addLayer({ id: 'rg-issues-link', type: 'line', source: ISSUES, filter: ['==', ['geometry-type'], 'LineString'],
       paint: { 'line-color': '#dc2626', 'line-width': 2, 'line-dasharray': [1, 1] } });
@@ -287,6 +293,18 @@ export class MapController {
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
+  private placesFc: GeoJSON.FeatureCollection | null = null;
+  /** Search results on the map (selected one highlighted); fits them into view. */
+  setPlaces(list: { id: string; name: string; p?: LngLat }[], selected: string | null, fit = true) {
+    const pts = list.filter((x) => x.p);
+    this.placesFc = { type: 'FeatureCollection', features: pts.map((x) => ({ type: 'Feature', properties: { id: x.id, name: x.name, sel: x.id === selected }, geometry: { type: 'Point', coordinates: x.p! } })) };
+    this.src(PLACES)?.setData(this.placesFc);
+    if (fit && pts.length > 1 && !selected) {
+      const b = bounds(pts.map((x) => x.p!));
+      if (b) this.map.fitBounds(b, { padding: { top: 140, bottom: 80, left: 60, right: 90 }, maxZoom: 15, duration: 600 });
+    }
+  }
+
   private issues: GeoJSON.FeatureCollection | null = null;
   /** Route-checker results as red (crossing/close/overlap) and amber (parallel) markers. */
   setIssues(list: { kind: string; p: LngLat; p2: LngLat }[] | null) {
@@ -357,6 +375,8 @@ export class MapController {
         m.easeTo({ center: (cl.geometry as GeoJSON.Point).coordinates as LngLat, zoom: z + 0.5 });
         return;
       }
+      const pl = m.queryRenderedFeatures(box, { layers: ['rg-places'] })[0];
+      if (pl) { const found = ui.get().places.find((x) => x.id === pl.properties!.id); if (found) { ui.set({ place: found, selectedId: null }); return; } }
       const st = this.hitStop(e.point, pad);
       if (st) { ui.set({ selectedId: st.properties!.id, drawer: false }); return; }
       const insertAt = ui.get().insertAt;

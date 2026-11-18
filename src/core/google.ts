@@ -85,7 +85,7 @@ const MANEUVER: Record<string, TurnCode | null> = {
 
 export interface GRoute { coords: LngLat[]; distM: number; durS: number; turns: Turn[] }
 
-export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?: AbortSignal): Promise<GRoute> {
+export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?: AbortSignal, via: LngLat[] = []): Promise<GRoute> {
   const ll = (p: LngLat) => ({ location: { latLng: { latitude: p[1], longitude: p[0] } } });
   const j = await gfetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
     method: 'POST', signal,
@@ -95,6 +95,8 @@ export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?
     },
     body: JSON.stringify({
       origin: ll(from), destination: ll(to), travelMode: 'TWO_WHEELER', routingPreference: 'TRAFFIC_AWARE',
+      // pass-through points force the route along a given path (used to price the rider's current route)
+      ...(via.length ? { intermediates: via.map((p) => ({ ...ll(p), via: true })) } : {}),
       polylineQuality: 'HIGH_QUALITY', languageCode: 'en-IN', regionCode: 'IN', units: 'METRIC',
     }),
   });

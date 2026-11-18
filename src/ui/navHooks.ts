@@ -2,11 +2,13 @@ import { useSyncExternalStore } from 'react';
 import { nav } from '../nav/navigator';
 import { engine } from '../core/engine';
 import { mapCtl } from './App';
+import { retuneTraffic } from '../map/googleBase';
 
 /** Re-render on navigator changes, at most once per animation frame. */
 const subs = new Set<() => void>();
 let raf = 0;
 let wasOn = false;
+let lastMode = nav.mode;
 let lastApproach: unknown = null;
 nav.subscribe(() => {
   if (raf) return;
@@ -14,6 +16,7 @@ nav.subscribe(() => {
     raf = 0;
     subs.forEach((f) => f());
     // draw puck / next stop / ridden track on the map
+    if (nav.mode !== lastMode) { lastMode = nav.mode; if (mapCtl) retuneTraffic(mapCtl); }
     if (nav.mode === 'off') {
       mapCtl?.setNav(null);
       if (wasOn) { mapCtl?.setApproach(null); wasOn = false; lastApproach = null; }

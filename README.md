@@ -48,6 +48,17 @@ Routing engine is switchable (Tools tab): OSRM or Valhalla (motorcycle), public 
 Code: `src/nav/spatial.ts` (segment grid index), `src/nav/detour.ts`, `src/nav/checker.ts`, `src/nav/logbook.ts`, `src/core/terms.ts`.
 Rules are built from publicly known Guinness requirements; thresholds are settings and will be aligned with the official guideline document when received.
 
+## Daily mode (step 2, done)
+
+- **Search**: “Where to?” box with Fuel / Police / Hotel / Hospital / Mechanic / Food quick buttons. Google Places when Google mode is on, otherwise Photon (OpenStreetMap, free).
+- **Place card**: Directions (live-traffic ETA), Go, Simulate, Add as stop, Google Maps. In Expedition mode: **Safety check** — a route to the place that keeps the gap from every other planned road.
+- **Faster routes**: while navigating a Daily ride with Google mode, every 1 / 2 / 5 min the current route is priced against Google's best two-wheeler route; “Faster route available, saves N min” → Take it / Ignore.
+- **Live ETA** from Google traffic; traffic layer refreshes every 1 min during Daily navigation (10 min otherwise).
+
+## Android app
+
+Capacitor shell loading the live web app (`capacitor.config.ts`), so web updates reach the app automatically. Native: background GPS foreground service, fake-GPS (mock location) blocking, camera. APK built by `.github/workflows/android.yml` → https://github.com/lonesoull/ridegrid-india/releases/download/android-latest/RideGrid-India.apk
+
 ## Next phases
 
 3. On-device offline router (per-state road graphs) + Guinness/India compliance modules

@@ -224,3 +224,19 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 
 .btnlink { display: flex; align-items: center; justify-content: center; min-height: 48px; border-radius: 12px; text-decoration: none; font-weight: 700; }
 .btnlink.primary { background: var(--accent); color: #fff; }
+
+/* search */
+.search { position: relative; margin-bottom: 4px; }
+.searchrow { display: flex; gap: 6px; }
+.searchrow input { min-height: 40px; border-radius: 999px; padding: 6px 14px; }
+.searchrow .x { min-height: 40px; }
+.searchdrop { position: absolute; left: -14px; right: -14px; top: 46px; z-index: 12; padding: 10px; display: grid; gap: 6px; max-height: 60vh; overflow-y: auto; }
+.searchdrop .chips button.chip { border: 1px solid var(--line); min-height: 34px; padding: 4px 12px; color: var(--text); }
+.result { padding: 8px 6px !important; border-bottom: 1px solid var(--line) !important; border-radius: 0 !important; }
+.small-note { font-size: 11px; }
+.closer { justify-self: end; font-size: 13px; }
+.hud-title, .hud-stats { cursor: pointer; }
+.chip.okchip { background: rgba(22,163,74,.15); color: var(--ok); }
+.chip.badchip { background: rgba(220,38,38,.12); color: var(--danger); }
+
+.fasterbar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 10px; border-radius: 12px; background: rgba(22,163,74,.12); border: 2px solid var(--ok); }

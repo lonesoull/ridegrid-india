@@ -39,8 +39,12 @@ export interface Directions { from: LngLat; coords: LngLat[]; distM: number; rou
 export async function directionsTo(i: number, from?: LngLat): Promise<Directions> {
   const s = engine.stops[i];
   if (!s) throw new Error('No such stop');
+  return directionsToPoint([s.lng, s.lat], from);
+}
+
+/** Road route from the rider (or `from`) to any point — Google two-wheeler with live traffic when available. */
+export async function directionsToPoint(to: LngLat, from?: LngLat): Promise<Directions> {
   const me = from ?? (await myLocation());
-  const to: LngLat = [s.lng, s.lat];
   if (haversine(me, to) < 30) return { from: me, coords: [me, to], distM: haversine(me, to), routed: true };
   if (google.active) {
     try {

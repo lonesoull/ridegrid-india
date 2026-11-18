@@ -26,6 +26,9 @@ export function NavPanel() {
   const done = nav.done;
   const sim = nav.mode === 'sim';
   const etaSpeed = sim ? (nav.settings.simKmh / 3.6) * nav.mult : Math.max(nav.speedMps, 35 / 3.6);
+  // daily + Google: live-traffic time to the next stop (kept fresh by the faster-route checks)
+  const live = !sim && nav.liveEta && Date.now() - nav.liveEta.at < 5 * 60000 ? nav.liveEta : null;
+  const etaS = live ? Math.max(0, live.toNextS - (Date.now() - live.at) / 1000) + Math.max(0, nav.remaining - nav.distToNext) / etaSpeed : nav.remaining / etaSpeed;
   const st = stage(stageOfStop(Math.max(0, nav.next - 1)));
   const turn = nav.nextTurn;
   const toStop = nav.distToNext;
@@ -88,10 +91,17 @@ export function NavPanel() {
         {nav.gpsError && <div className="offbanner warn">{nav.gpsError}</div>}
         {!sim && !nav.pos && !nav.gpsError && <div className="muted">Waiting for GPS fix… (outdoors with open sky is fastest)</div>}
         <div className="navsummary">
-          <div><b className="eta">{done ? 'Arrived' : fmtDur(nav.remaining / etaSpeed)}</b> <span className="muted">· {fmtKm(nav.remaining)} · arrive {sim ? '—' : clock(nav.remaining / etaSpeed)}</span></div>
+          <div><b className="eta">{done ? 'Arrived' : fmtDur(etaS)}</b> <span className="muted">· {fmtKm(nav.remaining)} · arrive {sim ? '—' : clock(etaS)}{live ? ' · live traffic' : ''}</span></div>
           <div className="muted">Next {t.one} <b>#{Math.min(nav.next + 1, N).toLocaleString('en-IN')}</b> of {N.toLocaleString('en-IN')} · {done ? '—' : fmtDist(toStop)}
             {!sim && ` · ${Math.round(nav.speedMps * 3.6)} km/h`}{sim && ` · ${nav.settings.simKmh} km/h ×${nav.mult}`}</div>
         </div>
+        {nav.faster && (
+          <div className="fasterbar">
+            <div><b>Faster route available</b><div className="muted">Saves {Math.round(nav.faster.savingS / 60)} min with current traffic</div></div>
+            <button className="primary" onClick={() => nav.takeFaster()}>Take it</button>
+            <button onClick={() => nav.ignoreFaster()}>Ignore</button>
+          </div>
+        )}
         {detour && !nav.approach && !sim && (
           <div className="navbtns">
             <button className="primary" onClick={() => { if (!nav.returnSameWay()) toast('No path recorded yet'); }}>↩ Return the way I came</button>
