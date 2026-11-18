@@ -19,7 +19,7 @@ export interface Trip {
 export interface Draft { tripId: string; stops: StopTuple[]; updatedAt: number; cursor?: number /* history seq this snapshot reflects */ }
 export interface SavedRoute { id: string; tripId: string; name: string; stops: StopTuple[]; distM: number; createdAt: number }
 export interface HistoryEntry { id?: number; tripId: string; seq: number; cmd: unknown }
-export interface LegCacheEntry { key: string; poly: string; distM: number; provider: string; at: number }
+export interface LegCacheEntry { key: string; poly: string; distM: number; provider: string; at: number; turns?: import('./turns').Turn[] }
 export interface Setting { key: string; value: unknown }
 export interface Ride { id: string; tripId: string; startedAt: number; endedAt?: number; distM: number; points: number; simulated: boolean; name: string }
 /** Ride GPS points in chunks: [timeMs, lng, lat, accuracyM, speedMps] */

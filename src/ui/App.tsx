@@ -4,11 +4,14 @@ import { engine } from '../core/engine';
 import { app } from '../core/app';
 import { bootTrips, leaveStressTrip, deleteStressTrip } from '../core/trips';
 import { fmtKm } from '../core/geo';
+import { getSetting, putSetting } from '../core/db';
 import { ui, useUI, toast, act, type TapMode } from './state';
 import { useEngine, useRouterStatus } from './hooks';
 import { Drawer } from './Drawer';
 import { FpsMeter } from './FpsMeter';
 import { StopSheet } from './StopSheet';
+import { Icon } from './Icon';
+import { useNav } from './navHooks';
 import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
@@ -17,7 +20,7 @@ export let mapCtl: MapController | null = null;
 
 const TAP_NEXT: Record<TapMode, TapMode> = { append: 'insert', insert: 'off', off: 'append' };
 const TAP_LABEL: Record<TapMode, string> = { append: 'Tap: add stop at end', insert: 'Tap: insert on route line', off: 'Tap: view only' };
-const TAP_ICON: Record<TapMode, string> = { append: '＋', insert: '⤵', off: '✋' };
+const TAP_ICON: Record<TapMode, string> = { append: 'plus', insert: 'insert', off: 'hand' };
 
 export function App() {
   const el = useRef<HTMLDivElement>(null);
@@ -28,6 +31,8 @@ export function App() {
     (async () => {
       await app.loadSettings();
       await nav.loadSettings();
+      const tr = await getSetting('traffic', { key: '', on: false });
+      ui.set({ trafficKey: tr.key, traffic: tr.on && !!tr.key });
       await bootTrips();
       setReady(true);
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
@@ -47,6 +52,14 @@ export function App() {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('pagehide', flush); };
   }, []);
 
+  const traffic = useUI((s) => s.traffic);
+  const trafficKey = useUI((s) => s.trafficKey);
+  useEffect(() => {
+    if (!ready) return; // don't overwrite the saved setting before it has been loaded
+    mapCtl?.setTraffic(traffic && trafficKey ? trafficKey : null);
+    void putSetting('traffic', { key: trafficKey, on: traffic });
+  }, [traffic, trafficKey, ready]);
+
   const night = useUI((s) => s.night);
   useEffect(() => {
     document.documentElement.dataset.theme = night ? 'dark' : 'light';
@@ -56,7 +69,7 @@ export function App() {
   return (
     <div className="app">
       <div ref={el} className="map" />
-      {ready && <Hud />}
+      {ready && <HudGate />}
       {ready && <Controls />}
       {ready && <StopSheet />}
       {ready && <NavPanel />}
@@ -101,6 +114,20 @@ function Hud() {
   );
 }
 
+function TrafficFab() {
+  const on = useUI((s) => s.traffic);
+  const key = useUI((s) => s.trafficKey);
+  return (
+    <button className={`fab glass ${on ? 'traffic-on' : ''}`} title={key ? (on ? 'Hide live traffic' : 'Show live traffic') : 'Live traffic — add a free TomTom key in Tools'}
+      onClick={() => (key ? ui.set({ traffic: !on }) : ui.set({ drawer: true, tab: 'tools' }))}><Icon name="traffic" /></button>
+  );
+}
+
+function HudGate() {
+  useNav();
+  return nav.mode === 'off' ? <Hud /> : null;
+}
+
 function Controls() {
   useEngine();
   const tapMode = useUI((s) => s.tapMode);
@@ -115,17 +142,18 @@ function Controls() {
   };
   return (
     <>
-      <button className="fab menu glass" aria-label="Open menu" onClick={() => ui.set({ drawer: true })}>☰</button>
+      <button className="fab menu glass" aria-label="Open menu" onClick={() => ui.set({ drawer: true })}><Icon name="menu" size={26} /></button>
       <div className="fabs">
-        <button className="fab glass" title="Undo (Ctrl+Z)" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}>↶</button>
-        <button className="fab glass" title="Redo (Ctrl+Y)" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}>↷</button>
-        <button className={`fab glass tap-${tapMode}`} title={TAP_LABEL[tapMode]} onClick={() => { const n = TAP_NEXT[tapMode]; ui.set({ tapMode: n }); toast(TAP_LABEL[n]); }}>{TAP_ICON[tapMode]}</button>
-        <button className="fab glass go" title="Ride / simulate this route" onClick={() => ui.set({ drawer: true, tab: 'ride' })}>🏍</button>
-        <button className="fab glass" title="Fit route" onClick={() => mapCtl?.fitRoute()}>⤢</button>
-        <button className="fab glass" title="Tilt 3D / flat" onClick={() => mapCtl?.tilt()}>⛰</button>
-        <button className="fab glass" title="North up, flat" onClick={() => mapCtl?.snapView()}>🧭</button>
-        <button className="fab glass" title="My location" onClick={locate}>◎</button>
-        <button className="fab glass" title="Day / Night" onClick={() => ui.set({ night: !night })}>{night ? '☀' : '☾'}</button>
+        <button className="fab glass" title="Undo (Ctrl+Z)" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}><Icon name="undo" /></button>
+        <button className="fab glass" title="Redo (Ctrl+Y)" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}><Icon name="redo" /></button>
+        <button className={`fab glass tap-${tapMode}`} title={TAP_LABEL[tapMode]} onClick={() => { const n = TAP_NEXT[tapMode]; ui.set({ tapMode: n }); toast(TAP_LABEL[n]); }}><Icon name={TAP_ICON[tapMode]} /></button>
+        <button className="fab glass go" title="Ride / simulate this route" onClick={() => ui.set({ drawer: true, tab: 'ride' })}><Icon name="bike" size={26} /></button>
+        <TrafficFab />
+        <button className="fab glass" title="Fit route" onClick={() => mapCtl?.fitRoute()}><Icon name="fit" /></button>
+        <button className="fab glass" title="Tilt 3D / flat" onClick={() => mapCtl?.tilt()}><Icon name="tilt" /></button>
+        <button className="fab glass" title="North up, flat" onClick={() => mapCtl?.snapView()}><Icon name="compass" /></button>
+        <button className="fab glass" title="My location" onClick={locate}><Icon name="locate" /></button>
+        <button className="fab glass" title="Day / Night" onClick={() => ui.set({ night: !night })}><Icon name={night ? 'sun' : 'moon'} /></button>
       </div>
     </>
   );

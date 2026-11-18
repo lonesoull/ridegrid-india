@@ -340,6 +340,8 @@ function ToolsTab() {
         <p className="muted">Public servers are free but rate-limited: each is paced to ~1 request/sec with up to 99 legs per request, and every leg is stored forever on this device. Point the URL at your own OSRM/Valhalla anytime.</p>
       </section>
 
+      <TrafficSettings />
+
       <section>
         <h3>Scale stress test</h3>
         <p className="muted">Adds random-walk test stops on Indian land inside a separate <b>Stress Test</b> trip, so your real trips are never touched and no routing requests are made. One undo step per batch.</p>
@@ -370,4 +372,24 @@ function StorageInfo() {
   const [est] = useAsync(async () => (navigator.storage?.estimate ? navigator.storage.estimate() : undefined), []);
   const [persisted] = useAsync(async () => (navigator.storage?.persisted ? navigator.storage.persisted() : false), []);
   return <p className="muted">{est ? `${((est.usage ?? 0) / 1048576).toFixed(1)} MB used of ${((est.quota ?? 0) / 1073741824).toFixed(1)} GB available.` : 'Storage estimate unavailable.'} {persisted ? 'Persistent storage granted ✓' : 'Persistent storage not yet granted (install the app to keep data safe).'}</p>;
+}
+
+function TrafficSettings() {
+  const key = useUI((s) => s.trafficKey);
+  const on = useUI((s) => s.traffic);
+  const [k, setK] = useState(key);
+  return (
+    <section>
+      <h3>Live traffic</h3>
+      <p className="muted">Colours roads green / orange / red by current speed, refreshed every 2 minutes. Uses TomTom's free plan
+        (about 50,000 map tiles a day — plenty for a few devices). Free key: sign up at developer.tomtom.com → Dashboard → copy the API key.</p>
+      <input placeholder="Paste TomTom API key" value={k} onChange={(e) => setK(e.target.value.trim())} />
+      <div className="btns">
+        <button className="primary" disabled={!k} onClick={() => { ui.set({ trafficKey: k, traffic: true }); toast('Live traffic on'); }}>Save & show traffic</button>
+        {key && <button onClick={() => ui.set({ traffic: !on })}>{on ? 'Hide traffic' : 'Show traffic'}</button>}
+        {key && <button className="danger" onClick={() => { setK(''); ui.set({ trafficKey: '', traffic: false }); }}>Remove key</button>}
+      </div>
+      <p className="muted">Honest limit: no free source matches Google's crowd-sourced traffic. For traffic-aware ETAs, the Google Maps button opens the current stage in Google with live traffic.</p>
+    </section>
+  );
 }

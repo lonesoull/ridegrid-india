@@ -1,7 +1,9 @@
 import { db, uid, getSetting, putSetting, type Ride, type RidePoint } from '../core/db';
 import { engine } from '../core/engine';
 import { haversine, type LngLat } from '../core/geo';
-import { buildRouteLine, matchToRoute, pointAt, withApproach, type RouteLine } from './routeLine';
+import { buildRouteLine, matchToRoute, pointAt, withApproach, type Approach, type LineTurn, type RouteLine } from './routeLine';
+import { turnText } from '../core/turns';
+import { directionsTo } from './directions';
 import { sounds, say, unlockAudio, WakeLock } from './audio';
 
 export type NavMode = 'off' | 'live' | 'sim';
@@ -12,8 +14,9 @@ export interface NavSettings {
   voice: boolean;
   logSim: boolean;     // count simulated rides as "covered" (testing only)
   simKmh: number;      // 1× simulation speed
+  reroute: boolean;    // when off route, plan a road way back to the next stop
 }
-export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50 };
+export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true };
 export const SIM_SPEEDS = [1, 10, 50, 500] as const;
 
 const MAX_ACC_M = 50;          // ignore GPS fixes worse than this for "covered" distance
@@ -76,17 +79,85 @@ export class Navigator {
   get remaining() { return this.line ? Math.max(0, this.line.total - this.s) : 0; }
   get done() { return this.next >= this.stopCount; }
 
+  // ---------------------------------------------------------------- turn-by-turn
+  /** spoken stages per turn: 1 = early (≈500 m), 2 = near (≈150 m), 3 = now */
+  private spoken = new Map<number, number>();
+  rerouting = false;
+  reroutes = 0;
+  private lastReroute = 0;
+
+  /** Index into line.turns of the next maneuver ahead of the rider. */
+  get turnIdx(): number {
+    const T = this.line?.turns;
+    if (!T) return -1;
+    let lo = 0, hi = T.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (T[m].s <= this.s + 3) lo = m + 1; else hi = m; }
+    return lo < T.length ? lo : -1;
+  }
+  get nextTurn(): (LineTurn & { dist: number }) | null {
+    const k = this.turnIdx;
+    if (k < 0 || !this.line) return null;
+    const t = this.line.turns[k];
+    // don't show a turn that lies beyond the next stop's arrival as "next" if the stop comes first
+    return { ...t, dist: t.s - this.s };
+  }
+  get thenTurn(): (LineTurn & { dist: number }) | null {
+    const k = this.turnIdx;
+    if (k < 0 || !this.line || k + 1 >= this.line.turns.length) return null;
+    const t = this.line.turns[k + 1];
+    return { ...t, dist: t.s - this.s };
+  }
+
+  private announceTurns() {
+    if (!this.settings.voice || !this.line) return;
+    if (this.mode === 'sim' && this.mult > 10) return; // too fast to be useful
+    const k = this.turnIdx;
+    if (k < 0) return;
+    const t = this.line.turns[k];
+    const d = t.s - this.s;
+    const v = Math.max(this.mode === 'sim' ? this.settings.simKmh / 3.6 : this.speedMps, 8);
+    const early = Math.max(300, v * 25), near = Math.max(80, v * 8), now = Math.max(25, v * 2.5);
+    const stage = this.spoken.get(k) ?? 0;
+    const txt = turnText(t);
+    const fmt = (m: number) => (m >= 950 ? `${(m / 1000).toFixed(1)} kilometres` : `${Math.round(m / 50) * 50 || Math.round(m)} metres`);
+    if (d <= now && stage < 3) { this.spoken.set(k, 3); say(txt); }
+    else if (d <= near && stage < 2) { this.spoken.set(k, 2); say(`In ${fmt(d)}, ${txt.charAt(0).toLowerCase() + txt.slice(1)}`); }
+    else if (d <= early && d > near * 1.5 && stage < 1) { this.spoken.set(k, 1); say(`In ${fmt(d)}, ${txt.charAt(0).toLowerCase() + txt.slice(1)}`); }
+  }
+
+  /** Off route: plan a road route from here back to the next stop and follow it (like Google's re-route). */
+  private async reroute() {
+    if (!this.settings.reroute || this.rerouting || !this.pos || this.done) return;
+    if (Date.now() - this.lastReroute < 20000) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    this.rerouting = true; this.lastReroute = Date.now(); this.emit();
+    try {
+      const target = this.next;
+      const d = await directionsTo(target, this.pos);
+      if (this.mode !== 'live' || !d.routed) return;
+      this.approach = { coords: d.coords, turns: d.turns };
+      this.fromStop = target;
+      this.line = this.composeLine();
+      this.s = 0; this.matchIdx = 0; this.next = target;
+      this.offRoute = false; this.offCount = 0; this.spoken = new Map();
+      this.reroutes++;
+      if (this.settings.voice) say(`Rerouting. ${Math.round(d.distM / 100) / 10} kilometres to stop ${target + 1}`);
+    } catch { /* keep alarming; try again later */ }
+    finally { this.rerouting = false; this.emit(); }
+  }
+
   // ---------------------------------------------------------------- start / stop
   /** Road path from the rider's position to the first stop (null = start exactly at that stop). */
-  approach: LngLat[] | null = null;
+  approach: Approach | null = null;
   private fromStop = 0;
 
-  async start(mode: 'live' | 'sim', fromStop = 0, approach: LngLat[] | null = null) {
+  async start(mode: 'live' | 'sim', fromStop = 0, approach: Approach | null = null) {
     if (!engine.stops.length || (engine.stops.length < 2 && !approach)) throw new Error('Add at least 2 stops first.');
     await this.stop();
     unlockAudio();
     fromStop = Math.max(0, Math.min(fromStop, engine.stops.length - 1));
-    this.approach = approach && approach.length >= 2 ? approach : null;
+    this.approach = approach && approach.coords.length >= 2 ? approach : null;
+    this.spoken = new Map(); this.rerouting = false; this.lastReroute = 0; this.reroutes = 0;
     this.fromStop = fromStop;
     this.line = this.composeLine();
     this.mode = mode;
@@ -171,6 +242,7 @@ export class Navigator {
     this.accuracy = 0;
     this.addTrackPoint(at.p, this.simClock, 0, this.speedMps, true);
     this.checkArrivals();
+    this.announceTurns();
     if (this.s >= this.line.total) {
       this.playing = false;
       this.next = this.stopCount;
@@ -206,7 +278,8 @@ export class Navigator {
         this.offCount = 0;
         if (this.offRoute) { this.offRoute = false; if (this.settings.beep) sounds.backOnRoute(); if (this.settings.voice) say('Back on route'); }
       }
-      if (!this.offRoute) { this.s = m.s; this.matchIdx = m.idx; }
+      if (!this.offRoute) { this.s = m.s; this.matchIdx = m.idx; this.announceTurns(); }
+      else void this.reroute();
       this.checkArrivals();
     }
     this.emit();

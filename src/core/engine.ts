@@ -1,5 +1,6 @@
 import { db, uid, type StopTuple, type Trip } from './db';
 import { ckey, decode6, haversine, type LngLat } from './geo';
+import type { Turn } from './turns';
 
 export interface Stop { id: string; lng: number; lat: number; name?: string }
 export type LegStatus = 'ok' | 'pending' | 'error';
@@ -7,6 +8,7 @@ export interface Leg {
   key: string; a: string; b: string;
   from: LngLat; to: LngLat;
   coords: LngLat[] | null; distM: number; status: LegStatus;
+  turns?: Turn[];
   fid: number; // numeric feature id for MapLibre diff updates
 }
 
@@ -144,7 +146,7 @@ export class RouteEngine {
     if (created.length) {
       const cached = await db.legs.bulkGet(created.map((l) => cacheKey(l.from, l.to)));
       cached.forEach((c, i) => {
-        if (c) { const l = created[i]; l.coords = decode6(c.poly); l.distM = c.distM; l.status = 'ok'; }
+        if (c) { const l = created[i]; l.coords = decode6(c.poly); l.distM = c.distM; l.status = 'ok'; l.turns = c.turns; }
       });
       created.forEach((l) => this.accountAdd(l));
     }
@@ -165,11 +167,11 @@ export class RouteEngine {
   }
 
   /** Called by the router when a leg's road geometry arrives. */
-  setLegGeometry(key: string, coords: LngLat[] | null, distM: number, status: LegStatus) {
+  setLegGeometry(key: string, coords: LngLat[] | null, distM: number, status: LegStatus, turns?: Turn[]) {
     const l = this.legs.get(key);
     if (!l) return;
     this.accountRemove(l);
-    l.coords = coords; l.distM = distM; l.status = status;
+    l.coords = coords; l.distM = distM; l.status = status; l.turns = turns;
     this.accountAdd(l);
     this.priority.delete(key);
     this.emit(false, { add: [], remove: [], update: [l] });

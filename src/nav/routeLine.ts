@@ -1,5 +1,9 @@
 import { engine, type Leg } from '../core/engine';
 import { haversine, type LngLat } from '../core/geo';
+import type { Turn, TurnCode } from '../core/turns';
+
+export interface LineTurn { s: number; c: TurnCode; n?: string; x?: number }
+export interface Approach { coords: LngLat[]; turns?: Turn[] }
 
 const RAD = Math.PI / 180;
 
@@ -9,6 +13,8 @@ export interface RouteLine {
   /** distance along the line at which stop i is reached */
   stopS: Float64Array;
   total: number;
+  /** maneuvers along the line, sorted by distance */
+  turns: LineTurn[];
 }
 
 export function buildRouteLine(): RouteLine {
@@ -17,6 +23,7 @@ export function buildRouteLine(): RouteLine {
   for (const l of engine.legs.values()) byPair.set(`${l.a}>${l.b}`, l);
   const xs: number[] = [], ys: number[] = [], cum: number[] = [];
   const stopS = new Float64Array(S.length);
+  const turns: LineTurn[] = [];
   let d = 0;
   const push = (p: LngLat) => {
     const n = xs.length;
@@ -30,9 +37,11 @@ export function buildRouteLine(): RouteLine {
     const coords: LngLat[] = l?.status === 'ok' && l.coords ? l.coords : [[S[i].lng, S[i].lat], [S[i + 1].lng, S[i + 1].lat]];
     push(coords[0]);
     stopS[i] = d;
-    for (let k = 1; k < coords.length; k++) push(coords[k]);
+    const at: number[] = [cum.length - 1];
+    for (let k = 1; k < coords.length; k++) { push(coords[k]); at.push(cum.length - 1); }
+    if (l?.status === 'ok' && l.turns) for (const t of l.turns) { const j = at[t.i]; if (j !== undefined) turns.push({ s: cum[j], c: t.c, n: t.n, x: t.x }); }
   }
-  return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d };
+  return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d, turns };
 }
 
 /** Bearing in degrees (0 = north) from a to b. */
@@ -106,7 +115,9 @@ export function sliceLine(L: RouteLine, s0: number, s1: number): LngLat[] {
  * Prefix the route with an approach path (e.g. from the rider's current location to stop `from`),
  * dropping everything before that stop. Stops before `from` get stopS = -1 (never "next").
  */
-export function withApproach(L: RouteLine, approach: LngLat[], from: number): RouteLine {
+export function withApproach(L: RouteLine, ap: Approach, from: number): RouteLine {
+  const approach = ap.coords;
+  const turns: LineTurn[] = [];
   const xs: number[] = [], ys: number[] = [], cum: number[] = [];
   let d = 0;
   const push = (x: number, y: number) => {
@@ -115,7 +126,9 @@ export function withApproach(L: RouteLine, approach: LngLat[], from: number): Ro
     if (n) d += haversine([xs[n - 1], ys[n - 1]], [x, y]);
     xs.push(x); ys.push(y); cum.push(d);
   };
-  for (const p of approach) push(p[0], p[1]);
+  const at: number[] = [];
+  for (const p of approach) { push(p[0], p[1]); at.push(cum.length - 1); }
+  for (const t of ap.turns ?? []) { const j = at[t.i]; if (j !== undefined) turns.push({ s: cum[j], c: t.c, n: t.n, x: t.x }); }
   const approachLen = d;
   const startS = L.stopS[from];
   const k = L.n > 1 ? segAt(L, startS) : 0;
@@ -123,6 +136,8 @@ export function withApproach(L: RouteLine, approach: LngLat[], from: number): Ro
   push(start[0], start[1]);
   for (let i = k + 1; i < L.n; i++) push(L.x[i], L.y[i]);
   const stopS = new Float64Array(L.stopS.length);
-  for (let i = 0; i < stopS.length; i++) stopS[i] = i < from ? -1 : L.stopS[i] - startS + approachLen + (d - approachLen - (L.total - startS));
-  return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d };
+  const offset = approachLen + (d - approachLen - (L.total - startS)) - startS;
+  for (let i = 0; i < stopS.length; i++) stopS[i] = i < from ? -1 : L.stopS[i] + offset;
+  for (const t of L.turns) if (t.s > startS + 1) turns.push({ ...t, s: t.s + offset });
+  return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d, turns };
 }

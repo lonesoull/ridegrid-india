@@ -145,6 +145,9 @@ export class MapController {
     m.addLayer({ id: 'rg-me', type: 'circle', source: ME,
       paint: { 'circle-radius': 9, 'circle-color': '#0ea5e9', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
 
+    // ---- live traffic overlay (TomTom free tier), drawn under the route
+    if (this.trafficKey) this.addTraffic();
+
     // ---- navigation layers (Phase 2)
     m.addSource(APPROACH, { type: 'geojson', data: this.approach ? lineFeature(this.approach) : empty() });
     m.addLayer({ id: 'rg-approach-casing', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
@@ -260,6 +263,32 @@ export class MapController {
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
+  // ---------- live traffic ----------
+  private trafficKey: string | null = null;
+  private trafficTimer: ReturnType<typeof setInterval> | null = null;
+  private trafficUrl() {
+    return `https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${encodeURIComponent(this.trafficKey!)}&tileSize=256&thickness=8&t=${Math.floor(Date.now() / 120000)}`;
+  }
+  private addTraffic() {
+    const m = this.map;
+    if (m.getSource('rg-traffic')) return;
+    m.addSource('rg-traffic', { type: 'raster', tiles: [this.trafficUrl()], tileSize: 256, minzoom: 6, maxzoom: 18, attribution: '© TomTom traffic' });
+    m.addLayer({ id: 'rg-traffic', type: 'raster', source: 'rg-traffic', paint: { 'raster-opacity': 0.9, 'raster-fade-duration': 0 } }, 'rg-route-casing');
+  }
+  /** Show / hide the live traffic layer; refreshes every 2 minutes while on. */
+  setTraffic(key: string | null) {
+    this.trafficKey = key;
+    if (this.trafficTimer) { clearInterval(this.trafficTimer); this.trafficTimer = null; }
+    if (!this.styleReady) return;
+    if (!key) {
+      if (this.map.getLayer('rg-traffic')) this.map.removeLayer('rg-traffic');
+      if (this.map.getSource('rg-traffic')) this.map.removeSource('rg-traffic');
+      return;
+    }
+    this.addTraffic();
+    this.trafficTimer = setInterval(() => (this.map.getSource('rg-traffic') as any)?.setTiles([this.trafficUrl()]), 120000);
+  }
+
   private approach: LngLat[] | null = null;
   /** Orange dashed "how to get there" path from the rider to a stop. */
   setApproach(coords: LngLat[] | null, fit = false) {

@@ -145,3 +145,27 @@ input[type=range] { padding: 0; min-height: 36px; accent-color: var(--accent); b
 .main-actions > button { min-height: 52px; font-size: 16px; font-weight: 600; }
 .btns.sm > button { min-height: 40px; padding: 6px 10px; font-size: 14px; }
 .fab.go { font-size: 24px; }
+
+/* icons */
+.ico { flex: none; vertical-align: -0.2em; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+button.link { display: block; }
+/* Google-style turn banner */
+.turnbar { position: absolute; z-index: 8; top: calc(10px + env(safe-area-inset-top)); left: 74px; right: 74px; max-width: 560px; margin: 0 auto;
+  background: #0f7a3f; color: #fff; border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+.turnbar.off { background: var(--danger); animation: pulse 1s ease-in-out infinite alternate; }
+.turnmain { display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
+.turnicon { width: 56px; height: 56px; display: grid; place-items: center; font-size: 30px; font-weight: 800; flex: none; }
+.turnicon.stopicon { border: 4px solid #fff; border-radius: 50%; width: 48px; height: 48px; font-size: 18px; }
+.turndist { font-size: 28px; font-weight: 800; line-height: 1.1; }
+.turntext { font-size: 18px; font-weight: 600; line-height: 1.2; }
+.turnthen { background: rgba(0, 0, 0, 0.22); padding: 6px 16px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.navsummary { display: grid; gap: 2px; }
+.navsummary .eta { font-size: 24px; color: var(--ok); }
+@media (max-width: 520px) {
+  .turnbar { left: 70px; right: 70px; }
+  .turndist { font-size: 22px; } .turntext { font-size: 15px; }
+  .turnicon { width: 44px; height: 44px; }
+}
+
+.fab.traffic-on { color: #fff; background: #16a34a; }

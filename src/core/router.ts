@@ -1,8 +1,9 @@
 import { db } from './db';
 import { decode6, encode6, lineLength, type LngLat } from './geo';
 import { cacheKey, engine, type RouteEngine } from './engine';
+import { osrmTurn, valhallaTurn, type Turn } from './turns';
 
-export interface LegResult { coords: LngLat[]; distM: number }
+export interface LegResult { coords: LngLat[]; distM: number; turns?: Turn[] }
 export interface Provider {
   id: string;
   label: string;
@@ -24,18 +25,22 @@ async function getJSON(url: string, init?: RequestInit) {
   return r.json();
 }
 
-/** Concatenate step geometries into one continuous Polyline6 leg (no duplicated joints). */
-function joinSteps(steps: { geometry: string }[]): LngLat[] {
+/** Concatenate step geometries into one continuous Polyline6 leg (no duplicated joints) + its turns. */
+function joinSteps(steps: any[]): { coords: LngLat[]; turns: Turn[] } {
   const out: LngLat[] = [];
+  const turns: Turn[] = [];
   for (const st of steps) {
     const pts = decode6(st.geometry);
+    let startIdx = out.length;
     for (let i = 0; i < pts.length; i++) {
       const last = out[out.length - 1];
-      if (last && last[0] === pts[i][0] && last[1] === pts[i][1]) continue;
+      if (last && last[0] === pts[i][0] && last[1] === pts[i][1]) { if (i === 0) startIdx = out.length - 1; continue; }
       out.push(pts[i]);
     }
+    const t = osrmTurn(st, Math.max(0, startIdx));
+    if (t) turns.push(t);
   }
-  return out;
+  return { coords: out, turns };
 }
 
 const isPublic = (u: string) => /project-osrm\.org|openstreetmap\.de/.test(u);
@@ -53,8 +58,8 @@ export function osrmProvider(base = 'https://router.project-osrm.org', profile =
       const j = await getJSON(`${base}/route/v1/${profile}/${coords}?overview=false&steps=true&geometries=polyline6&continue_straight=false`, { signal });
       if (j.code !== 'Ok') throw new HttpError(422, j.message || j.code);
       return j.routes[0].legs.map((leg: any) => {
-        const c = joinSteps(leg.steps);
-        return { coords: c, distM: leg.distance ?? lineLength(c) };
+        const { coords: c, turns } = joinSteps(leg.steps);
+        return { coords: c, distM: leg.distance ?? lineLength(c), turns };
       });
     },
     async nearest(p) {
@@ -78,13 +83,14 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
         locations: points.map(([lon, lat]) => ({ lon, lat, type: 'break' })),
         costing: 'motorcycle',
         costing_options: { motorcycle: { use_highways: 0.5 } },
-        directions_type: 'none',
+        directions_type: 'maneuvers',
         ...(excludePolygons.length ? { exclude_polygons: excludePolygons } : {}),
       };
       const j = await getJSON(`${base}/route`, { method: 'POST', body: JSON.stringify(body), signal, headers: { 'Content-Type': 'application/json' } });
       return j.trip.legs.map((leg: any) => {
         const c = decode6(leg.shape);
-        return { coords: c, distM: (leg.summary?.length ?? 0) * 1000 || lineLength(c) };
+        const turns = (leg.maneuvers ?? []).map(valhallaTurn).filter(Boolean) as Turn[];
+        return { coords: c, distM: (leg.summary?.length ?? 0) * 1000 || lineLength(c), turns };
       });
     },
     async nearest(p) {
@@ -193,11 +199,11 @@ export class RoutingQueue {
           const legs = await w.provider.route(points, ctl.signal);
           w.backoffMs = 0; this.lastError = '';
           const rows = run.map((l, i) => ({ l, r: legs[i] })).filter((x) => x.r && x.r.coords.length >= 2);
-          await db.legs.bulkPut(rows.map(({ l, r }) => ({ key: cacheKey(l.from, l.to), poly: encode6(r.coords), distM: r.distM, provider: w.provider.id, at: Date.now() })));
+          await db.legs.bulkPut(rows.map(({ l, r }) => ({ key: cacheKey(l.from, l.to), poly: encode6(r.coords), distM: r.distM, turns: r.turns, provider: w.provider.id, at: Date.now() })));
           run.forEach((l, i) => {
             this.solo.delete(l.key);
             const r = legs[i];
-            if (r && r.coords.length >= 2) this.eng.setLegGeometry(l.key, r.coords, r.distM, 'ok');
+            if (r && r.coords.length >= 2) this.eng.setLegGeometry(l.key, r.coords, r.distM, 'ok', r.turns);
             else this.eng.setLegGeometry(l.key, null, 0, 'error');
           });
         } catch (e: any) {

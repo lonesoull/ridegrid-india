@@ -6,10 +6,11 @@ import { listRides, deleteRide, rideGPX } from '../nav/rides';
 import { engine } from '../core/engine';
 import { fmtKm } from '../core/geo';
 import { download, safeName } from '../io/exporters';
-import { ui, act, toast } from './state';
+import { act, toast } from './state';
 import { useAsync, useEngine } from './hooks';
 import { useNav } from './navHooks';
-import { mapCtl } from './App';
+import { startRide } from './startRide';
+import { Icon } from './Icon';
 
 export function RideTab() {
   useEngine(); useNav();
@@ -22,11 +23,7 @@ export function RideTab() {
   const fromIdx = Math.max(0, Math.min(n - 1, (parseInt(from) || 1) - 1));
   const pending = engine.pendingLegs + engine.errorLegs;
 
-  const start = (mode: 'live' | 'sim') => act(null, async () => {
-    await nav.start(mode, fromIdx);
-    ui.set({ drawer: false, tapMode: 'off', selectedId: null, following: true });
-    mapCtl?.startFollow(nav.pos);
-  });
+  const start = (mode: 'live' | 'sim') => act(mode === 'live' ? 'Starting navigation…' : 'Starting simulation…', () => startRide(mode, fromIdx));
 
   const stages = stageCount();
   const PER = 20;
@@ -42,10 +39,10 @@ export function RideTab() {
           <input inputMode="numeric" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
         <div className="btns">
-          <button className="primary" disabled={n < 2 || nav.mode !== 'off'} onClick={() => start('live')}>🏍 Start GPS navigation</button>
-          <button disabled={n < 2 || nav.mode !== 'off'} onClick={() => start('sim')}>▶ Simulate ride</button>
+          <button className="primary" disabled={n < 2 || nav.mode !== 'off'} onClick={() => start('live')}><Icon name="play" /> Start GPS navigation</button>
+          <button disabled={n < 2 || nav.mode !== 'off'} onClick={() => start('sim')}><Icon name="sim" /> Simulate ride</button>
         </div>
-        {nav.mode !== 'off' && <button className="danger" onClick={() => act(null, () => nav.stop())}>⏹ Stop {nav.mode === 'sim' ? 'simulation' : 'navigation'}</button>}
+        {nav.mode !== 'off' && <button className="danger" onClick={() => act(null, () => nav.stop())}><Icon name="stop" /> Stop {nav.mode === 'sim' ? 'simulation' : 'navigation'}</button>}
         <p className="muted">Keeps the screen on while riding. Simulation glides along your exact road route at 1× / 10× / 50× / 500× ({s.simKmh} km/h base) for desk testing.</p>
       </section>
 
@@ -62,6 +59,7 @@ export function RideTab() {
         </label>
         <label className="check"><input type="checkbox" checked={s.beep} onChange={(e) => set({ beep: e.target.checked })} /><span>Audio beeps (off-route alarm, arrival chime)</span></label>
         <label className="check"><input type="checkbox" checked={s.voice} onChange={(e) => set({ voice: e.target.checked })} /><span>Voice announcements (helmet speaker)</span></label>
+        <label className="check"><input type="checkbox" checked={s.reroute} onChange={(e) => set({ reroute: e.target.checked })} /><span>Auto re-route back to the next stop when off route (like Google Maps)</span></label>
         <label className="check"><input type="checkbox" checked={s.logSim} onChange={(e) => set({ logSim: e.target.checked })} /><span>Log simulated rides too (testing — adds to “covered”)</span></label>
         <div className="btns">
           <button onClick={() => sounds.offRoute()}>Test off-route alarm</button>

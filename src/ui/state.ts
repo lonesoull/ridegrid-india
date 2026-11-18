@@ -11,6 +11,8 @@ export interface UIState {
   following: boolean;
   /** next map tap inserts a stop at this index */
   insertAt: number | null;
+  traffic: boolean;
+  trafficKey: string;
   toast: { msg: string; kind: 'info' | 'error'; at: number } | null;
   fps: boolean;
   busy: string | null;
@@ -19,7 +21,7 @@ export interface UIState {
 let state: UIState = {
   selectedId: null, tapMode: 'append', snapToRoad: true,
   night: typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches,
-  drawer: false, tab: 'trip', following: true, insertAt: null, toast: null, fps: false, busy: null,
+  drawer: false, tab: 'trip', following: true, insertAt: null, traffic: false, trafficKey: '', toast: null, fps: false, busy: null,
 };
 const subs = new Set<() => void>();
 

@@ -57,7 +57,7 @@ describe('approach route', () => {
   it('prefixes the path from the rider and keeps stop distances consistent', () => {
     const L = buildRouteLine();
     const approach: LngLat[] = [[78.05, 19.99], [78.05, 19.995], [78.05, 20]]; // ~1.1 km south of stop #6
-    const A = withApproach(L, approach, 5);
+    const A = withApproach(L, { coords: approach }, 5);
     expect(A.stopS[4]).toBe(-1);
     expect(A.stopS[5]).toBeGreaterThan(1000); expect(A.stopS[5]).toBeLessThan(1200);
     expect(A.stopS[24] - A.stopS[5]).toBeCloseTo(L.stopS[24] - L.stopS[5], 0);
