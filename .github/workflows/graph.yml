@@ -1,0 +1,38 @@
+name: Build routing graphs
+
+# Builds the on-device routing graph for each India zone from OpenStreetMap (Geofabrik extracts)
+# and publishes them as assets of the "india-graph" release. Nothing is committed to the code.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/build-graph.mjs', '.github/workflows/graph.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  graph:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        zone: [southern-zone]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+      - run: node --max-old-space-size=6000 tools/build-graph.mjs ${{ matrix.zone }}
+      - run: gzip -9 -k graph-out/${{ matrix.zone }}.rgg && ls -la graph-out
+      - name: Publish to the "india-graph" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: india-graph
+          name: India routing graphs
+          body: On-device routing graphs built from OpenStreetMap (© OpenStreetMap contributors, ODbL). Two-wheeler-banned roads removed.
+          files: |
+            graph-out/${{ matrix.zone }}.rgg.gz
+            graph-out/${{ matrix.zone }}.json
