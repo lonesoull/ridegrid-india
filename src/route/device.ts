@@ -81,6 +81,16 @@ export const device = {
     this.emit();
   },
 
+  /** One leg that never comes within gapM of the given lines (flat [x0,y0,x1,y1,…]); null if impossible. */
+  async routeAvoiding(from: LngLat, to: LngLat, segs: number[], gapM: number, goalSegs?: number[]): Promise<LegResult | null> {
+    if (!this.loaded.size) return null;
+    const r = await call<{ result: { coords: LngLat[]; distM: number; names: (string | undefined)[] } | null }>({ type: 'avoid', from, to, segs, gapM, goalSegs });
+    const leg = r.result;
+    if (!leg) return null;
+    const turns: Turn[] = deriveTurns(leg.coords).map((t) => ({ ...t, n: leg.names[Math.min(leg.names.length - 1, t.i + 1)] }));
+    return { coords: leg.coords, distM: leg.distM, turns };
+  },
+
   async covers(points: LngLat[]): Promise<boolean> {
     if (!this.loaded.size) return false;
     const r = await call<{ result: boolean[] }>({ type: 'covers', points });

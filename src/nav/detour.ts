@@ -3,6 +3,7 @@ import { valhallaTurn, type Turn, type TurnCode } from '../core/turns';
 import type { RouteLine } from './routeLine';
 import { bearing } from './routeLine';
 import type { SegIndex } from './spatial';
+import { device } from '../route/device';
 
 const RAD = Math.PI / 180, R = 6371008.8;
 
@@ -88,9 +89,36 @@ export function noGoPolygons(L: RouteLine, from: LngLat, to: LngLat, skip: [numb
 
 export interface SafeRoute { coords: LngLat[]; turns: Turn[]; distM: number; minGapM: number; ok: boolean }
 
-/** Valhalla motorcycle route avoiding the no-go strips, then double-checked against the full index. */
+/** Planned-route segments (flat x0,y0,x1,y1…) around a detour, leaving out the skip range (the road being left/rejoined). */
+export function plannedSegsNear(L: RouteLine, from: LngLat, to: LngLat, skip: [number, number], inside = false): number[] {
+  const padM = 5000 + 0.5 * haversine(from, to);
+  const minX = Math.min(from[0], to[0]), maxX = Math.max(from[0], to[0]), minY = Math.min(from[1], to[1]), maxY = Math.max(from[1], to[1]);
+  const dLat = padM / (R * RAD), dLng = dLat / Math.cos(((minY + maxY) / 2) * RAD);
+  const out: number[] = [];
+  for (let i = 0; i < L.n - 1; i++) {
+    if ((L.cum[i + 1] >= skip[0] && L.cum[i] <= skip[1]) !== inside) continue;
+    const x = L.x[i], y = L.y[i];
+    if (x < minX - dLng || x > maxX + dLng || y < minY - dLat || y > maxY + dLat) continue;
+    out.push(x, y, L.x[i + 1], L.y[i + 1]);
+  }
+  return out;
+}
+
+/**
+ * Safe detour leg: on the device when the region is downloaded (no internet, no size limit on the
+ * no-go area), otherwise Valhalla with no-go strips. Always double-checked against the full index.
+ */
 export async function safeRoute(from: LngLat, to: LngLat, L: RouteLine, idx: SegIndex, skip: [number, number], gapM: number,
   base = 'https://valhalla1.openstreetmap.de'): Promise<SafeRoute> {
+  if (device.loaded.size && device.coversSync(from) && device.coversSync(to)) {
+    try {
+      const leg = await device.routeAvoiding(from, to, plannedSegsNear(L, from, to, skip), gapM + 5, plannedSegsNear(L, from, to, skip, true));
+      if (leg) {
+        const minGapM = minGapAlong(leg.coords, idx, skip, gapM * 4);
+        if (minGapM >= gapM || !navigator.onLine) return { coords: leg.coords, turns: leg.turns ?? [], distM: leg.distM, minGapM, ok: minGapM >= gapM };
+      } else if (!navigator.onLine) throw new Error(`No road here keeps ${gapM} m from your other planned roads — use "Return the way I came"`);
+    } catch (e) { if (!navigator.onLine) throw e; }
+  }
   const polys = noGoPolygons(L, from, to, skip, gapM + 10);
   const body = {
     locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }],

@@ -199,7 +199,17 @@ export function route(g: Graph, from: LngLat, to: LngLat): Path | null { return 
  * Shortest-time route with A* across one or more region graphs: the search hops between regions
  * at their shared border junctions, so a ride from one downloaded region into the next works offline.
  */
-export function routeMulti(gs: Graph[], from: LngLat, to: LngLat): Path | null {
+export interface RouteOpts {
+  /** roads that may not be used (e.g. too close to other planned roads) */
+  blocked?: (g: Graph, e: number) => boolean;
+  /** extra arrival junctions (e.g. "anywhere back on my road near where I left it") */
+  isGoal?: (g: Graph, v: number) => boolean;
+  /** give up beyond this much riding time (s) */
+  maxCostS?: number;
+}
+
+export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpts = {}): Path | null {
+  const { blocked, isGoal, maxCostS = Infinity } = opts;
   const snapBest = (p: LngLat) => {
     let best: { gi: number; s: NonNullable<ReturnType<Graph['snap']>> } | null = null;
     gs.forEach((g, gi) => { if (!g.contains(p)) return; const s = g.snap(p, 500); if (s && (!best || s.d < best.s.d)) best = { gi, s }; });
@@ -228,7 +238,7 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat): Path | null {
   if (!oneway(ga, a.e)) startTo(ga.ea[a.e], sec(ga, a.e, a.along));
   const goalCost = (gi: number, v: number) => gi !== B.gi ? Infinity
     : v === gb.ea[b.e] ? sec(gb, b.e, b.along) : v === gb.eb[b.e] && !oneway(gb, b.e) ? sec(gb, b.e, edgeM(gb, b.e) - b.along) : Infinity;
-  let bestTotal = Infinity, bestEnd = -1;
+  let bestTotal = maxCostS, bestEnd = -1, endAtVertex = false;
   if (A.gi === B.gi && a.e === b.e && (b.along >= a.along || !oneway(ga, a.e))) { bestTotal = sec(ga, a.e, Math.abs(b.along - a.along)); bestEnd = -2; }
   let settled = 0;
   const cleanup = () => { for (const id of touched) { const gi = dec(id), v = id - base[gi]; W[gi].dist[v] = Infinity; W[gi].done[v] = 0; } };
@@ -240,10 +250,12 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat): Path | null {
       w.done[v] = 1; settled++;
       const dv = w.dist[v];
       const gc = goalCost(gi, v);
-      if (dv + gc < bestTotal) { bestTotal = dv + gc; bestEnd = id; }
+      if (dv + gc < bestTotal) { bestTotal = dv + gc; bestEnd = id; endAtVertex = false; }
+      if (isGoal && dv < bestTotal && isGoal(g, v)) { bestTotal = dv; bestEnd = id; endAtVertex = true; }
       for (let i = g.adjStart[v]; i < g.adjStart[v + 1]; i++) {
         if (!(g.adjFlag[i] & 1)) continue;
         const e = g.adjEdge[i], to2 = g.adjTo[i];
+        if (blocked && e !== a.e && e !== b.e && blocked(g, e)) continue;
         const nd = dv + sec(g, e, edgeM(g, e));
         if (nd < w.dist[to2]) { setD(gi, to2, nd, e, id); heap.push(nd + h(g, to2), base[gi] + to2); }
       }
@@ -291,8 +303,10 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat): Path | null {
       const pts = g.edgeCoords(e);
       add(g.ea[e] === v ? pts.reverse() : pts, nameOf(g, e));
     }
-    const endV = bestEnd - base[B.gi];
-    add(cut(gb, b.e, endV === gb.ea[b.e] ? 0 : edgeM(gb, b.e), b.along), nameOf(gb, b.e));
+    if (!endAtVertex) {
+      const endV = bestEnd - base[B.gi];
+      add(cut(gb, b.e, endV === gb.ea[b.e] ? 0 : edgeM(gb, b.e), b.along), nameOf(gb, b.e));
+    }
   }
   cleanup();
   let distM = 0;

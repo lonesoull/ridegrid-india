@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { makeAvoid, makeNearGoal } from './avoid';
 import { Graph, routeMulti, linkGraphs, unlinkGraph, type LngLat } from './graph';
 
 /** Background thread: holds the downloaded road graphs and answers routing requests. */
@@ -34,6 +35,16 @@ self.onmessage = (ev: MessageEvent) => {
         legs.push(r ? { coords: r.coords, distM: r.distM, names: r.names, timeS: r.timeS } : null);
       }
       (self as any).postMessage({ id: m.id, ok: true, result: legs, ms: performance.now() - t });
+    } else if (m.type === 'avoid') {
+      // one leg that keeps at least gapM away from the given lines (planned roads)
+      const crow = Math.hypot((m.to[0] - m.from[0]) * 102000, (m.to[1] - m.from[1]) * 110540);
+      const r = routeMulti([...graphs.values()], m.from, m.to, {
+        blocked: makeAvoid(m.segs, m.gapM),
+        // arriving anywhere on my own road near where I left it is fine
+        isGoal: m.goalSegs?.length ? makeNearGoal(m.goalSegs, 12) : undefined,
+        maxCostS: 1200 + (4 * crow) / (60 / 3.6),
+      });
+      (self as any).postMessage({ id: m.id, ok: true, result: r ? { coords: r.coords, distM: r.distM, names: r.names } : null });
     } else if (m.type === 'snap') {
       const g = [...graphs.values()].find((x) => x.contains(m.p));
       const s = g?.snap(m.p, 300);

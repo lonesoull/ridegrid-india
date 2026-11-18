@@ -66,3 +66,22 @@ describe('routing across downloaded regions', () => {
     expect(w.links.size).toBe(0);
   });
 });
+
+import { makeAvoid } from '../src/route/avoid';
+describe('detours that keep away from other planned roads', () => {
+  it('closes roads near a planned road and finds the way around', () => {
+    // from the middle of West Rd to the middle of 2nd Street: either via Beach Road (south) or One Way Rd (north)
+    const A: [number, number] = [80.0, 13.005], B: [number, number] = [80.01, 13.005];
+    expect(route(g, A, B)!.distM).toBeLessThan(2300);
+    // a planned road runs along the middle of Beach Road → that way is closed, go round by One Way Rd
+    const viaNorth = routeMulti([g], A, B, { blocked: makeAvoid([80.003, 13.0, 80.007, 13.0], 25) })!;
+    expect(viaNorth).not.toBeNull();
+    expect(viaNorth.coords.every((c) => c[1] > 13.0 + 25 / 110540)).toBe(true);
+    expect(viaNorth.coords.some((c) => near(c, [80.0, 13.01]))).toBe(true);
+  });
+  it('gives up rather than break the gap', () => {
+    // planned roads on both Beach Road and One Way Rd → no safe way from West Rd to 2nd Street
+    const avoid = makeAvoid([80.003, 13.0, 80.007, 13.0, 80.003, 13.01, 80.007, 13.01], 25);
+    expect(routeMulti([g], [80.0, 13.005], [80.01, 13.005], { blocked: avoid })).toBeNull();
+  });
+});
