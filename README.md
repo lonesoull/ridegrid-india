@@ -67,6 +67,16 @@ Up to 10 devices (2 phones + laptop in practice), paired with a 25-character cod
 - **Route push** (gzip, chunked, encrypted) with load / replace / ignore prompt; **SOS** (hold 1.5 s while riding) with alarm + “I'm responding”; logged stops shown to the team.
 Code: `src/team/` (crypto, team, telemetry, actions), `src/ui/TeamTab.tsx`, `MirrorPanel.tsx`, `TeamModals.tsx`.
 
+## Guinness / India rules (step 4, done)
+
+Data: `tools/build-data.mjs` + `.github/workflows/data.yml` filter the Geofabrik India extract with osmium (two-wheeler-banned motorways/expressways, ~17,000 km) and simplify Natural Earth state boundaries (36 states/UTs); published to the `india-data` release and fetched by the site build.
+- **#30 Expressway blocker**: OSRM `exclude=motorway`, Valhalla `use_highways: 0`, Route checker flags legs on banned roads (+ one-tap re-route), live alarm, dark-red map layer.
+- **#31 Permit zones / night closures**: ILP states, Ladakh & Sikkim protected areas; curated night-closed forest roads with ETA check.
+- **#32 48-hour halt timer** (configurable hours / radius) with escalating alerts.
+- **#33 Speed monitor**: 80 km/h on National Highways, 60 elsewhere (configurable).
+- **#34 State-by-state** planned vs covered km.
+- **#28 Ridden-road layer** (crimson) from all real GPS rides; **#29 dead-end spur (U-turn) detector** in the Route checker.
+
 ## Next phases
 
 3. On-device offline router (per-state road graphs) + Guinness/India compliance modules

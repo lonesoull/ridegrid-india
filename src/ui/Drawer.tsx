@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { T, isExpedition } from '../core/terms';
 import { RouteChecker } from './RouteChecker';
+import { stateBreakdown, type StateKm } from '../nav/states';
+import { buildRouteLine } from '../nav/routeLine';
+import { ILP_STATES } from '../nav/compliance';
 import { isNativeApp, openAppSettings } from '../nav/gps';
 import { engine } from '../core/engine';
 import { app, DEFAULT_ROUTER, type RouterSettings } from '../core/app';
@@ -87,6 +90,8 @@ function TripTab() {
           <span><b>Sequence Lock</b> — keep points exactly in the order I mapped them (#1 → #2 → #3…). Blocks reverse and any reordering.</span>
         </label>
       </section>
+
+      <StateTracker />
 
       <section>
         <h3>Working draft <span className="pill">auto-saved</span></h3>
@@ -332,6 +337,7 @@ function ToolsTab() {
           ? <><p className="warn">You are viewing the <b>Stress Test</b> trip. Road mapping starts paused here so thousands of test stops don't flood the free server — start it when you want (paced ~1 request/sec, ~24 stops per request). Your real trips are safe — <b>Back to my trip</b> is below.</p><StressRouteButton className="" /></>
           : <label className="check"><input type="checkbox" checked={app.queue.autoRoute} onChange={(e) => { app.queue.setAuto(e.target.checked); setR({ ...r }); }} /><span>Auto-route new legs (paced, cached, rate-limit safe)</span></label>}
         <label className="check"><input type="checkbox" checked={snap} onChange={(e) => ui.set({ snapToRoad: e.target.checked })} /><span>Snap tapped / dragged stops to the nearest road</span></label>
+        <label className="check"><input type="checkbox" checked={r.avoidExpressways !== false} onChange={(e) => setR({ ...r, avoidExpressways: e.target.checked })} /><span>Avoid expressways / motorways (two-wheelers are banned) — tap “Save engine”</span></label>
         <div className="grid2">
           <label className="field">Engine
             <select value={r.kind} onChange={(e) => setR({ kind: e.target.value as RouterSettings['kind'], url: e.target.value === 'valhalla' ? 'https://valhalla1.openstreetmap.de' : DEFAULT_ROUTER.url })}>
@@ -488,5 +494,33 @@ function GoogleStatus() {
       {r === 'VECTOR' && (st.maxTilt > 0 ? ` · 3D tilt works (up to ${Math.round(st.maxTilt)}° so far)` : ' · tilt not confirmed yet — tap 3D at street level; if it stays flat, add your own Map ID below')}
       {r === 'RASTER' && ' · no 3D on this device/Map ID — add your own Vector Map ID below'}
     </p>
+  );
+}
+
+function StateTracker() {
+  useEngine();
+  const [rows, setRows] = useState<StateKm[] | null>(null);
+  const [missing, setMissing] = useState(false);
+  const run = () => act('Working out km per state…', async () => {
+    const r = await stateBreakdown(buildRouteLine(), engine.trip!.id);
+    if (!r) { setMissing(true); return; }
+    setMissing(false); setRows(r);
+  });
+  const tot = rows?.reduce((a, r) => ({ p: a.p + r.plannedKm, c: a.c + r.coveredKm }), { p: 0, c: 0 });
+  return (
+    <section>
+      <h3>State-by-state</h3>
+      <p className="muted">Planned km (road geometry) and covered km (real GPS rides) in every state & UT.</p>
+      <button onClick={run} disabled={!engine.stops.length}>{rows ? 'Recalculate' : 'Show km per state'}</button>
+      {missing && <p className="warn">State boundaries aren't downloaded yet — they arrive with the next app update.</p>}
+      {rows && <table className="logtable statetable">
+        <thead><tr><th>State / UT</th><th>Planned</th><th>Covered</th><th>Left</th></tr></thead>
+        <tbody>
+          {rows.map((r) => <tr key={r.name}><td>{r.name}{ILP_STATES.includes(r.name) ? ' 🛂' : ''}</td><td>{r.plannedKm.toFixed(0)}</td><td>{r.coveredKm.toFixed(0)}</td><td>{Math.max(0, r.plannedKm - r.coveredKm).toFixed(0)}</td></tr>)}
+          <tr><td><b>Total</b></td><td><b>{tot!.p.toFixed(0)}</b></td><td><b>{tot!.c.toFixed(0)}</b></td><td><b>{Math.max(0, tot!.p - tot!.c).toFixed(0)}</b></td></tr>
+        </tbody>
+      </table>}
+      {rows?.some((r) => ILP_STATES.includes(r.name)) && <p className="muted">🛂 = Inner Line Permit needed.</p>}
+    </section>
   );
 }

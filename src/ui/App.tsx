@@ -16,6 +16,9 @@ import { SosModal, RouteOfferModal } from './TeamModals';
 import { team } from '../team/team';
 import { startTelemetry } from '../team/telemetry';
 import { startTeamEvents } from '../team/actions';
+import { startCompliance, compliance, fmtHms } from '../nav/compliance';
+import { loadExpressways } from '../nav/expressways';
+import { riddenLines } from '../nav/history';
 import { PlaceCard } from './PlaceCard';
 import { Icon } from './Icon';
 import { useNav } from './navHooks';
@@ -43,7 +46,13 @@ export function App() {
       await nav.loadSettings();
       await google.load();
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
-      startTelemetry(); startTeamEvents();
+      startTelemetry(); startTeamEvents(); startCompliance();
+      void loadExpressways().then((d) => d && mapCtl?.setBanned(d.fc));
+      const drawRidden = () => engine.trip && riddenLines(engine.trip.id).then((l) => mapCtl?.setRidden(l));
+      void drawRidden();
+      engine.subscribe((e) => { if (e.stops && e.legs === undefined) void drawRidden(); });
+      let navWas = nav.mode;
+      nav.subscribe(() => { if (nav.mode !== navWas) { navWas = nav.mode; if (nav.mode === 'off') void drawRidden(); } });
       void team.load();
       if (location.hash.startsWith('#join=')) ui.set({ drawer: true, tab: 'team' });
       await applyBase(mapCtl!);
@@ -110,6 +119,7 @@ function Hud() {
         <span><b>{fmtKm(covered)}</b> covered</span>
         {target > 0 && <span><b>{fmtKm(Math.max(0, target - covered))}</b> left</span>}
       </div>
+      <HaltChip />
       {t?.isStress && (
         <div className="hud-stress" onClick={(e) => e.stopPropagation()}>
           <span>⚙ Viewing STRESS TEST trip (test stops only). Your real stops are in your own trip.</span>
@@ -126,6 +136,15 @@ function Hud() {
       )}
     </div>
   );
+}
+
+function HaltChip() {
+  const [, tick] = useState(0);
+  useEffect(() => { const i = setInterval(() => tick((x) => x + 1), 1000); const off = compliance.subscribe(() => tick((x) => x + 1)); return () => { clearInterval(i); off(); }; }, []);
+  const left = compliance.haltLeftS;
+  if (left === null || engine.trip?.kind === 'daily') return null;
+  const h = left / 3600;
+  return <div className={`haltchip ${h <= 1 ? 'danger' : h <= 12 ? 'warn' : ''}`}>{left > 0 ? `Halt timer ${fmtHms(left)} left of ${compliance.settings.haltHours} h` : `Maximum ${compliance.settings.haltHours} h halt exceeded`}</div>;
 }
 
 function TrafficFab() {

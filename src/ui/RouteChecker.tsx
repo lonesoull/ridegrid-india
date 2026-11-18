@@ -3,12 +3,14 @@ import { engine } from '../core/engine';
 import { fmtKm } from '../core/geo';
 import { nav } from '../nav/navigator';
 import { buildRouteLine } from '../nav/routeLine';
-import { checkRoute, ISSUE_LABEL, type CheckResult, type IssueKind } from '../nav/checker';
-import { ui, act } from './state';
+import { checkRoute, deadEndSpurs, ISSUE_LABEL, type CheckResult, type IssueKind } from '../nav/checker';
+import { routeOnExpressways } from '../nav/expressways';
+import { ui, act, toast } from './state';
 import { mapCtl } from './App';
 import { useEngine } from './hooks';
 
 let last: { result: CheckResult; version: number; stopS: Float64Array } | null = null;
+let exMissing = false;
 const PER = 50;
 
 /** Scans the planned route against itself for Guinness rule problems and lists them on the map. */
@@ -20,7 +22,13 @@ export function RouteChecker() {
   const run = () => act(null, async () => {
     setBusy(0);
     const L = buildRouteLine();
-    const result = await checkRoute(L, { gapM: nav.settings.gapM, onProgress: (f) => setBusy(f) });
+    const result = await checkRoute(L, { gapM: nav.settings.gapM, onProgress: (f) => setBusy(f * 0.6) });
+    // Guinness/India: no riding on two-wheeler-banned expressways
+    const ex = await routeOnExpressways(L, (f) => setBusy(0.6 + f * 0.35));
+    if (ex === null) exMissing = true;
+    else { exMissing = false; for (const x of ex) result.issues.push({ kind: 'expressway', s1: x.s1, s1End: x.s1End, s2: x.s1End, d: x.d, p: x.p, p2: x.p2, label: x.road.name }); }
+    for (const sp of deadEndSpurs(L)) result.issues.push(sp);
+    result.issues.sort((a, b) => a.s1 - b.s1);
     last = { result, version: engine.version, stopS: L.stopS };
     mapCtl?.setIssues(result.issues);
     setBusy(null); setPage(0); force((x) => x + 1);
@@ -46,12 +54,20 @@ export function RouteChecker() {
           {stale ? ' · route changed since — check again' : ''}
         </p>
         {res.issues.length > 0 && <p className="muted">{(Object.keys(counts) as IssueKind[]).map((k) => `${ISSUE_LABEL[k]}: ${counts[k]}`).join(' · ')}</p>}
+        {exMissing && <p className="warn">Expressway data isn't available yet, so banned roads weren't checked (it downloads with the next app update).</p>}
+        {(counts.expressway ?? 0) > 0 && <button className="primary" onClick={() => act('Re-routing legs that use expressways…', async () => {
+          const S = last!.stopS; let n = 0;
+          for (const x of res.issues.filter((i) => i.kind === 'expressway')) for (let i = 0; i < S.length - 1; i++) if (S[i + 1] >= x.s1 && S[i] <= x.s1End) { await engine.rerouteLeg(i); n++; }
+          toast(`Re-routing ${n} leg(s) without expressways — check again in a minute`);
+        })}>Re-route legs that use expressways</button>}
         <div className="list">
           {res.issues.slice(page * PER, page * PER + PER).map((x, j) => (
             <div className="item tight" key={j}>
               <button className="link" onClick={() => { mapCtl?.map.flyTo({ center: x.p, zoom: 17 }); ui.set({ drawer: false }); }}>
-                <b className={x.kind === 'parallel' ? 'warn' : 'danger-text'}>{ISSUE_LABEL[x.kind]}</b>
-                <div className="muted">at {fmtKm(x.s1)} (near #{wp(x.s1) + 1}) ↔ at {fmtKm(x.s2)} (near #{wp(x.s2) + 1}) · {Math.round(x.d)} m apart{x.s1End > x.s1 + 20 ? ` · ${Math.round(x.s1End - x.s1)} m long` : ''}</div>
+                <b className={x.kind === 'parallel' || x.kind === 'spur' ? 'warn' : 'danger-text'}>{ISSUE_LABEL[x.kind]}</b>
+                {x.kind === 'expressway' || x.kind === 'spur'
+                  ? <div className="muted">{x.label ? `${x.label} · ` : ''}from {fmtKm(x.s1)} (near #{wp(x.s1) + 1}){x.s1End > x.s1 + 20 ? ` · ${Math.round(x.s1End - x.s1)} m` : ''}</div>
+                  : <div className="muted">at {fmtKm(x.s1)} (near #{wp(x.s1) + 1}) ↔ at {fmtKm(x.s2)} (near #{wp(x.s2) + 1}) · {Math.round(x.d)} m apart{x.s1End > x.s1 + 20 ? ` · ${Math.round(x.s1End - x.s1)} m long` : ''}</div>}
               </button>
             </div>
           ))}

@@ -11,7 +11,8 @@ import { Icon, TurnIcon } from './Icon';
 import { isNativeApp } from '../nav/gps';
 import { team } from '../team/team';
 import { sendSos } from '../team/actions';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { compliance } from '../nav/compliance';
 
 const fmtDist = (m: number) => (m < 1000 ? `${m < 100 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m` : fmtKm(m));
 const fmtDur = (s: number) => {
@@ -92,6 +93,7 @@ export function NavPanel() {
 
       <div className="navpanel glass">
         {nav.gpsError && <div className="offbanner warn">{nav.gpsError}</div>}
+        <CompAlerts />
         {!sim && !nav.pos && !nav.gpsError && <div className="muted">Waiting for GPS fix… (outdoors with open sky is fastest)</div>}
         <div className="navsummary">
           <div><b className="eta">{done ? 'Arrived' : fmtDur(etaS)}</b> <span className="muted">· {fmtKm(nav.remaining)} · arrive {sim ? '—' : clock(etaS)}{live ? ' · live traffic' : ''}</span></div>
@@ -145,4 +147,13 @@ function SosHold() {
   const start = () => { setHold(true); t.current = setTimeout(() => { setHold(false); void act('Sending SOS…', async () => { await sendSos(); toast('SOS sent to the team'); }); }, 1500); };
   const cancel = () => { setHold(false); if (t.current) clearTimeout(t.current); };
   return <button className={`sosbtn ${hold ? 'holding' : ''}`} onPointerDown={start} onPointerUp={cancel} onPointerLeave={cancel}>{hold ? 'Keep holding…' : 'Hold for SOS'}</button>;
+}
+
+/** Guinness / India rule alerts (expressway, speed, permit zone, night closure, halt). */
+function CompAlerts() {
+  const [, tick] = useState(0);
+  useEffect(() => compliance.subscribe(() => tick((x) => x + 1)), []);
+  const list = [...compliance.alerts.values()];
+  if (!list.length) return null;
+  return <div className="compalerts">{list.map((a) => <div key={a.kind} className={`comp ${a.level}`}>{a.text}</div>)}</div>;
 }

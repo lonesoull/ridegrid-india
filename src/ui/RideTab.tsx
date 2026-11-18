@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { isExpedition } from '../core/terms';
+import { compliance, ILP_STATES, NIGHT_CLOSURES, PERMIT_AREAS } from '../nav/compliance';
 import { T } from '../core/terms';
 import { nav, type NavSettings } from '../nav/navigator';
 import { sounds, say } from '../nav/audio';
@@ -77,6 +78,8 @@ export function RideTab() {
         </div>
       </section>
 
+      <RulesSection />
+
       <section>
         <h3>Logbook</h3>
         <p className="muted">Start/end of day, stops, breaks, photos and the printable logbook now have their own tab.</p>
@@ -126,3 +129,32 @@ export function RideTab() {
   );
 }
 
+
+function RulesSection() {
+  const [, tick] = useState(0);
+  const c = compliance.settings;
+  const set = (p: Partial<typeof c>) => void compliance.setSettings(p).then(() => tick((x) => x + 1));
+  return (
+    <section>
+      <h3>Record rules (alerts while riding)</h3>
+      <label className="check"><input type="checkbox" checked={c.speedOn} onChange={(e) => set({ speedOn: e.target.checked })} /><span>Speed alert above <b>{c.speedNH}</b> km/h on National Highways, <b>{c.speedOther}</b> km/h elsewhere</span></label>
+      <div className="grid2">
+        <label className="field">NH limit (km/h)<input type="number" value={c.speedNH} onChange={(e) => set({ speedNH: +e.target.value || 80 })} /></label>
+        <label className="field">Other roads (km/h)<input type="number" value={c.speedOther} onChange={(e) => set({ speedOther: +e.target.value || 60 })} /></label>
+      </div>
+      <label className="field">Maximum halt in one place: <b>{c.haltHours} h</b> (within {c.haltRadiusKm} km)
+        <input type="range" min={12} max={72} step={1} value={c.haltHours} onChange={(e) => set({ haltHours: +e.target.value })} />
+      </label>
+      <label className="check"><input type="checkbox" checked={c.permitOn} onChange={(e) => set({ permitOn: e.target.checked })} /><span>Permit-zone alerts (Inner Line Permit states: {ILP_STATES.join(', ')}; Ladakh & Sikkim protected areas)</span></label>
+      <label className="check"><input type="checkbox" checked={c.nightOn} onChange={(e) => set({ nightOn: e.target.checked })} /><span>Night-closure alerts for forest roads</span></label>
+      <details>
+        <summary className="muted">Night-closed roads & permit areas in the app</summary>
+        <ul className="muted small">
+          {NIGHT_CLOSURES.map((n) => <li key={n.name}>{n.name}: closed {n.from}:00–{String(n.to).padStart(2, '0')}:00</li>)}
+          {PERMIT_AREAS.map((a) => <li key={a.name}>{a.name} — {a.note}</li>)}
+        </ul>
+        <p className="muted small-note">Approximate areas and timings — check locally, rules change. Two-wheeler-banned expressways come from OpenStreetMap and are avoided in routing automatically.</p>
+      </details>
+    </section>
+  );
+}

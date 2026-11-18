@@ -2,12 +2,13 @@ import type { LngLat } from '../core/geo';
 import { pointAt, type RouteLine } from './routeLine';
 import { SegIndex, isParallel } from './spatial';
 
-export type IssueKind = 'crossing' | 'overlap' | 'close' | 'parallel';
-export interface Issue { kind: IssueKind; s1: number; s1End: number; s2: number; d: number; p: LngLat; p2: LngLat }
+export type IssueKind = 'crossing' | 'overlap' | 'close' | 'parallel' | 'expressway' | 'spur';
+export interface Issue { kind: IssueKind; s1: number; s1End: number; s2: number; d: number; p: LngLat; p2: LngLat; label?: string }
 export interface CheckResult { issues: Issue[]; samples: number; ms: number; truncated: boolean }
 
 export const ISSUE_LABEL: Record<IssueKind, string> = {
   crossing: 'Crosses itself', overlap: 'Same road ridden twice', close: 'Too close to another part', parallel: 'Parallel road (other carriageway / service road)',
+  expressway: 'On a two-wheeler-banned expressway', spur: 'Dead-end spur (U-turn)',
 };
 
 /**
@@ -49,4 +50,23 @@ export async function checkRoute(L: RouteLine, opts: { gapM: number; parallelM?:
   flush();
   opts.onProgress?.(1);
   return { issues, samples, ms: performance.now() - t0, truncated: issues.length >= maxIssues };
+}
+
+/** Dead-end spurs: places where the planned route makes a U-turn (rides into a road and back out). */
+export function deadEndSpurs(L: RouteLine): Issue[] {
+  const out: Issue[] = [];
+  for (const t of L.turns) if (t.c === 'uturn') {
+    const p = pointAt(L, t.s).p;
+    out.push({ kind: 'spur', s1: t.s, s1End: t.s, s2: t.s, d: 0, p, p2: p, label: t.n ? `U-turn on ${t.n}` : 'U-turn' });
+  }
+  // geometric U-turns (no maneuver info, e.g. older cached legs): heading reverses within ~40 m
+  for (let i = 1; i < L.n - 1; i++) {
+    const a = [L.x[i] - L.x[i - 1], L.y[i] - L.y[i - 1]], b = [L.x[i + 1] - L.x[i], L.y[i + 1] - L.y[i]];
+    const dot = a[0] * b[0] + a[1] * b[1], na = Math.hypot(a[0], a[1]), nb = Math.hypot(b[0], b[1]);
+    if (na && nb && dot / (na * nb) < -0.97 && !out.some((o) => Math.abs(o.s1 - L.cum[i]) < 200)) {
+      const p: LngLat = [L.x[i], L.y[i]];
+      out.push({ kind: 'spur', s1: L.cum[i], s1End: L.cum[i], s2: L.cum[i], d: 0, p, p2: p, label: 'U-turn' });
+    }
+  }
+  return out;
 }

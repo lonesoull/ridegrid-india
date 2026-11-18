@@ -15,7 +15,7 @@ export const STYLES = {
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 
-const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues', PLACES = 'rg-places', PEERS = 'rg-peers', PEERTRK = 'rg-peer-tracks';
+const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues', PLACES = 'rg-places', PEERS = 'rg-peers', PEERTRK = 'rg-peer-tracks', BANNED = 'rg-banned', RIDDEN = 'rg-ridden';
 export const ROLE_COLOR: Record<string, string> = { primary: '#f97316', secondary: '#14b8a6', laptop: '#64748b' };
 const FONT = ['Noto Sans Bold'];
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
@@ -240,6 +240,13 @@ export class MapController {
       paint: { 'circle-radius': 20, 'circle-color': 'rgba(34,197,94,0.18)', 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 4 } });
     if (!m.hasImage('rg-arrow')) m.addImage('rg-arrow', arrowImage(), { pixelRatio: 2 });
     for (const [role, col] of Object.entries(ROLE_COLOR)) if (!m.hasImage(`rg-arrow-${role}`)) m.addImage(`rg-arrow-${role}`, arrowImage(col), { pixelRatio: 2 });
+    // roads already ridden on this trip (crimson) and two-wheeler-banned expressways (dark red, dashed)
+    m.addSource(RIDDEN, { type: 'geojson', data: this.riddenFc ?? empty() });
+    m.addLayer({ id: 'rg-ridden', type: 'line', source: RIDDEN, layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2, 14, 7], 'line-opacity': 0.6 } }, 'rg-route-casing');
+    m.addSource(BANNED, { type: 'geojson', data: this.bannedFc ?? empty() });
+    m.addLayer({ id: 'rg-banned', type: 'line', source: BANNED, minzoom: 6,
+      paint: { 'line-color': '#7f1d1d', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.5, 14, 5], 'line-dasharray': [2, 1.5], 'line-opacity': 0.8 } }, 'rg-route-casing');
     // team devices: their ridden tracks and live arrows
     m.addSource(PEERTRK, { type: 'geojson', data: this.peerFc?.tracks ?? empty() });
     m.addLayer({ id: 'rg-peer-tracks', type: 'line', source: PEERTRK, layout: { 'line-join': 'round', 'line-cap': 'round' },
@@ -350,6 +357,14 @@ export class MapController {
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
+  private bannedFc: GeoJSON.FeatureCollection | null = null;
+  setBanned(fc: GeoJSON.FeatureCollection | null) { this.bannedFc = fc; this.src(BANNED)?.setData(fc ?? empty()); }
+  private riddenFc: GeoJSON.FeatureCollection | null = null;
+  setRidden(lines: LngLat[][]) {
+    this.riddenFc = { type: 'FeatureCollection', features: lines.filter((l) => l.length > 1).map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) };
+    this.src(RIDDEN)?.setData(this.riddenFc);
+  }
+
   // ---------- team devices ----------
   private peerFc: { pts: GeoJSON.FeatureCollection; tracks: GeoJSON.FeatureCollection } | null = null;
   followPeerId: string | null = null;

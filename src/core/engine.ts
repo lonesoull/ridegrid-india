@@ -177,6 +177,15 @@ export class RouteEngine {
     this.emit(false, { add: [], remove: [], update: [l] });
   }
 
+  /** Throw away the cached road geometry of leg i and route it again (e.g. it used a banned expressway). */
+  async rerouteLeg(i: number) {
+    const l = this.legAt(i);
+    if (!l) return;
+    await db.legs.delete(cacheKey(l.from, l.to));
+    this.priority.add(l.key);
+    this.setLegGeometry(l.key, null, 0, 'pending');
+  }
+
   /** Retry legs that failed (e.g. after coming back online). */
   retryErrors() {
     const update: Leg[] = [];
