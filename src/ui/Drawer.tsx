@@ -420,6 +420,14 @@ function GoogleSettingsPanel() {
           {!tests[0].ok && <p className="muted">The Maps JavaScript API is required for Google mode (Google's map + live traffic); Routes and Places add directions and search.</p>}
         </div>
       )}
+      {g.key && (
+        <label className="field">Map ID (optional — for 3D tilt, rotation and 3D buildings)
+          <div className="row">
+            <input placeholder="e.g. 8f348d1b5a61d4bb (leave empty for Google's demo ID)" defaultValue={g.mapId} onBlur={(e) => e.target.value.trim() !== g.mapId && save({ mapId: e.target.value.trim() })} />
+          </div>
+          <span className="muted">Create one free: Google Cloud console → Google Maps Platform → <b>Map management</b> → Create Map ID → type <b>JavaScript</b>, <b>Vector</b>, tick <b>Tilt</b> and <b>Rotation</b> → copy the Map ID here.</span>
+        </label>
+      )}
       {g.key && <label className="check"><input type="checkbox" checked={g.traffic} onChange={(e) => save({ traffic: e.target.checked })} /><span>Show live traffic on the map (Google refreshes it automatically)</span></label>}
       <p className="muted small-note">In Google mode your route is drawn with Google's own camera settings, so it stays on Google's roads when rotated or tilted. Route lines © OpenStreetMap contributors (OSRM).</p>
       <details>
