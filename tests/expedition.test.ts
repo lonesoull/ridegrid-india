@@ -7,7 +7,7 @@ import { buildRouteLine, type RouteLine } from '../src/nav/routeLine';
 import { SegIndex, isParallel } from '../src/nav/spatial';
 import { checkRoute } from '../src/nav/checker';
 import { deriveTurns, noGoPolygons, minGapAlong } from '../src/nav/detour';
-import { BreakDetector, daySummaries } from '../src/nav/logbook';
+import { BreakDetector, daySummaries, journeyIssues } from '../src/nav/logbook';
 import { haversine, type LngLat } from '../src/core/geo';
 
 /** Build a RouteLine straight from coordinates (each point is a waypoint). */
@@ -130,5 +130,23 @@ describe('evidence checks', () => {
     expect(day2.issues.join('\n')).not.toMatch(/not marked independent/);
     const strict = await daySummaries(t.id, { witnessesPerDay: 2 });
     expect(strict[0].issues.join('\n')).toMatch(/Only 1 of 2 witness/);
+  });
+});
+
+describe('journey start / finish', () => {
+  it('needs two witnesses at the start and the bike documents', async () => {
+    useDB(new RideDB('lb3'));
+    const t = await createTrip('SF', undefined, 'expedition');
+    const t0 = Date.parse('2026-12-01T07:00:00+05:30');
+    await db.stopLogs.put({ id: 's', tripId: t.id, type: 'start', at: t0, lng: 77, lat: 13 });
+    await db.stopLogs.put({ id: 'w1', tripId: t.id, type: 'witness', at: t0 + 1000, lng: 77, lat: 13, witness: { name: 'A', independent: true } });
+    let days = await daySummaries(t.id);
+    expect(days[0].issues.join('\n')).toMatch(/START needs two independent witnesses/);
+    expect(journeyIssues(days).join('\n')).toMatch(/documents/);
+    await db.stopLogs.put({ id: 'w2', tripId: t.id, type: 'witness', at: t0 + 2000, lng: 77, lat: 13, witness: { name: 'B', independent: true } });
+    await db.stopLogs.put({ id: 'doc', tripId: t.id, type: 'document', at: t0 - 1000, lng: 77, lat: 13 });
+    days = await daySummaries(t.id);
+    expect(days[0].issues.join('\n')).not.toMatch(/START needs/);
+    expect(journeyIssues(days)).toEqual([]);
   });
 });

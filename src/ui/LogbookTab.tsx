@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { engine } from '../core/engine';
 import type { StopLog } from '../core/db';
 import { nav } from '../nav/navigator';
-import { daySummaries, deleteStopLog, evidencePack, fillMissingPlaces, STOP_LABEL, updateStopLog, RECORD_KM, totalIndiaKm, dayKey, type DaySummary } from '../nav/logbook';
+import { daySummaries, deleteStopLog, evidencePack, fillMissingPlaces, STOP_LABEL, updateStopLog, RECORD_KM, totalIndiaKm, journeyIssues, dayKey, type DaySummary } from '../nav/logbook';
 import { download, safeName } from '../io/exporters';
 import { isExpedition } from '../core/terms';
 import { ui, useUI, act } from './state';
@@ -36,7 +36,7 @@ export function LogbookTab() {
   const today = dayKey(Date.now());
   const notBacked = (days ?? []).filter((d) => d.date !== today && d.km > 1 && !saved.includes(d.date));
   const dayPack = (d: DaySummary) => act(`Building Day ${d.dayNo} evidence…`, async () => {
-    download(`${safeName(trip.name)}_evidence_day${String(d.dayNo).padStart(3, '0')}_${d.date}.zip`, await evidencePack(trip.id, trip.name, d.date, { witnessesPerDay: s.witnessesPerDay }));
+    download(`${safeName(trip.name)}_evidence_day${String(d.dayNo).padStart(3, '0')}_${d.date}.zip`, await evidencePack(trip.id, trip.name, d.date, { witnessesPerDay: s.witnessesPerDay }, s));
     markBackup(trip.id, d.date); bump((x) => x + 1);
   });
 
@@ -52,12 +52,18 @@ export function LogbookTab() {
             <div className="muted">{total < RECORD_KM ? `${(RECORD_KM - total).toLocaleString('en-IN', { maximumFractionDigits: 1 })} km to go` : `Record passed by ${(total - RECORD_KM).toLocaleString('en-IN', { maximumFractionDigits: 1 })} km — keep riding to your planned finish`}</div>
           </div>
         )}
+        {days && journeyIssues(days).length > 0 && isExpedition() && <div className="warnbox"><b>Before / during the record:</b><ul>{journeyIssues(days).map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
         {notBacked.length > 0 && <div className="warnbox">⚠ {notBacked.length} day(s) of evidence are only on this phone. Download each day's pack (button on the day) and keep it on your laptop / Google Drive.</div>}
         <div className="btns">
           <button className="primary" onClick={() => ui.set({ logStop: 'daystart' })}>Start day</button>
           <button className="logbtn" onClick={() => ui.set({ logStop: true })}>Log stop</button>
           <button onClick={() => ui.set({ logStop: 'dayend' })}>End day</button>
         </div>
+        {isExpedition() && <div className="btns">
+          <button onClick={() => ui.set({ logStop: 'start' })}>Journey START</button>
+          <button onClick={() => ui.set({ logStop: 'document' })}>Documents</button>
+          <button onClick={() => ui.set({ logStop: 'finish' })}>Journey FINISH</button>
+        </div>}
         <div className="btns">
           <button onClick={() => ui.set({ logStop: 'police' })}>Witness / police</button>
           <button onClick={() => ui.set({ logStop: 'evidence' })}>📷 Evidence</button>
@@ -65,12 +71,17 @@ export function LogbookTab() {
           <button onClick={() => ui.set({ logStop: 'media' })}>Media</button>
         </div>
         <div className="btns">
-          <button onClick={() => act('Building printable logbook…', async () => printLogbook(trip.name, (await daySummaries(trip.id, { witnessesPerDay: s.witnessesPerDay })).slice().reverse()))}>Print / save as PDF</button>
+          <button onClick={() => act('Building printable logbook…', async () => printLogbook(trip.name, s, (await daySummaries(trip.id, { witnessesPerDay: s.witnessesPerDay })).slice().reverse()))}>Print / save as PDF</button>
           <button onClick={() => act('Building evidence pack…', async () => download(`${safeName(trip.name)}_evidence_all_${new Date().toISOString().slice(0, 10)}.zip`, await evidencePack(trip.id, trip.name, undefined, { witnessesPerDay: s.witnessesPerDay })))}>Whole-journey evidence (.zip)</button>
         </div>
         <label className="field">Automatic break after standing still <b>{s.breakMin} min</b>
           <input type="range" min={2} max={30} step={1} value={s.breakMin} onChange={(e) => void nav.setSettings({ breakMin: +e.target.value })} />
         </label>
+        <div className="riderinfo">
+          <input placeholder="Rider name" defaultValue={s.riderName} onBlur={(e) => void nav.setSettings({ riderName: e.target.value.trim() })} />
+          <input placeholder="Motorcycle (make & model)" defaultValue={s.bikeModel} onBlur={(e) => void nav.setSettings({ bikeModel: e.target.value.trim() })} />
+          <input placeholder="Registration no." defaultValue={s.bikeReg} onBlur={(e) => void nav.setSettings({ bikeReg: e.target.value.trim().toUpperCase() })} />
+        </div>
         <label className="field">Witness signatures needed per riding day <b>{s.witnessesPerDay}</b>
           <input type="range" min={1} max={3} step={1} value={s.witnessesPerDay} onChange={(e) => void nav.setSettings({ witnessesPerDay: +e.target.value })} />
         </label>
@@ -145,7 +156,7 @@ function Entry({ x, onChange }: { x: StopLog; onChange: () => void }) {
 }
 
 /** Printable logbook (one table per day) → the browser's print dialog, where "Save as PDF" works. */
-function printLogbook(name: string, days: DaySummary[]) {
+function printLogbook(name: string, r: { riderName: string; bikeReg: string; bikeModel: string }, days: DaySummary[]) {
   const w = window.open('', '_blank');
   if (!w) throw new Error('Allow pop-ups to print the logbook');
   const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
@@ -159,7 +170,7 @@ function printLogbook(name: string, days: DaySummary[]) {
     body{font:12px system-ui,sans-serif;margin:24px;color:#111} h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:18px 0 4px}
     table{width:100%;border-collapse:collapse;margin-bottom:8px} th,td{border:1px solid #999;padding:4px 6px;vertical-align:top;text-align:left}
     th{background:#eee} td img{width:70px;height:70px;object-fit:cover;margin:2px} td.sig{width:140px} section{page-break-inside:avoid} small{color:#555}
-  </style></head><body><h1>${esc(name)} — Logbook</h1><p>Generated ${new Date().toLocaleString('en-IN')} by RideGrid India. Times are local (IST); GPS tracks with UTC timestamps are in the evidence pack.</p>${body}
+  </style></head><body><h1>${esc(name)} — Logbook</h1><p>Rider <b>${esc(r.riderName || '—')}</b> · Motorcycle <b>${esc(r.bikeModel || '—')}</b> · Registration <b>${esc(r.bikeReg || '—')}</b></p><p>Generated ${new Date().toLocaleString('en-IN')} by RideGrid India. Times are local (IST); GPS tracks with UTC timestamps are in the evidence pack.</p>${body}
   <script>setTimeout(()=>print(),500)</script></body></html>`);
   w.document.close();
 }

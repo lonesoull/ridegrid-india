@@ -4,6 +4,7 @@ import { haversine, type LngLat } from '../core/geo';
 import { loadStates, stateAt } from './states';
 
 export const STOP_LABEL: Record<StopType, string> = {
+  start: 'Journey START', finish: 'Journey FINISH', document: 'Bike / rider document',
   daystart: 'Start of day', dayend: 'End of day',
   overnight: 'Overnight halt', police: 'Police signature', witness: 'Witness statement',
   fuel: 'Fuel bill', service: 'Service / repair bill', food: 'Food bill',
@@ -175,11 +176,22 @@ export async function daySummaries(tripId: string, rules: EvidenceRules = DEFAUL
       for (const x of d.stops) if (['police', 'witness'].includes(x.type) && !x.photos?.length) d.issues.push(`${STOP_LABEL[x.type]} at ${new Date(x.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} has no photo of the signed page`);
       for (const x of d.stops) if (['police', 'witness'].includes(x.type) && x.witness && !x.witness.independent) d.issues.push(`Witness ${x.witness.name} is not marked independent`);
     }
+    for (const x of d.entries) if ((x.type === 'start' || x.type === 'finish') && d.witnesses < 2)
+      d.issues.push(`${STOP_LABEL[x.type]} needs two independent witnesses present and signing (${d.witnesses} logged today)`);
     if (d.startGapKm !== undefined && d.startGapKm > 1) d.issues.push(`Day started ${d.startGapKm.toFixed(1)} km from where the previous day ended — the journey must be continuous`);
     for (const g of d.gaps) d.issues.push(`GPS not recording ${new Date(g.from).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}–${new Date(g.to).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} while moving ${g.km.toFixed(1)} km (not counted)`);
     if (d.kmOutside > 0.5) d.issues.push(`${d.kmOutside.toFixed(1)} km outside India or on an unclear border — only km inside the country count`);
   });
   return sorted.reverse();
+}
+
+/** Whole-journey checks (not tied to one day). */
+export function journeyIssues(days: DaySummary[]): string[] {
+  const all = days.flatMap((d) => d.entries);
+  const out: string[] = [];
+  if (days.some((d) => d.km > 1) && !all.some((x) => x.type === 'start')) out.push('No "Journey START" entry (with two witnesses at the start point)');
+  if (!all.some((x) => x.type === 'document')) out.push('No bike / rider documents logged: RC, purchase invoice and a brochure or maker\'s web page showing the model is commercially available; driving licence; insurance');
+  return out;
 }
 
 /** Total GPS km inside India across all days (what the record counts). */
@@ -216,7 +228,8 @@ async function dayGPX(tripId: string, tripName: string, d: DaySummary) {
  * ZIP for the examiner: logbook, witnesses, bills, media, checks, one GPX per day, a KML of the
  * whole journey and every photo/video. `date` limits it to one day (small enough for a daily backup).
  */
-export async function evidencePack(tripId: string, tripName: string, date?: string, rules: EvidenceRules = DEFAULT_RULES): Promise<Blob> {
+export interface RiderInfo { riderName?: string; bikeReg?: string; bikeModel?: string }
+export async function evidencePack(tripId: string, tripName: string, date?: string, rules: EvidenceRules = DEFAULT_RULES, rider: RiderInfo = {}): Promise<Blob> {
   const zip = new JSZip();
   const all = await daySummaries(tripId, rules);
   const days = (date ? all.filter((d) => d.date === date) : all).slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -246,7 +259,7 @@ export async function evidencePack(tripId: string, tripName: string, date?: stri
       new Date(d.firstAt).toLocaleTimeString('en-IN'), new Date(d.lastAt).toLocaleTimeString('en-IN'),
       Math.round(d.movingMin), d.breaks, Math.round(d.breakMin), d.witnesses, d.evidence, d.startGapKm?.toFixed(2) ?? '', d.gaps.length,
       d.stops.map((s) => STOP_LABEL[s.type]).join(' | ')].map(csvq).join(','))).join('\n'));
-  zip.file('checks.csv', ['day,date,issue'].concat(days.flatMap((d) => d.issues.map((x) => [d.dayNo, d.date, x].map(csvq).join(',')))).join('\n'));
+  zip.file('checks.csv', ['day,date,issue'].concat(date ? [] : journeyIssues(all).map((x) => ['journey', '', x].map(csvq).join(','))).concat(days.flatMap((d) => d.issues.map((x) => [d.dayNo, d.date, x].map(csvq).join(',')))).join('\n'));
   const gpx = zip.folder('gps_tracks')!;
   const kml: string[] = [];
   for (const d of days) {
@@ -260,7 +273,8 @@ export async function evidencePack(tripId: string, tripName: string, date?: stri
   for (const s of stops) if (s.type !== 'break') kml.push(`<Placemark><name>${esc(STOP_LABEL[s.type])}${s.witness ? ' – ' + esc(s.witness.name) : ''}</name><description>${esc(new Date(s.at).toLocaleString('en-IN'))} ${esc(s.place ?? '')}</description><Point><coordinates>${s.lng.toFixed(6)},${s.lat.toFixed(6)}</coordinates></Point></Placemark>`);
   zip.file('journey.kml', `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(tripName)}</name><Style id="ride"><LineStyle><color>ff0055ff</color><width>3</width></LineStyle></Style>${kml.join('')}</Document></kml>`);
   const total = totalIndiaKm(all);
-  zip.file('README.txt', `Evidence pack for "${tripName}"${date ? ` — ${date} only` : ''}\nGenerated ${new Date().toISOString()} by RideGrid India.\nJourney so far: ${total.toFixed(1)} km by GPS inside India over ${all.length} day(s).\n\n` +
+  zip.file('README.txt', `Evidence pack for "${tripName}"${date ? ` — ${date} only` : ''}\nGenerated ${new Date().toISOString()} by RideGrid India.\nJourney so far: ${total.toFixed(1)} km by GPS inside India over ${all.length} day(s).\n` +
+    `Rider: ${rider.riderName ?? '—'} · Motorcycle: ${rider.bikeModel ?? '—'} · Registration: ${rider.bikeReg ?? '—'} (same rider and motorcycle throughout).\n\n` +
     `logbook.csv – every entry (start/end of day, overnight, police signature, witness, bills, evidence photos, automatic breaks): UTC time, GPS position, odometer.\n` +
     `witnesses.csv – who signed or gave a statement, where and when (statements themselves are written and signed by the witnesses; photos in photos_videos/).\n` +
     `daily_summary.csv – km by GPS inside India per day, odometer km, riding time, breaks, witnesses, evidence photos, continuity.\n` +

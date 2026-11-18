@@ -10,13 +10,16 @@ import { markBackup } from './LogbookTab';
 import { ui, useUI, act, toast } from './state';
 import { team } from '../team/team';
 
-const TYPES: StopType[] = ['daystart', 'dayend', 'overnight', 'police', 'witness', 'fuel', 'service', 'food', 'evidence', 'media', 'other'];
+const TYPES: StopType[] = ['start', 'finish', 'document', 'daystart', 'dayend', 'overnight', 'police', 'witness', 'fuel', 'service', 'food', 'evidence', 'media', 'other'];
 const HINT: Partial<Record<StopType, string>> = {
+  start: 'The very first entry of the record. Two independent witnesses must be present at the start: log each as "Witness statement" here too. Photos: odometer, bike with number plate, you with the witnesses.',
+  finish: 'The final entry. Two independent witnesses must be present at the finish (log each as "Witness statement"). Photos: odometer, bike, finish point.',
+  document: 'Photo/scan of the RC, purchase invoice, a brochure or maker\'s web page showing the model is sold to the public, driving licence and insurance.',
   daystart: 'Photo of the odometer before you ride (and the witness/officer signature if your rules need one).',
   dayend: 'Photo of the odometer at the end of the day.',
   overnight: 'Photo of the odometer and the hotel/hostel bill or register.',
   police: 'Photo of the signed and stamped logbook page or letter, and the station board.',
-  witness: 'The witness writes and signs their own statement (never pre-filled by you). Photograph the signed page and, if they agree, their ID or visiting card.',
+  witness: 'The witness writes and signs their own statement on the Guinness template (never pre-filled by you), including the time they were present. Photograph the signed page and, if they agree, their ID or visiting card.',
   fuel: 'Photo of the GST fuel bill and the odometer.',
   service: 'Photo of the service / repair bill and the odometer.',
   food: 'Photo of the bill (Limca asks for food and fuel bills).',
@@ -24,7 +27,7 @@ const HINT: Partial<Record<StopType, string>> = {
   media: 'Newspaper / TV / online coverage of the journey: link and a photo or screenshot.',
 };
 const WITNESS: StopType[] = ['police', 'witness'];
-const NO_ODO: StopType[] = ['media', 'food', 'evidence'];
+const NO_ODO: StopType[] = ['media', 'food', 'evidence', 'document'];
 
 /** Logbook entry: type, GPS position + time (automatic), odometer, witness details, photos/videos, note. */
 export function LogStopDialog() {
@@ -41,7 +44,7 @@ export function LogStopDialog() {
   const isW = WITNESS.includes(type);
   const save = () => act('Saving entry…', async () => {
     if (isW && !w.name.trim()) throw new Error('Enter the witness / officer name');
-    if (type === 'evidence' && !photos.length) throw new Error('Add at least one photo or video');
+    if ((type === 'evidence' || type === 'document') && !photos.length) throw new Error('Add at least one photo / file');
     let pos = nav.pos, acc = nav.accuracy;
     if (!pos) { pos = await myLocation(); acc = 0; }
     if (type === 'evidence') { await saveEvidence(photos, pos, acc); toast('Evidence saved with GPS, time and place'); close(); return; }
@@ -54,7 +57,7 @@ export function LogStopDialog() {
     // back up the day's evidence off the phone straight away
     if (wasEnd && confirm("Day logged. Download today's evidence pack now and keep a copy on your laptop / Google Drive?")) {
       const t = engine.trip!, d = dayKey(Date.now());
-      download(`${safeName(t.name)}_evidence_${d}.zip`, await evidencePack(t.id, t.name, d, { witnessesPerDay: nav.settings.witnessesPerDay }));
+      download(`${safeName(t.name)}_evidence_${d}.zip`, await evidencePack(t.id, t.name, d, { witnessesPerDay: nav.settings.witnessesPerDay }, nav.settings));
       markBackup(t.id, d);
     }
   });
@@ -77,7 +80,7 @@ export function LogStopDialog() {
         {type === 'media' && <input type="url" placeholder="Link to the article / video" value={link} onChange={(e) => setLink(e.target.value)} />}
         {!NO_ODO.includes(type) && <input type="number" inputMode="decimal" placeholder="Odometer reading (km)" value={odo} onChange={(e) => setOdo(e.target.value)} />}
         <label className="photo-btn">
-          <input type="file" accept={type === 'evidence' || type === 'media' ? 'image/*,video/*' : 'image/*'} capture="environment" multiple hidden onChange={(e) => setPhotos([...photos, ...Array.from(e.target.files ?? [])])} />
+          <input type="file" accept={type === 'evidence' || type === 'media' ? 'image/*,video/*' : type === 'document' ? 'image/*,application/pdf' : 'image/*'} capture="environment" multiple hidden onChange={(e) => setPhotos([...photos, ...Array.from(e.target.files ?? [])])} />
           📷 Add {type === 'evidence' ? 'photo / video' : 'photo'}{photos.length ? ` (${photos.length} added)` : ''}
         </label>
         <textarea rows={2} placeholder={type === 'media' ? 'Title / newspaper' : 'Note (station name, hotel, what was signed…)'} value={note} onChange={(e) => setNote(e.target.value)} />

@@ -40,7 +40,7 @@ export async function saveEvidence(files: File[], pos: LngLat, acc?: number) {
     `${new Date(at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'Asia/Kolkata' })} IST · ${new Date(at).toISOString().slice(0, 19)}Z`,
     `GPS ${pos[1].toFixed(6)}, ${pos[0].toFixed(6)}${acc ? ` ±${Math.round(acc)} m` : ''}${nav.mode === 'live' ? ` · ${Math.round(nav.speedMps * 3.6)} km/h` : ''}`,
     ...(place ? [place.slice(0, 90)] : []),
-    `${trip.name} · RideGrid India`,
+    [nav.settings.riderName, [nav.settings.bikeModel, nav.settings.bikeReg].filter(Boolean).join(' '), trip.name].filter(Boolean).join(' · '),
   ];
   const blobs: Blob[] = [];
   for (const f of files) {

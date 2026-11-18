@@ -286,3 +286,4 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .thumbs video { width: 120px; height: 90px; border-radius: 6px; background: #000; }
 .pulse { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255,120,0,.35); } }
+.riderinfo { display: grid; gap: 6px; margin: 8px 0; }
