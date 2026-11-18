@@ -15,6 +15,12 @@ export class Graph {
   /** first/second endpoint of each edge */
   ea: Uint32Array; eb: Uint32Array;
   private grid = new Map<number, number[]>();
+  private _work: { dist: Float64Array; prevE: Int32Array; prevV: Int32Array; done: Uint8Array } | null = null;
+  /** Search arrays sized to the graph, allocated once and reused (callers reset what they touch). */
+  work() {
+    if (!this._work) { const d = new Float64Array(this.V); d.fill(Infinity); this._work = { dist: d, prevE: new Int32Array(this.V), prevV: new Int32Array(this.V), done: new Uint8Array(this.V) }; }
+    return this._work;
+  }
   private static CELL = 0.005;
 
   constructor(buf: ArrayBuffer) {
@@ -128,11 +134,16 @@ export function route(g: Graph, from: LngLat, to: LngLat): Path | null {
   const sec = (e: number, m: number) => m / (g.kmh[e] / 3.6);
   const edgeM = (e: number) => g.len[e] / 10;
   const oneway = (e: number) => (g.cls[e] & 0x80) !== 0;
-  const best = new Map<number, number>(), prevEdge = new Map<number, number>(), prevV = new Map<number, number>();
+  // reusable per-graph search arrays (reset only what was touched) — fast even with millions of junctions
+  const W = g.work();
+  const { dist, prevE, prevV, done } = W;
+  const touched: number[] = [];
+  const getD = (v: number) => dist[v];
+  const setD = (v: number, d: number, e: number, pv: number) => { if (dist[v] === Infinity) touched.push(v); dist[v] = d; prevE[v] = e; prevV[v] = pv; };
   const h = (v: number) => { const x = (g.lon[v] / 1e6 - to[0]) * Math.cos(to[1] * RAD) * 111320, y = (g.lat[v] / 1e6 - to[1]) * 110540; return Math.hypot(x, y) / (75 / 3.6); };
   const heap = new Heap();
   // start: leave the snapped point towards either end of its edge (respecting one-way)
-  const startTo = (v: number, cost: number) => { if (cost < (best.get(v) ?? Infinity)) { best.set(v, cost); prevEdge.set(v, -1); prevV.set(v, -1); heap.push(cost + h(v), v); } };
+  const startTo = (v: number, cost: number) => { if (cost < getD(v)) { setD(v, cost, -1, -1); heap.push(cost + h(v), v); } };
   startTo(g.eb[a.e], sec(a.e, edgeM(a.e) - a.along));
   if (!oneway(a.e)) startTo(g.ea[a.e], sec(a.e, a.along));
   // goal: arrive at either end of b's edge and travel along it to the snapped point
@@ -141,24 +152,27 @@ export function route(g: Graph, from: LngLat, to: LngLat): Path | null {
   // same edge, direct
   if (a.e === b.e && (b.along >= a.along || !oneway(a.e))) { bestTotal = sec(a.e, Math.abs(b.along - a.along)); bestEnd = -2; }
   let settled = 0;
-  const done = new Set<number>();
-  while (heap.size) {
-    if (heap.peekKey() >= bestTotal) break;
-    const v = heap.pop();
-    if (done.has(v)) continue;
-    done.add(v); settled++;
-    const dv = best.get(v)!;
-    const gc = goalCost(v);
-    if (dv + gc < bestTotal) { bestTotal = dv + gc; bestEnd = v; }
-    for (let i = g.adjStart[v]; i < g.adjStart[v + 1]; i++) {
-      if (!(g.adjFlag[i] & 1)) continue;
-      const e = g.adjEdge[i], w = g.adjTo[i];
-      const nd = dv + sec(e, edgeM(e));
-      if (nd < (best.get(w) ?? Infinity)) { best.set(w, nd); prevEdge.set(w, e); prevV.set(w, v); heap.push(nd + h(w), w); }
+  try {
+    while (heap.size) {
+      if (heap.peekKey() >= bestTotal) break;
+      const v = heap.pop();
+      if (done[v]) continue;
+      done[v] = 1; settled++;
+      const dv = dist[v];
+      const gc = goalCost(v);
+      if (dv + gc < bestTotal) { bestTotal = dv + gc; bestEnd = v; }
+      for (let i = g.adjStart[v]; i < g.adjStart[v + 1]; i++) {
+        if (!(g.adjFlag[i] & 1)) continue;
+        const e = g.adjEdge[i], w = g.adjTo[i];
+        const nd = dv + sec(e, edgeM(e));
+        if (nd < dist[w]) { setD(w, nd, e, v); heap.push(nd + h(w), w); }
+      }
+      if (settled > 4_000_000) break;
     }
-    if (settled > 3_000_000) break;
-  }
-  if (bestEnd === -1) return null;
+  } catch (e) { for (const v of touched) { dist[v] = Infinity; done[v] = 0; } throw e; }
+  const prevEdge = { get: (v: number) => prevE[v] }, prevVx = { get: (v: number) => prevV[v] };
+  const cleanup = () => { for (const v of touched) { dist[v] = Infinity; done[v] = 0; } };
+  if (bestEnd === -1) { cleanup(); return null; }
   // ---- rebuild geometry
   const coords: LngLat[] = [], names: (string | undefined)[] = [];
   const add = (pts: LngLat[], name: string | undefined) => { for (const p of pts) { const l = coords[coords.length - 1]; if (l && l[0] === p[0] && l[1] === p[1]) continue; coords.push(p); names.push(name); } };
@@ -182,18 +196,19 @@ export function route(g: Graph, from: LngLat, to: LngLat): Path | null {
     add(cut(a.e, a.along, b.along), nameOf(a.e));
   } else {
     const chain: number[] = [];
-    for (let v = bestEnd; v !== -1 && prevEdge.get(v) !== -1; v = prevV.get(v)!) chain.push(v);
-    const startV = chain.length ? prevV.get(chain[chain.length - 1])! : bestEnd;
+    for (let v = bestEnd; v !== -1 && prevEdge.get(v) !== -1; v = prevVx.get(v)) chain.push(v);
+    const startV = chain.length ? prevVx.get(chain[chain.length - 1]) : bestEnd;
     // first partial edge: from snap point a to startV
     add(cut(a.e, a.along, startV === g.ea[a.e] ? 0 : edgeM(a.e)), nameOf(a.e));
     for (let k = chain.length - 1; k >= 0; k--) {
-      const v = chain[k], e = prevEdge.get(v)!;
+      const v = chain[k], e = prevEdge.get(v);
       const pts = g.edgeCoords(e);
       add(g.ea[e] === v ? pts.reverse() : pts, nameOf(e));
     }
     // last partial edge: from bestEnd to snap point b
     add(cut(b.e, bestEnd === g.ea[b.e] ? 0 : edgeM(b.e), b.along), nameOf(b.e));
   }
+  cleanup();
   let distM = 0;
   for (let i = 1; i < coords.length; i++) distM += Math.hypot((coords[i][0] - coords[i - 1][0]) * Math.cos(coords[i][1] * RAD) * 111320, (coords[i][1] - coords[i - 1][1]) * 110540);
   return { coords, distM, timeS: bestTotal, names, settled };
