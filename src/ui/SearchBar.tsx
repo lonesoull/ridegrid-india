@@ -7,12 +7,14 @@ import { nav } from '../nav/navigator';
 import { ui, useUI } from './state';
 import { mapCtl } from './App';
 import { myFix, fixProblem } from '../nav/directions';
+import { mode } from '../core/mode';
+import { DailySearchBar } from '../daily/DailySearchBar';
 
 const fmtDist = (m?: number) => (m === undefined ? '' : m < 1000 ? `${Math.round(m)} m` : fmtKm(m));
 
 let lastFix: LngLat | null = null;
 /** Grab a trustworthy location once when search opens (rejects VPN / Wi-Fi guesses). */
-async function warmLocation() {
+export async function warmLocation() {
   if (nav.pos || lastFix) return;
   try { const f = await myFix(); if (!fixProblem(f)) lastFix = f.p; } catch { /* no permission: use map centre */ }
 }
@@ -28,6 +30,11 @@ export function searchCentre(): LngLat {
 
 /** "Where to?" box + quick categories + results list. Selecting a result opens the place card. */
 export function SearchBar() {
+  // Daily ride mode has its own offline-capable search (OsmAnd style); expedition keeps this one
+  return mode.current === 'daily' ? <DailySearchBar /> : <ExpeditionSearchBar />;
+}
+
+function ExpeditionSearchBar() {
   const results = useUI((s) => s.places);
   const [q, setQ] = useState('');
   const [focus, setFocus] = useState(false);

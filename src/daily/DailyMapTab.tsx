@@ -7,6 +7,7 @@ import { mapCtl } from '../ui/App';
 import { act, toast } from '../ui/state';
 import { google } from '../core/google';
 import { sunTimes } from './sun';
+import { offlineSearch, type PoiZone } from './offlineSearch';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
 
@@ -70,15 +71,23 @@ function OfflineMapDownloads() {
   const [meta, setMeta] = useState<Record<string, { bytes: number; generated?: string } | null>>({});
   const [prog, setProg] = useState<Record<string, string>>({});
   const [server, setServer] = useState(mapServer());
-  const reload = () => offlineMaps.installed().then(setInst);
+  const [poi, setPoi] = useState<PoiZone[]>([]);
+  const [poiMeta, setPoiMeta] = useState<Record<string, { poi: number; alerts: number; generated: string } | null>>({});
+  const reload = () => { void offlineSearch.installed().then(setPoi); return offlineMaps.installed().then(setInst); };
+  const getSearch = (zone: string) => {
+    setProg((x) => ({ ...x, ['s:' + zone]: 'downloading…' }));
+    void offlineSearch.download(zone).then(() => toast('Offline search & road alerts ready for this region')).catch((e) => toast(e.message, 'error'))
+      .finally(() => { setProg((x) => { const y = { ...x }; delete y['s:' + zone]; return y; }); void reload(); });
+  };
   useEffect(() => {
     void reload();
+    for (const z of ZONES) void fetch(`${import.meta.env.BASE_URL}poi/${z.zone}.poi.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => setPoiMeta((m) => ({ ...m, [z.zone]: j })));
     for (const z of ZONES) void fetch(`${server}/${z.zone}.tiles.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => setMeta((m) => ({ ...m, [z.zone]: j })));
   }, [server]);
   const dl = (zone: string) => {
     setProg((x) => ({ ...x, [zone]: 'starting…' }));
     void offlineMaps.download(zone, `${server}/${zone}.pmtiles`, (d, t) => setProg((x) => ({ ...x, [zone]: t ? `${Math.round((d / t) * 100)}% (${mb(d)} of ${mb(t)})` : mb(d) })))
-      .then(() => { toast('Offline map ready'); if (mapCtl) void applyBase(mapCtl, true); })
+      .then(() => { toast('Offline map ready'); if (mapCtl) void applyBase(mapCtl, true); if (!poi.some((x) => x.zone === zone) && poiMeta[zone]) getSearch(zone); })
       .catch((e) => toast(e.message, 'error'))
       .finally(() => { setProg((x) => { const y = { ...x }; delete y[zone]; return y; }); void reload(); });
   };
@@ -88,11 +97,14 @@ function OfflineMapDownloads() {
       <p className="muted">Download a region's full map (roads, places, buildings, water, parks) for use with no internet. Where nothing is downloaded the map loads online. Use Wi-Fi — regions are a few hundred MB.</p>
       {ZONES.map((z) => {
         const have = inst.find((i) => i.zone === z.zone), m = meta[z.zone], p = prog[z.zone];
+        const sHave = poi.find((i) => i.zone === z.zone), sm = poiMeta[z.zone], sp = prog['s:' + z.zone];
         return (
           <div className="item" key={z.zone}>
             <div><b>{z.label}</b> {have && <span className="pill">{offlineMaps.zones.includes(z.zone) ? 'ready' : 'stored'}</span>}
               <div className="muted">{z.states}</div>
-              <div className="muted">{m ? `${mb(m.bytes)}` : m === null ? 'not available on this server yet' : '…'}{have?.generated ? ` · map data ${new Date(have.generated).toLocaleDateString('en-IN')}` : ''}</div></div>
+              <div className="muted">Map: {m ? `${mb(m.bytes)}` : m === null ? 'not available on this server yet' : '…'}{have?.generated ? ` · map data ${new Date(have.generated).toLocaleDateString('en-IN')}` : ''}</div>
+              <div className="muted">Search & road alerts: {sHave ? `✓ ${sHave.poi.toLocaleString('en-IN')} places` : sm ? `${sm.poi.toLocaleString('en-IN')} places, ${sm.alerts.toLocaleString('en-IN')} alerts` : sm === null ? 'not available yet' : '…'}
+                {sp ? ` · ${sp}` : sHave ? <> · <button className="link" onClick={() => act(null, () => offlineSearch.remove(z.zone)).then(reload)}>remove</button>{sm && sHave.generated !== sm.generated && <> · <button className="link" onClick={() => getSearch(z.zone)}>update</button></>}</> : sm ? <> · <button className="link" onClick={() => getSearch(z.zone)}>download</button></> : null}</div></div>
             <div className="btns sm">
               {p ? <span className="muted">{p}</span> : have
                 ? <><button onClick={() => act(null, () => offlineMaps.remove(z.zone)).then(reload)}>Remove</button>

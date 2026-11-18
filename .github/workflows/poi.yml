@@ -1,0 +1,39 @@
+name: Build offline search
+
+# Offline search (places, POIs, streets) and road alerts (speed cameras, speed breakers, rail
+# crossings, tolls, signals) per India zone, from Geofabrik extracts → "india-poi" release.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/build-poi.mjs', '.github/workflows/poi.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  poi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        zone: [southern-zone, western-zone, northern-zone, central-zone, eastern-zone, north-eastern-zone]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+      - run: node --max-old-space-size=6000 tools/build-poi.mjs ${{ matrix.zone }} && ls -la poi-out
+      - name: Publish to the "india-poi" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: india-poi
+          name: India offline search
+          body: Places, POIs, streets and road alerts from OpenStreetMap (© OpenStreetMap contributors, ODbL).
+          files: |
+            poi-out/${{ matrix.zone }}.poi.tsv
+            poi-out/${{ matrix.zone }}.alerts.tsv
+            poi-out/${{ matrix.zone }}.poi.json

@@ -304,3 +304,7 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .stylegrid button { font-size: 13px; padding: 8px; }
 .stylegrid button.on { outline: 2px solid var(--accent); }
 .wikipop p { margin: 6px 0; font-size: 12px; }
+.dsec { margin: 8px 0 2px; font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: .7; display: flex; justify-content: space-between; }
+.nearcat { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; margin: 2px 0; }
+.nearcat .muted:first-child { min-width: 92px; }
+.chip.on { background: var(--accent); color: #fff; }

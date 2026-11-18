@@ -33,6 +33,7 @@ import { nav } from '../nav/navigator';
 import { ModePicker } from './ModePicker';
 import { dailyMap } from '../daily/mapLayers';
 import { offlineMaps } from '../daily/offlineMap';
+import { offlineSearch } from '../daily/offlineSearch';
 import { startDailyOverlays } from '../daily/overlays';
 import { mode, MODE_LABEL } from '../core/mode';
 
@@ -54,6 +55,7 @@ export function App() {
       await google.load();
       await dailyMap.load();
       void offlineMaps.boot();
+      void offlineSearch.boot();
       startDailyOverlays(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance();

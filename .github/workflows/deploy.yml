@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   # re-deploy when fresh India data has been published
   workflow_run:
-    workflows: ['Build India data', 'Build routing graphs']
+    workflows: ['Build India data', 'Build routing graphs', 'Build offline search', 'Build offline maps']
     types: [completed]
 
 permissions:
@@ -44,6 +44,12 @@ jobs:
             curl -fsSL -o public/graphs/$z.json https://github.com/${{ github.repository }}/releases/download/india-graph/$z.json || rm -f public/graphs/$z.json
           done; done
           du -sh public/graphs
+          # Daily mode: offline search + road alerts
+          mkdir -p public/poi
+          for z in southern-zone western-zone northern-zone central-zone eastern-zone north-eastern-zone; do for f in $z.poi.tsv $z.alerts.tsv $z.poi.json; do
+            curl -fsSL -o public/poi/$f https://github.com/${{ github.repository }}/releases/download/india-poi/$f || rm -f public/poi/$f
+          done; done
+          du -sh public/poi
           ls -la public/graphs
       - run: npm test
       - run: npx vite build

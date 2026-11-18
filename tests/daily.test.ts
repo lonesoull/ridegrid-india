@@ -1,0 +1,48 @@
+import { describe, it, expect } from 'vitest';
+import { PoiIndex } from '../src/daily/poiIndex';
+import { parseCoords } from '../src/daily/coords';
+
+const TSV = [
+  '80\t13\tfuel\tIOCL Beach Road\t24/7||Indian Oil',
+  '80.05\t13.05\ttown\tMahabalipuram\t',
+  '80.003\t13.003\tmechanic\tRaju Bike Works\t',
+  '80.041\t13.001\thotel\tSea View Hotel\t|+91 44 1234',
+  '80.5\t13.5\tfuel\tHP Petrol Far Away\t',
+  '80.02\t13\tstreet\tBeach Road\t',
+].join('\n');
+
+describe('offline search', () => {
+  const ix = new PoiIndex(); ix.add(TSV);
+  it('finds by name words (prefix) and ranks towns', () => {
+    expect(ix.search('mahab')[0].name).toBe('Mahabalipuram');
+    expect(ix.search('beach road').map((h) => h.name)).toContain('Beach Road');
+    expect(ix.search('raju')[0].cat).toBe('mechanic');
+  });
+  it('understands category words like "petrol pump" and sorts by distance', () => {
+    const r = ix.search('petrol pump', { near: [80.01, 13.01] });
+    expect(r.map((h) => h.cat)).toEqual(['fuel', 'fuel']);
+    expect(r[0].name).toBe('IOCL Beach Road');
+    expect(r[0].distM!).toBeLessThan(2000);
+  });
+  it('searches along a route, in order ahead', () => {
+    const route: [number, number][] = Array.from({ length: 50 }, (_, i) => [80 + i * 0.001, 13]);
+    const r = ix.search('', { cat: 'fuel', along: { pts: route, maxM: 2000 } });
+    expect(r.length).toBe(1); // the far one is not along the route
+    expect(r[0].offM!).toBeLessThan(50);
+  });
+  it('nearby card groups categories', () => {
+    const g = ix.nearby([80, 13]);
+    expect(g.find((x) => x.cat === 'fuel')!.hits[0].name).toBe('IOCL Beach Road');
+  });
+});
+
+describe('coordinate input', () => {
+  const close = (a: number[] | null, b: number[], tol = 1e-3) => { expect(a).not.toBeNull(); expect(Math.abs(a![0] - b[0])).toBeLessThan(tol); expect(Math.abs(a![1] - b[1])).toBeLessThan(tol); };
+  it('decimal and DMS', () => {
+    close(parseCoords('12.9716, 77.5946'), [77.5946, 12.9716]);
+    close(parseCoords(`12°58'17.8"N 77°35'40.6"E`), [77.5946, 12.9716]);
+  });
+  it('plus code', () => close(parseCoords('849VCWC8+R9'), [-122.0841, 37.4220], 2e-3));
+  it('UTM', () => close(parseCoords('43P 781481 1435426'), [77.5946, 12.9716], 1e-4));
+  it('rejects text', () => expect(parseCoords('Beach Road')).toBeNull());
+});
