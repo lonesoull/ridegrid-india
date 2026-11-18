@@ -90,6 +90,12 @@ export class MapController {
   base: 'osm' | 'google' = 'osm';
 
   /** OpenStreetMap vector basemap (works offline from cache). */
+  /** Called after every base-map change once the app's own layers are back (Daily-mode overlays use it). */
+  styleHooks = new Set<(m: MLMap) => void>();
+
+  /** Daily ride mode: a full style object (offline vector map + overlays). */
+  setStyleBase(id: string, style: StyleSpecification) { this.dropUnderlay(); this.applyBase(`daily:${id}`, style, 'osm'); }
+
   setOsmBase(night: boolean) { this.dropUnderlay(); this.applyBase(`osm:${night ? 'night' : 'day'}`, night ? STYLES.night : STYLES.day, 'osm'); }
 
   /** Google mode: transparent MapLibre over a Google Maps JavaScript map (flat, rotates with heading). */
@@ -262,6 +268,7 @@ export class MapController {
       layout: { 'icon-image': 'rg-arrow', 'icon-rotate': ['get', 'hd'], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
 
     this.styleReady = true;
+    for (const f of this.styleHooks) { try { f(m); } catch (e) { console.warn(e); } }
     this.pendingDiffs = [];
     this.rebuildRoute();
     this.scheduleStops();

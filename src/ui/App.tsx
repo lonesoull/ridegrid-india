@@ -31,6 +31,9 @@ import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
 import { ModePicker } from './ModePicker';
+import { dailyMap } from '../daily/mapLayers';
+import { offlineMaps } from '../daily/offlineMap';
+import { startDailyOverlays } from '../daily/overlays';
 import { mode, MODE_LABEL } from '../core/mode';
 
 export let mapCtl: MapController | null = null;
@@ -49,6 +52,9 @@ export function App() {
       await app.loadSettings();
       await nav.loadSettings();
       await google.load();
+      await dailyMap.load();
+      void offlineMaps.boot();
+      startDailyOverlays(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance();
       void device.boot().then(() => app.queue.kick());
@@ -74,6 +80,7 @@ export function App() {
       window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
       await bootTrips();
       document.documentElement.dataset.mode = mode.current;
+      if (mode.current === 'daily') await applyBase(mapCtl!);
       if (!mode.chosen) ui.set({ modePicker: true });
       void reminder.start();
       setReady(true);

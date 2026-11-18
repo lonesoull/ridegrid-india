@@ -300,3 +300,7 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .modebtn.expedition { background: rgba(124,58,237,.15); color: #6d28d9; }
 :root[data-mode="daily"] .hud .kind { cursor: pointer; }
 .hud .kind { cursor: pointer; }
+.stylegrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 8px; }
+.stylegrid button { font-size: 13px; padding: 8px; }
+.stylegrid button.on { outline: 2px solid var(--accent); }
+.wikipop p { margin: 6px 0; font-size: 12px; }

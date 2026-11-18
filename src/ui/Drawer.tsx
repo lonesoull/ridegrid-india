@@ -22,6 +22,7 @@ import { applyBase } from '../map/googleBase';
 import { RideTab } from './RideTab';
 import { LogbookTab } from './LogbookTab';
 import { mode, MODE_LABEL } from '../core/mode';
+import { DailyMapTab } from '../daily/DailyMapTab';
 import { TeamTab } from './TeamTab';
 
 export function Drawer() {
@@ -37,11 +38,11 @@ export function Drawer() {
           <button className="x" onClick={() => ui.set({ drawer: false })}>✕</button>
         </div>
         <nav className="tabs">
-          {(['trip', 'stops', 'ride', 'log', 'team', 'files', 'tools'] as const).map((t) => (
+          {(mode.current === 'daily' ? ['trip', 'stops', 'ride', 'map', 'log', 'team', 'files', 'tools'] as const : ['trip', 'stops', 'ride', 'log', 'team', 'files', 'tools'] as const).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => ui.set({ tab: t })}>
               {(mode.current === 'daily'
-                ? { trip: 'Rides', stops: 'Stops', ride: 'Navigate', log: 'Diary', team: 'Team', files: 'Files', tools: 'Tools' }
-                : { trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', team: 'Team', files: 'Files', tools: 'Tools' })[t]}
+                ? { trip: 'Rides', stops: 'Stops', ride: 'Navigate', map: 'Map', log: 'Diary', team: 'Team', files: 'Files', tools: 'Tools' } as Record<string, string>
+                : { trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', team: 'Team', files: 'Files', tools: 'Tools' } as Record<string, string>)[t]}
             </button>
           ))}
         </nav>
@@ -49,6 +50,7 @@ export function Drawer() {
           {open && tab === 'trip' && <TripTab />}
           {open && tab === 'stops' && <StopsTab />}
           {open && tab === 'ride' && <RideTab />}
+          {open && tab === 'map' && mode.current === 'daily' && <DailyMapTab />}
           {open && tab === 'log' && <LogbookTab />}
           {open && tab === 'team' && <TeamTab />}
           {open && tab === 'files' && <FilesTab />}

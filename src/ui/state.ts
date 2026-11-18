@@ -7,7 +7,7 @@ export interface UIState {
   snapToRoad: boolean;
   night: boolean;
   drawer: boolean;
-  tab: 'trip' | 'stops' | 'ride' | 'log' | 'team' | 'files' | 'tools';
+  tab: 'trip' | 'stops' | 'ride' | 'map' | 'log' | 'team' | 'files' | 'tools';
   /** the Expedition / Daily ride picker is open */
   modePicker: boolean;
   following: boolean;
