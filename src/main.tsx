@@ -12,4 +12,7 @@ if (navigator.storage?.persist) navigator.storage.persist().catch(() => undefine
 // debug handle for testing from the browser console
 import { engine } from './core/engine';
 import { app } from './core/app';
-(window as any).__rg = { engine, app };
+import { nav } from './nav/navigator';
+(window as any).__rg = { engine, app, nav };
+import { mapCtl } from './ui/App';
+setTimeout(() => { (window as any).__map = mapCtl?.map; }, 500);

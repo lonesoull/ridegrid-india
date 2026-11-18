@@ -9,6 +9,9 @@ import { useEngine, useRouterStatus } from './hooks';
 import { Drawer } from './Drawer';
 import { FpsMeter } from './FpsMeter';
 import { StressRouteButton } from './StressRouteButton';
+import { NavPanel } from './NavPanel';
+import { nav } from '../nav/navigator';
+import { useNav } from './navHooks';
 
 export let mapCtl: MapController | null = null;
 
@@ -24,6 +27,7 @@ export function App() {
     mapCtl = new MapController(el.current!);
     (async () => {
       await app.loadSettings();
+      await nav.loadSettings();
       await bootTrips();
       setReady(true);
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
@@ -55,6 +59,7 @@ export function App() {
       {ready && <Hud />}
       {ready && <Controls />}
       {ready && <StopSheet />}
+      {ready && <NavPanel />}
       {ready && <Drawer />}
       <Toast />
       <FpsMeterGate />
@@ -126,13 +131,13 @@ function Controls() {
 }
 
 function StopSheet() {
-  useEngine();
+  useEngine(); useNav();
   const id = useUI((s) => s.selectedId);
   const [name, setName] = useState('');
   const i = id ? engine.indexOf(id) : -1;
   const s = engine.stops[i];
   useEffect(() => setName(s?.name ?? ''), [id, s?.name]);
-  if (!s) return null;
+  if (!s || nav.mode !== 'off') return null;
   return (
     <div className="sheet glass">
       <div className="sheet-head">

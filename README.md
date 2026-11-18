@@ -27,9 +27,17 @@ npm run build      # static site in dist/ (host free on GitHub Pages / Netlify /
 
 Routing engine is switchable (Tools tab): OSRM or Valhalla (motorcycle), public or your own server URL.
 
+## Phase 2 — Navigation (done)
+
+| # | Feature | Where |
+|---|---|---|
+| 24 | Live GPS navigation + ride simulator (1× / 10× / 50× / 500×) gliding along the exact road geometry, follow camera with tilt, Screen Wake Lock | `src/nav/navigator.ts`, `NavPanel.tsx` |
+| 25 | Off-route alarm (25–200 m, beep + voice, repeats while off), auto-arrival (15–100 m) advancing Next Stop #, missed-stop detection | `navigator.ts`, `audio.ts` |
+| 26 | Google Maps backup: exact stop order in 10-leg two-wheeler links (origin + 9 waypoints + destination), list + .csv | `src/nav/gmaps.ts`, Ride tab |
+| — | Ride logs with UTC timestamp per GPS point → “Covered” distance, timestamped GPX 1.1 export | `src/nav/rides.ts` |
+
 ## Next phases
 
-2. Navigation: GPS journey player & simulator, off-route / arrival alerts, wake lock, Google Maps backup dispatcher
 3. On-device offline router (per-state road graphs) + Guinness/India compliance modules
 4. Supabase live telemetry for ≤10 devices, route push, offline POIs, SOS
 5. Packaging: Android APK (Capacitor), desktop (Tauri), iOS PWA

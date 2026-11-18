@@ -7,7 +7,8 @@ export interface UIState {
   snapToRoad: boolean;
   night: boolean;
   drawer: boolean;
-  tab: 'trip' | 'stops' | 'files' | 'tools';
+  tab: 'trip' | 'stops' | 'ride' | 'files' | 'tools';
+  following: boolean;
   toast: { msg: string; kind: 'info' | 'error'; at: number } | null;
   fps: boolean;
   busy: string | null;
@@ -16,7 +17,7 @@ export interface UIState {
 let state: UIState = {
   selectedId: null, tapMode: 'append', snapToRoad: true,
   night: typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches,
-  drawer: false, tab: 'trip', toast: null, fps: false, busy: null,
+  drawer: false, tab: 'trip', following: true, toast: null, fps: false, busy: null,
 };
 const subs = new Set<() => void>();
 

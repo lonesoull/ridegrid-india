@@ -10,6 +10,7 @@ import { ui, useUI, toast, act } from './state';
 import { useAsync, useEngine, useRouterStatus } from './hooks';
 import { mapCtl } from './App';
 import { StressRouteButton } from './StressRouteButton';
+import { RideTab } from './RideTab';
 
 export function Drawer() {
   const open = useUI((s) => s.drawer);
@@ -23,15 +24,16 @@ export function Drawer() {
           <button className="x" onClick={() => ui.set({ drawer: false })}>✕</button>
         </div>
         <nav className="tabs">
-          {(['trip', 'stops', 'files', 'tools'] as const).map((t) => (
+          {(['trip', 'stops', 'ride', 'files', 'tools'] as const).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => ui.set({ tab: t })}>
-              {{ trip: 'Trip', stops: 'Stops', files: 'Files', tools: 'Tools' }[t]}
+              {{ trip: 'Trip', stops: 'Stops', ride: 'Ride', files: 'Files', tools: 'Tools' }[t]}
             </button>
           ))}
         </nav>
         <div className="drawer-body">
           {open && tab === 'trip' && <TripTab />}
           {open && tab === 'stops' && <StopsTab />}
+          {open && tab === 'ride' && <RideTab />}
           {open && tab === 'files' && <FilesTab />}
           {open && tab === 'tools' && <ToolsTab />}
         </div>

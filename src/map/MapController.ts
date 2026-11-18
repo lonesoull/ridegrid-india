@@ -13,7 +13,7 @@ export const STYLES = {
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 
-const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me';
+const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next';
 const FONT = ['Noto Sans Bold'];
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 
@@ -23,6 +23,18 @@ function legFeature(l: Leg): GeoJSON.Feature {
     properties: { st: l.status },
     geometry: { type: 'LineString', coordinates: l.status === 'ok' && l.coords ? l.coords : [l.from, l.to] },
   };
+}
+
+/** Navigation arrow (drawn once into an image, rotated on the GPU). */
+function arrowImage() {
+  const size = 64, c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d')!;
+  g.translate(size / 2, size / 2);
+  g.beginPath(); g.arc(0, 0, 26, 0, Math.PI * 2); g.fillStyle = '#ffffff'; g.fill();
+  g.beginPath(); g.arc(0, 0, 22, 0, Math.PI * 2); g.fillStyle = '#0ea5e9'; g.fill();
+  g.beginPath(); g.moveTo(0, -16); g.lineTo(12, 13); g.lineTo(0, 6); g.lineTo(-12, 13); g.closePath(); g.fillStyle = '#ffffff'; g.fill();
+  return c.getContext("2d")!.getImageData(0, 0, size, size);
 }
 
 /** Fallback raster style used when vector tiles are unreachable (keeps the app usable). */
@@ -131,6 +143,20 @@ export class MapController {
     m.addLayer({ id: 'rg-me', type: 'circle', source: ME,
       paint: { 'circle-radius': 9, 'circle-color': '#0ea5e9', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
 
+    // ---- navigation layers (Phase 2)
+    m.addSource(TRACK, { type: 'geojson', data: empty() });
+    m.addSource(NEXT, { type: 'geojson', data: empty() });
+    m.addSource(PUCK, { type: 'geojson', data: empty() });
+    m.addLayer({ id: 'rg-track', type: 'line', source: TRACK, layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6], 'line-opacity': 0.9 } }, 'rg-clusters');
+    m.addLayer({ id: 'rg-next', type: 'circle', source: NEXT,
+      paint: { 'circle-radius': 20, 'circle-color': 'rgba(34,197,94,0.18)', 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 4 } });
+    if (!m.hasImage('rg-arrow')) m.addImage('rg-arrow', arrowImage(), { pixelRatio: 2 });
+    m.addLayer({ id: 'rg-puck-halo', type: 'circle', source: PUCK,
+      paint: { 'circle-radius': ['get', 'accPx'], 'circle-color': 'rgba(14,165,233,0.12)', 'circle-stroke-color': 'rgba(14,165,233,0.4)', 'circle-stroke-width': 1 } });
+    m.addLayer({ id: 'rg-puck', type: 'symbol', source: PUCK,
+      layout: { 'icon-image': 'rg-arrow', 'icon-rotate': ['get', 'hd'], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
+
     this.styleReady = true;
     this.pendingDiffs = [];
     this.rebuildRoute();
@@ -205,6 +231,33 @@ export class MapController {
     this.src(SEL)?.setData(s ? { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [s.lng, s.lat] } } : empty());
   }
 
+  // ---------- navigation drawing ----------
+  follow = true;
+  private lastCam = 0;
+  setNav(state: { pos: LngLat | null; heading: number; accuracy: number; next: LngLat | null; track: LngLat[] } | null, sim = false) {
+    if (!this.styleReady) return;
+    if (!state) {
+      for (const id of [TRACK, PUCK, NEXT]) this.src(id)?.setData(empty());
+      return;
+    }
+    const { pos, heading, accuracy, next, track } = state;
+    const mpp = 156543.03 * Math.cos(((pos?.[1] ?? 20) * Math.PI) / 180) / 2 ** this.map.getZoom();
+    this.src(PUCK)?.setData(pos ? { type: 'Feature', properties: { hd: heading, accPx: Math.min(120, Math.max(0, accuracy / mpp)) }, geometry: { type: 'Point', coordinates: pos } } : empty());
+    this.src(NEXT)?.setData(next ? { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: next } } : empty());
+    this.src(TRACK)?.setData(track.length > 1 ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: track } } : empty());
+    if (pos && this.follow && !this.drag) {
+      const now = performance.now();
+      // first follow frame (or after zooming far out): bring the camera down to riding view
+      const cam = this.map.getZoom() < 13 ? { zoom: 15.5, pitch: 55 } : {};
+      if (sim) this.map.jumpTo({ center: pos, bearing: heading, ...cam });
+      else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
+    }
+  }
+  startFollow(pos?: LngLat | null) {
+    this.follow = true;
+    this.map.jumpTo({ center: pos ?? this.map.getCenter(), zoom: Math.max(this.map.getZoom(), 15.5), pitch: 55 });
+  }
+
   // ---------- camera ----------
   fitRoute() {
     const b = bounds((function* () { for (const s of engine.stops) yield [s.lng, s.lat] as LngLat; })());
@@ -238,6 +291,8 @@ export class MapController {
 
   private bindInteractions() {
     const m = this.map;
+    // user pans the map → stop auto-follow (a re-centre button brings it back)
+    m.on('dragstart', () => { if (!this.drag) { this.follow = false; ui.set({ following: false }); } });
     m.on('click', async (e) => {
       if (!this.styleReady) return;
       const pad = 12;

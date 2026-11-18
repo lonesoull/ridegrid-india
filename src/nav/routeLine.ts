@@ -1,0 +1,103 @@
+import { engine, type Leg } from '../core/engine';
+import { haversine, type LngLat } from '../core/geo';
+
+const RAD = Math.PI / 180;
+
+/** The whole planned route as one continuous polyline with cumulative distances (metres). */
+export interface RouteLine {
+  x: Float64Array; y: Float64Array; cum: Float64Array; n: number;
+  /** distance along the line at which stop i is reached */
+  stopS: Float64Array;
+  total: number;
+}
+
+export function buildRouteLine(): RouteLine {
+  const S = engine.stops;
+  const byPair = new Map<string, Leg>();
+  for (const l of engine.legs.values()) byPair.set(`${l.a}>${l.b}`, l);
+  const xs: number[] = [], ys: number[] = [], cum: number[] = [];
+  const stopS = new Float64Array(S.length);
+  let d = 0;
+  const push = (p: LngLat) => {
+    const n = xs.length;
+    if (n && xs[n - 1] === p[0] && ys[n - 1] === p[1]) return;
+    if (n) d += haversine([xs[n - 1], ys[n - 1]], p);
+    xs.push(p[0]); ys.push(p[1]); cum.push(d);
+  };
+  for (let i = 0; i < S.length; i++) {
+    if (i === S.length - 1) { if (!xs.length) push([S[i].lng, S[i].lat]); stopS[i] = d; break; }
+    const l = byPair.get(`${S[i].id}>${S[i + 1].id}`);
+    const coords: LngLat[] = l?.status === 'ok' && l.coords ? l.coords : [[S[i].lng, S[i].lat], [S[i + 1].lng, S[i + 1].lat]];
+    push(coords[0]);
+    stopS[i] = d;
+    for (let k = 1; k < coords.length; k++) push(coords[k]);
+  }
+  return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d };
+}
+
+/** Bearing in degrees (0 = north) from a to b. */
+export function bearing(ax: number, ay: number, bx: number, by: number) {
+  const y = Math.sin((bx - ax) * RAD) * Math.cos(by * RAD);
+  const x = Math.cos(ay * RAD) * Math.sin(by * RAD) - Math.sin(ay * RAD) * Math.cos(by * RAD) * Math.cos((bx - ax) * RAD);
+  return (Math.atan2(y, x) / RAD + 360) % 360;
+}
+
+/** Index of the segment containing distance s (binary search). */
+export function segAt(L: RouteLine, s: number): number {
+  let lo = 0, hi = L.n - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (L.cum[m] <= s) lo = m; else hi = m; }
+  return lo;
+}
+
+/** Position and heading at distance s along the route. */
+export function pointAt(L: RouteLine, s: number): { p: LngLat; heading: number; idx: number } {
+  if (L.n === 1) return { p: [L.x[0], L.y[0]], heading: 0, idx: 0 };
+  s = Math.max(0, Math.min(L.total, s));
+  const i = segAt(L, s);
+  const seg = L.cum[i + 1] - L.cum[i];
+  const t = seg > 0 ? (s - L.cum[i]) / seg : 0;
+  return {
+    p: [L.x[i] + (L.x[i + 1] - L.x[i]) * t, L.y[i] + (L.y[i + 1] - L.y[i]) * t],
+    heading: bearing(L.x[i], L.y[i], L.x[i + 1], L.y[i + 1]),
+    idx: i,
+  };
+}
+
+/**
+ * Snap a GPS point to the route. Searches a window around the last matched segment first
+ * (so overlapping roads don't confuse it), then the whole line if nothing is close.
+ */
+export function matchToRoute(L: RouteLine, p: LngLat, hint: number, maxWindowM = 300): { d: number; s: number; idx: number } {
+  const kx = Math.cos(p[1] * RAD) * 6371008.8 * RAD, ky = 6371008.8 * RAD;
+  const scan = (from: number, to: number, step = 1) => {
+    let best = { d: Infinity, s: 0, idx: from };
+    for (let i = Math.max(0, from); i < Math.min(L.n - 1, to); i += step) {
+      const ax = (L.x[i] - p[0]) * kx, ay = (L.y[i] - p[1]) * ky;
+      const bx = (L.x[i + 1] - p[0]) * kx, by = (L.y[i + 1] - p[1]) * ky;
+      const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+      const x = ax + t * dx, y = ay + t * dy, d = Math.sqrt(x * x + y * y);
+      if (d < best.d) best = { d, s: L.cum[i] + t * (L.cum[i + 1] - L.cum[i]), idx: i };
+    }
+    return best;
+  };
+  if (L.n < 2) return { d: haversine(p, [L.x[0], L.y[0]]), s: 0, idx: 0 };
+  // window: ~2 km behind, ~5 km ahead of the hint (by point count, adaptive to density)
+  let a = hint, b = hint;
+  while (a > 0 && L.cum[hint] - L.cum[a] < 2000) a--;
+  while (b < L.n - 1 && L.cum[b] - L.cum[hint] < 5000) b++;
+  const local = scan(a, b + 1);
+  if (local.d <= maxWindowM) return local;
+  const global = scan(0, L.n);
+  return global.d < local.d ? global : local;
+}
+
+/** Slice of the route between two distances, as coordinates (for drawing progress). */
+export function sliceLine(L: RouteLine, s0: number, s1: number): LngLat[] {
+  if (L.n < 2 || s1 <= s0) return [];
+  const a = pointAt(L, s0), b = pointAt(L, s1);
+  const out: LngLat[] = [a.p];
+  for (let i = a.idx + 1; i <= b.idx; i++) out.push([L.x[i], L.y[i]]);
+  out.push(b.p);
+  return out;
+}
