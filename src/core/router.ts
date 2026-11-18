@@ -16,7 +16,11 @@ class HttpError extends Error { constructor(public status: number, msg: string) 
 
 async function getJSON(url: string, init?: RequestInit) {
   const r = await fetch(url, init);
-  if (!r.ok) throw new HttpError(r.status, `HTTP ${r.status}`);
+  if (!r.ok) {
+    let detail = '';
+    try { const j = await r.json(); detail = j.code ? ` ${j.code}${j.message ? ': ' + j.message : ''}` : j.error ? ` ${j.error}` : ''; } catch { /* not JSON */ }
+    throw new HttpError(r.status, `HTTP ${r.status}${detail}`);
+  }
   return r.json();
 }
 
@@ -34,12 +38,16 @@ function joinSteps(steps: { geometry: string }[]): LngLat[] {
   return out;
 }
 
+const isPublic = (u: string) => /project-osrm\.org|openstreetmap\.de/.test(u);
+export const OSRM_PUBLIC = 'https://router.project-osrm.org';
+export const OSRM_FOSSGIS = 'https://routing.openstreetmap.de/routed-car';
+
 export function osrmProvider(base = 'https://router.project-osrm.org', profile = 'driving'): Provider {
   return {
     id: `osrm:${base}`,
-    label: base.includes('project-osrm.org') ? 'OSRM public' : `OSRM ${base}`,
-    maxWaypoints: 25,
-    minIntervalMs: base.includes('project-osrm.org') ? 1100 : 0,
+    label: base.includes('project-osrm.org') ? 'OSRM public' : base.includes('routing.openstreetmap.de') ? 'OSRM FOSSGIS' : `OSRM ${base}`,
+    maxWaypoints: 100,
+    minIntervalMs: isPublic(base) ? 1100 : 0,
     async route(points, signal) {
       const coords = points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(';');
       const j = await getJSON(`${base}/route/v1/${profile}/${coords}?overview=false&steps=true&geometries=polyline6&continue_straight=false`, { signal });
@@ -64,7 +72,7 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
     id: `valhalla:${base}`,
     label: base.includes('openstreetmap.de') ? 'Valhalla public (motorcycle)' : `Valhalla ${base}`,
     maxWaypoints: 20,
-    minIntervalMs: base.includes('openstreetmap.de') ? 1100 : 0,
+    minIntervalMs: isPublic(base) ? 1100 : 0,
     async route(points, signal) {
       const body = {
         locations: points.map(([lon, lat]) => ({ lon, lat, type: 'break' })),
@@ -91,67 +99,101 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
 
 export type RouterStatus = 'idle' | 'routing' | 'offline' | 'paused' | 'backoff';
 
+interface Worker {
+  provider: Provider;
+  maxLegs: number;      // adaptive: halves if the server says a batch is too big
+  lastAt: number;
+  backoffMs: number;
+  state: 'idle' | 'routing' | 'backoff';
+  running: boolean;
+  wake: (() => void) | null;
+}
+
 /**
  * Paced, cache-first routing queue. Every computed leg is stored in IndexedDB keyed by its exact
- * endpoints, so adding new pins never re-fetches old segments and the public servers never see bursts.
+ * endpoints, so adding new pins never re-fetches old segments. Several free servers can work in
+ * parallel, each paced to its own fair-use limit; workers never take the same legs.
  */
 export class RoutingQueue {
   status: RouterStatus = 'idle';
   autoRoute = true;
   lastError = '';
   requests = 0;
-  private running = false;
+  private workers: Worker[] = [];
+  private inflight = new Set<string>();
   private solo = new Set<string>();
-  private lastAt = 0;
-  private backoffMs = 0;
-  private wake: (() => void) | null = null;
   private listeners = new Set<() => void>();
 
-  constructor(public provider: Provider, private eng: RouteEngine = engine) {
+  constructor(provider: Provider, private eng: RouteEngine = engine) {
+    this.setProviders([provider]);
     eng.subscribe(() => this.kick());
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => { this.eng.retryErrors(); this.kick(); });
     }
   }
 
+  /** Primary provider (used for nearest-road snapping). */
+  get provider() { return this.workers[0].provider; }
+  get providerLabels() { return this.workers.map((w) => w.provider.label); }
+
   onStatus(fn: () => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
   private set(s: RouterStatus) { if (this.status !== s) { this.status = s; this.listeners.forEach((f) => f()); } }
+  private refresh() {
+    if (!this.autoRoute) return this.set('paused');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return this.set('offline');
+    if (this.workers.some((w) => w.state === 'routing')) return this.set('routing');
+    if (this.workers.some((w) => w.state === 'backoff')) return this.set('backoff');
+    this.set('idle');
+  }
 
-  setProvider(p: Provider) { this.provider = p; this.kick(); }
-  setAuto(on: boolean) { this.autoRoute = on; if (on) this.kick(); else this.set('paused'); }
+  setProvider(p: Provider) { this.setProviders([p]); }
+  setProviders(ps: Provider[]) {
+    this.workers.forEach((w) => w.wake?.());
+    this.workers = ps.map((provider) => ({ provider, maxLegs: provider.maxWaypoints - 1, lastAt: 0, backoffMs: 0, state: 'idle', running: false, wake: null }));
+    this.kick();
+  }
+  setAuto(on: boolean) { this.autoRoute = on; if (on) this.kick(); else this.refresh(); }
+
+  /** Expected throughput in legs per second across all servers. */
+  legsPerSec() {
+    return this.workers.reduce((a, w) => a + w.maxLegs / (Math.max(w.provider.minIntervalMs, 400) / 1000), 0);
+  }
 
   kick() {
-    if (this.wake) { const w = this.wake; this.wake = null; w(); }
-    if (!this.running) void this.loop();
+    for (const w of this.workers) {
+      if (w.wake) { const f = w.wake; w.wake = null; f(); }
+      if (!w.running) void this.loop(w);
+    }
   }
 
-  private sleep(ms: number) {
-    return new Promise<void>((res) => { const t = setTimeout(() => { this.wake = null; res(); }, ms); this.wake = () => { clearTimeout(t); res(); }; });
+  private sleep(w: Worker, ms: number) {
+    return new Promise<void>((res) => { const t = setTimeout(() => { w.wake = null; res(); }, ms); w.wake = () => { clearTimeout(t); res(); }; });
   }
 
-  private async loop() {
-    this.running = true;
+  private async loop(w: Worker) {
+    w.running = true;
     try {
       for (;;) {
-        if (!this.autoRoute) { this.set('paused'); return; }
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) { this.set('offline'); return; }
-        let run = this.eng.nextPendingRun(this.provider.maxWaypoints - 1);
-        if (!run.length) { this.set('idle'); return; }
+        if (!this.workers.includes(w)) return;
+        if (!this.autoRoute || (typeof navigator !== 'undefined' && navigator.onLine === false)) { w.state = 'idle'; this.refresh(); return; }
+        const wait = Math.max(w.backoffMs, w.provider.minIntervalMs - (Date.now() - w.lastAt));
+        if (wait > 0) { w.state = w.backoffMs ? 'backoff' : 'routing'; this.refresh(); await this.sleep(w, wait); continue; }
+        let run = this.eng.nextPendingRun(w.maxLegs, this.inflight);
+        if (!run.length) { w.state = 'idle'; this.refresh(); return; }
         const si = run.findIndex((l) => this.solo.has(l.key));
         if (si === 0) run = [run[0]]; else if (si > 0) run = run.slice(0, si);
-        const wait = Math.max(this.backoffMs, this.provider.minIntervalMs - (Date.now() - this.lastAt));
-        if (wait > 0) { this.set(this.backoffMs ? 'backoff' : 'routing'); await this.sleep(wait); continue; }
-        this.set('routing');
+        w.state = 'routing'; this.refresh();
+        run.forEach((l) => this.inflight.add(l.key));
         const points: LngLat[] = [run[0].from, ...run.map((l) => l.to)];
-        this.lastAt = Date.now();
+        w.lastAt = Date.now();
         this.requests++;
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), 30000);
         try {
-          const legs = await this.provider.route(points, ctl.signal);
-          this.backoffMs = 0; this.lastError = '';
+          const legs = await w.provider.route(points, ctl.signal);
+          w.backoffMs = 0; this.lastError = '';
           const rows = run.map((l, i) => ({ l, r: legs[i] })).filter((x) => x.r && x.r.coords.length >= 2);
-          await db.legs.bulkPut(rows.map(({ l, r }) => ({ key: cacheKey(l.from, l.to), poly: encode6(r.coords), distM: r.distM, provider: this.provider.id, at: Date.now() })));
+          await db.legs.bulkPut(rows.map(({ l, r }) => ({ key: cacheKey(l.from, l.to), poly: encode6(r.coords), distM: r.distM, provider: w.provider.id, at: Date.now() })));
           run.forEach((l, i) => {
             this.solo.delete(l.key);
             const r = legs[i];
@@ -160,11 +202,12 @@ export class RoutingQueue {
           });
         } catch (e: any) {
           const status = e instanceof HttpError ? e.status : 0;
-          this.lastError = e?.message || String(e);
-          if (status === 429 || status >= 500 || status === 0) {
-            // rate-limited / server or network hiccup: exponential backoff, keep legs pending
-            this.backoffMs = Math.min(60000, Math.max(2000, this.backoffMs * 2));
-            if (typeof navigator !== 'undefined' && navigator.onLine === false) { this.set('offline'); return; }
+          this.lastError = `${w.provider.label}: ${e?.message || String(e)}`;
+          if (status === 413 || status === 414 || /TooBig/i.test(e?.message || '')) {
+            w.maxLegs = Math.max(4, Math.floor(w.maxLegs / 2)); // server wants smaller batches
+          } else if (status === 429 || status >= 500 || status === 0) {
+            // rate-limited / server or network hiccup: exponential backoff on this server only
+            w.backoffMs = Math.min(60000, Math.max(2000, w.backoffMs * 2));
           } else if (run.length > 1) {
             // one bad point (e.g. in the sea) poisons the batch: retry this run leg-by-leg
             for (const l of run) this.solo.add(l.key);
@@ -172,13 +215,11 @@ export class RoutingQueue {
             this.solo.delete(run[0].key);
             this.eng.setLegGeometry(run[0].key, null, 0, 'error');
           }
-        } finally { clearTimeout(timer); }
+        } finally {
+          clearTimeout(timer);
+          run.forEach((l) => this.inflight.delete(l.key));
+        }
       }
-    } finally { this.running = false; }
+    } finally { w.running = false; }
   }
 }
-
-export const providers = {
-  osrm: (url?: string) => osrmProvider(url || undefined),
-  valhalla: (url?: string) => valhallaProvider(url || undefined),
-};

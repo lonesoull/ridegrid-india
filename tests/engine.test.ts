@@ -134,3 +134,27 @@ describe('crash safety', () => {
     expect(engine.stops.length).toBe(3);
   });
 });
+
+describe('parallel routing', () => {
+  it('two servers split the work without routing any leg twice, and shrink oversized batches', async () => {
+    const seen = new Map<string, number>();
+    const mk = (id: string, tooBigAbove = Infinity): Provider => ({
+      id, label: id, maxWaypoints: 100, minIntervalMs: 0,
+      async route(points) {
+        if (points.length > tooBigAbove) { const e: any = new Error('HTTP 400 TooBig'); throw e; }
+        await new Promise((r) => setTimeout(r, 5));
+        return points.slice(1).map((p, i) => { const k = `${points[i]}|${p}`; seen.set(k, (seen.get(k) ?? 0) + 1); return { coords: [points[i], p], distM: 10 }; });
+      },
+      async nearest() { return null; },
+    });
+    const q = new RoutingQueue(mk('a'), engine);
+    q.setProviders([mk('a'), mk('b', 30)]);
+    await engine.addMany(Array.from({ length: 1001 }, (_, i) => ({ p: [70 + i * 0.001, 20] as LngLat })));
+    for (let t = 0; t < 100 && engine.pendingLegs; t++) await new Promise((r) => setTimeout(r, 20));
+    expect(engine.pendingLegs).toBe(0);
+    expect(engine.errorLegs).toBe(0);
+    expect(seen.size).toBe(1000);
+    expect([...seen.values()].every((n) => n === 1)).toBe(true);
+    q.setAuto(false);
+  });
+});

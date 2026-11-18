@@ -187,24 +187,23 @@ export class RouteEngine {
     return this.idx.get(id) ?? -1;
   }
 
-  /** Contiguous run of pending legs (for one multi-waypoint request), priority legs first. */
-  nextPendingRun(maxLegs: number): Leg[] {
+  /** Contiguous run of pending legs (for one multi-waypoint request), priority legs first; skips legs already in flight. */
+  nextPendingRun(maxLegs: number, skip: Set<string> = new Set()): Leg[] {
+    const free = (l: Leg | undefined) => !!l && l.status === 'pending' && !skip.has(l.key);
     let start: Leg | undefined;
-    for (const key of this.priority) { const l = this.legs.get(key); if (l?.status === 'pending') { start = l; break; } }
-    if (!start) for (const l of this.legs.values()) if (l.status === 'pending') { start = l; break; }
+    for (const key of this.priority) { const l = this.legs.get(key); if (free(l)) { start = l; break; } }
+    if (!start) for (const l of this.legs.values()) if (free(l)) { start = l; break; }
     if (!start) return [];
     let i = this.indexOf(start.a);
-    // walk back to the start of the pending run so requests stay contiguous
-    while (i > 0) {
-      const prev = this.legs.get(this.legKey(this.stops[i - 1], this.stops[i]));
-      if (prev?.status !== 'pending' || this.priority.size) break;
-      i--;
+    if (!this.priority.has(start.key)) {
+      // walk back to the start of the free pending run so requests stay contiguous
+      while (i > 0 && free(this.legs.get(this.legKey(this.stops[i - 1], this.stops[i])))) i--;
     }
     const run: Leg[] = [];
     for (let x = i; x < this.stops.length - 1 && run.length < maxLegs; x++) {
       const l = this.legs.get(this.legKey(this.stops[x], this.stops[x + 1]));
-      if (!l || l.status !== 'pending') break;
-      run.push(l);
+      if (!free(l)) break;
+      run.push(l!);
     }
     return run;
   }

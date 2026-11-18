@@ -326,12 +326,16 @@ function ToolsTab() {
             <input value={r.url} onChange={(e) => setR({ ...r, url: e.target.value.trim() })} />
           </label>
         </div>
+        {r.kind === 'osrm' && r.url.includes('project-osrm.org') && (
+          <label className="check"><input type="checkbox" checked={r.parallel !== false} onChange={(e) => setR({ ...r, parallel: e.target.checked })} /><span>Also use the second free OSRM server (FOSSGIS) in parallel — about 2× faster</span></label>
+        )}
+        <p className="muted">Working now: {app.queue.providerLabels.join(' + ')} · ≈{Math.round(app.queue.legsPerSec())} legs/sec</p>
         <div className="btns">
           <button className="primary" onClick={() => act(null, () => app.setRouter(r)).then(() => toast('Routing engine saved'))}>Save engine</button>
           <button onClick={() => { engine.retryErrors(); app.queue.kick(); }}>Retry failed legs</button>
           <button className="danger" onClick={() => confirm('Delete all cached road geometry on this device?') && db.legs.clear().then(reloadCache)}>Clear road cache</button>
         </div>
-        <p className="muted">Public servers are free but rate-limited; requests are paced to ~1/sec and every leg is stored forever on this device. Point the URL at your own OSRM/Valhalla anytime.</p>
+        <p className="muted">Public servers are free but rate-limited: each is paced to ~1 request/sec with up to 99 legs per request, and every leg is stored forever on this device. Point the URL at your own OSRM/Valhalla anytime.</p>
       </section>
 
       <section>
