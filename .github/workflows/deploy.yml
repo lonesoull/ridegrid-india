@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   # re-deploy when fresh India data has been published
   workflow_run:
-    workflows: ['Build India data']
+    workflows: ['Build India data', 'Build routing graphs']
     types: [completed]
 
 permissions:
@@ -35,6 +35,14 @@ jobs:
             curl -fsSL -o public/data/$f https://github.com/${{ github.repository }}/releases/download/india-data/$f || echo "no $f yet"
           done
           ls -la public/data
+      - name: Fetch on-device routing graphs from the "india-graph" release
+        run: |
+          mkdir -p public/graphs
+          for z in southern-zone western-zone northern-zone central-zone eastern-zone north-eastern-zone; do
+            curl -fsSL -o public/graphs/$z.rgg.gz https://github.com/${{ github.repository }}/releases/download/india-graph/$z.rgg.gz || rm -f public/graphs/$z.rgg.gz
+            curl -fsSL -o public/graphs/$z.json https://github.com/${{ github.repository }}/releases/download/india-graph/$z.json || rm -f public/graphs/$z.json
+          done
+          ls -la public/graphs
       - run: npm test
       - run: npx vite build
       - uses: actions/upload-pages-artifact@v3

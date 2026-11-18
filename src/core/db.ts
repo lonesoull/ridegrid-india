@@ -49,6 +49,7 @@ export class RideDB extends Dexie {
   rides!: Table<Ride, string>;
   rideChunks!: Table<RideChunk, number>;
   stopLogs!: Table<StopLog, string>;
+  graphs!: Table<{ zone: string; blob: Blob; bytes: number; at: number; generated?: string }, string>;
   constructor(name = 'ridegrid') {
     super(name);
     this.version(1).stores({
@@ -64,6 +65,7 @@ export class RideDB extends Dexie {
       rideChunks: '++id, rideId',
     });
     this.version(3).stores({ stopLogs: 'id, tripId, at' });
+    this.version(4).stores({ graphs: 'zone' });
   }
 }
 

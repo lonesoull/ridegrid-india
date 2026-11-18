@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { T, isExpedition } from '../core/terms';
 import { RouteChecker } from './RouteChecker';
+import { OfflineRouting } from './OfflineRouting';
 import { stateBreakdown, type StateKm } from '../nav/states';
 import { buildRouteLine } from '../nav/routeLine';
 import { ILP_STATES } from '../nav/compliance';
@@ -360,6 +361,8 @@ function ToolsTab() {
         </div>
         <p className="muted">Public servers are free but rate-limited: each is paced to ~1 request/sec with up to 99 legs per request, and every leg is stored forever on this device. Point the URL at your own OSRM/Valhalla anytime.</p>
       </section>
+
+      <OfflineRouting />
 
       <AndroidAppPanel />
 

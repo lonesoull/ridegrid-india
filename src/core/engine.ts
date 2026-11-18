@@ -211,8 +211,8 @@ export class RouteEngine {
   }
 
   /** Contiguous run of pending legs (for one multi-waypoint request), priority legs first; skips legs already in flight. */
-  nextPendingRun(maxLegs: number, skip: Set<string> = new Set()): Leg[] {
-    const free = (l: Leg | undefined) => !!l && l.status === 'pending' && !skip.has(l.key);
+  nextPendingRun(maxLegs: number, skip: Set<string> = new Set(), accept: (l: Leg) => boolean = () => true): Leg[] {
+    const free = (l: Leg | undefined) => !!l && l.status === 'pending' && !skip.has(l.key) && accept(l);
     let start: Leg | undefined;
     for (const key of this.priority) { const l = this.legs.get(key); if (free(l)) { start = l; break; } }
     if (!start) for (const l of this.legs.values()) if (free(l)) { start = l; break; }

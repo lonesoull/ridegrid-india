@@ -4,7 +4,7 @@ import { cacheKey, engine, type RouteEngine } from './engine';
 import { osrmTurn, valhallaTurn, type Turn } from './turns';
 
 /** Global routing preferences (set from app settings). */
-export const routing = { avoidExpressways: true };
+export const routing: { avoidExpressways: boolean; covers?: (p: LngLat) => boolean } = { avoidExpressways: true };
 
 export interface LegResult { coords: LngLat[]; distM: number; turns?: Turn[] }
 export interface Provider {
@@ -145,14 +145,22 @@ export class RoutingQueue {
     }
   }
 
-  /** Primary provider (used for nearest-road snapping). */
+  /** Primary provider (first in the pool — the on-device router when present). */
   get provider() { return this.workers[0].provider; }
+  /** First internet routing server (for points outside downloaded regions). */
+  get netProvider() { return (this.workers.find((w) => w.provider.id !== 'device') ?? this.workers[0]).provider; }
+  /** Best provider for these points: on-device when they're inside downloaded regions. */
+  providerFor(points: LngLat[]) {
+    const dev = this.workers.find((w) => w.provider.id === 'device');
+    return dev && routing.covers && points.every((p) => routing.covers!(p)) ? dev.provider : this.netProvider;
+  }
   get providerLabels() { return this.workers.map((w) => w.provider.label); }
 
   onStatus(fn: () => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
   private set(s: RouterStatus) { if (this.status !== s) { this.status = s; this.listeners.forEach((f) => f()); } }
   private refresh() {
     if (!this.autoRoute) return this.set('paused');
+    if (this.workers.some((w) => w.provider.id === 'device' && w.state === 'routing')) return this.set('routing');
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return this.set('offline');
     if (this.workers.some((w) => w.state === 'routing')) return this.set('routing');
     if (this.workers.some((w) => w.state === 'backoff')) return this.set('backoff');
@@ -188,10 +196,15 @@ export class RoutingQueue {
     try {
       for (;;) {
         if (!this.workers.includes(w)) return;
-        if (!this.autoRoute || (typeof navigator !== 'undefined' && navigator.onLine === false)) { w.state = 'idle'; this.refresh(); return; }
+        // offline: internet servers pause, the on-device router keeps working
+        if (!this.autoRoute || (w.provider.id !== 'device' && typeof navigator !== 'undefined' && navigator.onLine === false)) { w.state = 'idle'; this.refresh(); return; }
         const wait = Math.max(w.backoffMs, w.provider.minIntervalMs - (Date.now() - w.lastAt));
         if (wait > 0) { w.state = w.backoffMs ? 'backoff' : 'routing'; this.refresh(); await this.sleep(w, wait); continue; }
-        let run = this.eng.nextPendingRun(w.maxLegs, this.inflight);
+        // legs inside downloaded regions go to the on-device router, the rest to internet servers
+        const local = w.provider.id === 'device';
+        const covered = (l: { from: LngLat; to: LngLat }) => !!routing.covers && routing.covers(l.from) && routing.covers(l.to);
+        const hasLocal = this.workers.some((x) => x.provider.id === 'device');
+        let run = this.eng.nextPendingRun(w.maxLegs, this.inflight, local ? covered : hasLocal ? (l) => !covered(l) : undefined);
         if (!run.length) { w.state = 'idle'; this.refresh(); return; }
         const si = run.findIndex((l) => this.solo.has(l.key));
         if (si === 0) run = [run[0]]; else if (si > 0) run = run.slice(0, si);
@@ -214,6 +227,7 @@ export class RoutingQueue {
             else this.eng.setLegGeometry(l.key, null, 0, 'error');
           });
         } catch (e: any) {
+          if ((e as any)?.offline) { w.state = 'idle'; continue; } // device can't route these: leave them pending for the servers
           const status = e instanceof HttpError ? e.status : 0;
           this.lastError = `${w.provider.label}: ${e?.message || String(e)}`;
           if (status === 413 || status === 414 || /TooBig/i.test(e?.message || '')) {

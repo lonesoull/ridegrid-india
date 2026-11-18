@@ -447,7 +447,7 @@ export class MapController {
   // ---------- interactions ----------
   private async snap(p: LngLat): Promise<LngLat> {
     if (!ui.get().snapToRoad || !navigator.onLine) return p;
-    return (await app.queue.provider.nearest(p)) ?? p;
+    return (await app.queue.providerFor([p]).nearest(p)) ?? p;
   }
 
   private hitStop(point: { x: number; y: number }, pad = 10) {

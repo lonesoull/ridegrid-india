@@ -1,4 +1,5 @@
 import { engine } from './engine';
+import { deviceProvider, device } from '../route/device';
 import { getSetting, putSetting } from './db';
 import { RoutingQueue, osrmProvider, valhallaProvider, OSRM_PUBLIC, OSRM_FOSSGIS, routing, type Provider } from './router';
 
@@ -12,8 +13,9 @@ export function makeProvider(s: RouterSettings): Provider {
 /** Primary server plus, for the free public OSRM, a second free OSRM server working in parallel. */
 export function makeProviders(s: RouterSettings): Provider[] {
   const primary = makeProvider(s);
+  const local: Provider[] = deviceProvider ? [deviceProvider] : [];
   const isPublicOsrm = s.kind === 'osrm' && (!s.url || s.url.includes('project-osrm.org'));
-  return isPublicOsrm && s.parallel !== false ? [primary, osrmProvider(OSRM_FOSSGIS)] : [primary];
+  return [...local, ...(isPublicOsrm && s.parallel !== false ? [primary, osrmProvider(OSRM_FOSSGIS)] : [primary])];
 }
 
 export const app = {
@@ -22,6 +24,7 @@ export const app = {
   async loadSettings() {
     this.router = { ...DEFAULT_ROUTER, ...(await getSetting('router', DEFAULT_ROUTER)) };
     routing.avoidExpressways = this.router.avoidExpressways !== false;
+    routing.covers = (p) => device.coversSync(p);
     this.queue.setProviders(makeProviders(this.router));
   },
   /** Real trips auto-route; the stress-test trip never hits the routing servers. */

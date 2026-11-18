@@ -19,6 +19,7 @@ import { startTeamEvents } from '../team/actions';
 import { startCompliance, compliance, fmtHms } from '../nav/compliance';
 import { loadExpressways } from '../nav/expressways';
 import { riddenLines } from '../nav/history';
+import { device } from '../route/device';
 import { PlaceCard } from './PlaceCard';
 import { Icon } from './Icon';
 import { useNav } from './navHooks';
@@ -47,6 +48,7 @@ export function App() {
       await google.load();
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance();
+      void device.boot().then(() => app.queue.kick());
       void loadExpressways().then((d) => d && mapCtl?.setBanned(d.fc));
       const drawRidden = () => engine.trip && riddenLines(engine.trip.id).then((l) => mapCtl?.setRidden(l));
       void drawRidden();

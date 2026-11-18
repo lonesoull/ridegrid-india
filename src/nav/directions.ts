@@ -55,7 +55,7 @@ export async function directionsToPoint(to: LngLat, from?: LngLat): Promise<Dire
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 20000);
-    const [leg] = await app.queue.provider.route([me, to], ctl.signal);
+    const [leg] = await app.queue.providerFor([me, to]).route([me, to], ctl.signal);
     clearTimeout(t);
     if (leg?.coords.length >= 2) return { from: me, coords: [me, ...leg.coords, to], distM: leg.distM, routed: true, source: 'osrm', turns: leg.turns?.map((t) => ({ ...t, i: t.i + 1 })) };
   } catch { /* fall through */ }
