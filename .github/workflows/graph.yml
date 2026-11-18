@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: 4 # Geofabrik refuses too many downloads at once
       matrix:
         zone: [southern-zone, western-zone, northern-zone, central-zone, eastern-zone, north-eastern-zone]
         tier: [main, full]

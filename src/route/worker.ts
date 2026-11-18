@@ -18,7 +18,7 @@ self.onmessage = (ev: MessageEvent) => {
       const links: Record<string, number> = {};
       for (const [z, o] of graphs) links[z] = linkGraphs(g, o);
       graphs.set(m.zone, g);
-      (self as any).postMessage({ id: m.id, ok: true, ms: performance.now() - t, bbox: g.bbox, V: g.V, U: g.U, links, zones: [...graphs.keys()] });
+      (self as any).postMessage({ id: m.id, ok: true, ms: performance.now() - t, bbox: g.bbox, hasBanned: g.hasBanned, V: g.V, U: g.U, links, zones: [...graphs.keys()] });
     } else if (m.type === 'unload') {
       const g = graphs.get(m.zone);
       graphs.delete(m.zone);
@@ -31,7 +31,7 @@ self.onmessage = (ev: MessageEvent) => {
       const legs = [];
       const t = performance.now();
       for (let i = 0; i < pts.length - 1; i++) {
-        const r = routeMulti([...graphs.values()], pts[i], pts[i + 1]);
+        const r = routeMulti([...graphs.values()], pts[i], pts[i + 1], { allowBanned: !!m.allowBanned });
         legs.push(r ? { coords: r.coords, distM: r.distM, names: r.names, timeS: r.timeS } : null);
       }
       (self as any).postMessage({ id: m.id, ok: true, result: legs, ms: performance.now() - t });

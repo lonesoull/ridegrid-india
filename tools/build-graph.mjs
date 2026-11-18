@@ -28,7 +28,7 @@ const KMH = { trunk: 70, trunk_link: 50, primary: 60, primary_link: 45, secondar
 
 // ---- 1. download + filter with osmium, then dump as text (OPL)
 const pbf = process.env.PBF ?? `/tmp/${zone}.osm.pbf`;   // PBF=... uses a local file (tests)
-if (!process.env.PBF) execSync(`curl -sSL --retry 3 -o ${pbf} https://download.geofabrik.de/asia/india/${zone}-latest.osm.pbf`, { stdio: 'inherit' });
+if (!process.env.PBF) execSync(`curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors -o ${pbf} https://download.geofabrik.de/asia/india/${zone}-latest.osm.pbf`, { stdio: 'inherit' });
 log('downloaded', execSync(`du -h ${pbf}`).toString().trim());
 execSync(`osmium tags-filter ${pbf} w/highway=${CLASSES.join(',')} -o /tmp/roads.osm.pbf --overwrite`, { stdio: 'inherit' });
 execSync(`osmium cat /tmp/roads.osm.pbf -f opl -o /tmp/roads.opl --overwrite`, { stdio: 'inherit' });
@@ -46,7 +46,7 @@ const ways = []; // { refs: Uint32Array (node index), cls, kmh, oneway, name }
 const names = new Map(); names.set('', 0);
 const nameIdx = (n) => { let i = names.get(n); if (i === undefined) { i = names.size; names.set(n, i); } return i; };
 const findNode = (id) => { let lo = 0, hi = nodeCount - 1; while (lo <= hi) { const m = (lo + hi) >>> 1; const v = nid[m]; if (v === id) return m; if (v < id) lo = m + 1; else hi = m - 1; } return -1; };
-let ni = 0, skipped = { access: 0, motorway: 0 };
+let ni = 0, skipped = { access: 0, motorway: 0 }; // motorway = kept but flagged two-wheeler-banned
 const rl = readline.createInterface({ input: createReadStream('/tmp/roads.opl') });
 for await (const line of rl) {
   const c = line.charCodeAt(0);
@@ -61,9 +61,12 @@ for await (const line of rl) {
     const hw = t.highway;
     if (!KMH[hw]) continue;
     if (process.argv[3] === 'main' && (hw === 'residential' || hw === 'living_street')) continue; // main-roads tier
-    const mc = t.motorcycle ?? t.motor_vehicle ?? t.vehicle ?? t.access;
-    if (mc === 'no' || mc === 'private' || t.access === 'no' && t.motorcycle !== 'yes' || t.access === 'private' && t.motorcycle !== 'yes') { skipped.access++; continue; }
-    if (hw.startsWith('motorway') && t.motorcycle !== 'yes') { skipped.motorway++; continue; } // two-wheeler ban
+    // closed to all motor traffic / private → left out. Closed to two-wheelers only (expressways,
+    // motorcycle=no) → kept but flagged, so daily rides may use them and the expedition never does.
+    const mv = t.motor_vehicle ?? t.vehicle ?? t.access;
+    if (t.motorcycle !== 'yes' && (mv === 'no' || mv === 'private' || t.access === 'no' || t.access === 'private')) { skipped.access++; continue; }
+    const banned = t.motorcycle === 'no' || (hw.startsWith('motorway') && t.motorcycle !== 'yes');
+    if (banned) skipped.motorway++;
     if (t.area === 'yes') continue;
     const refs = line.slice(nI + 2).split(',').map((r) => findNode(+r.slice(1))).filter((x) => x >= 0);
     if (refs.length < 2) continue;
@@ -71,7 +74,7 @@ for await (const line of rl) {
     const max = parseInt(t.maxspeed ?? '', 10);
     const kmh = Math.min(KMH[hw], Number.isFinite(max) && max > 5 ? max : 999);
     const label = [t.ref, t.name].filter(Boolean).join(' · ');
-    ways.push({ refs: Uint32Array.from(ow === -1 ? refs.reverse() : refs), cls: CLASSES.indexOf(hw), kmh, oneway: ow !== 0, name: nameIdx(label) });
+    ways.push({ refs: Uint32Array.from(ow === -1 ? refs.reverse() : refs), cls: CLASSES.indexOf(hw) | (banned ? 0x40 : 0), kmh, oneway: ow !== 0, name: nameIdx(label) });
   }
 }
 log('ways', ways.length, 'skipped', skipped);
@@ -150,7 +153,7 @@ const u = (v) => { need(10); while (v >= 0x80) { buf[n++] = (v % 0x80) | 0x80; v
 const z = (v) => u(v < 0 ? -2 * v - 1 : 2 * v);
 const namesJson = Buffer.from(JSON.stringify([...names.keys()]));
 const S = shape.length / 2;
-need(64); buf.write('RGG1', 0); buf.writeUInt32LE(3, 4); buf.writeUInt32LE(V, 8); buf.writeUInt32LE(U, 12); buf.writeUInt32LE(S, 16); buf.writeUInt32LE(tier === 'main' ? 1 : 0, 20);
+need(64); buf.write('RGG1', 0); buf.writeUInt32LE(3, 4); buf.writeUInt32LE(V, 8); buf.writeUInt32LE(U, 12); buf.writeUInt32LE(S, 16); buf.writeUInt32LE((tier === 'main' ? 1 : 0) | 2, 20); // bit 1: main tier, bit 2: banned roads included (flag 0x40)
 [minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6].forEach((x, i) => buf.writeDoubleLE(x, 24 + i * 8));
 n = 56;
 let px = 0, py = 0;

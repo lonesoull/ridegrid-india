@@ -25,8 +25,8 @@ export const app = {
     this.router = { ...DEFAULT_ROUTER, ...(await getSetting('router', DEFAULT_ROUTER)) };
     routing.avoidExpressways = this.router.avoidExpressways !== false;
     routing.isDaily = () => engine.trip?.kind === 'daily';
-    // the downloaded road maps leave expressways out, so daily trips use them only when offline
-    routing.covers = (p) => device.coversSync(p) && !(routing.isDaily!() && typeof navigator !== 'undefined' && navigator.onLine);
+    // older downloaded road maps left expressways out: daily trips then use them only when offline
+    routing.covers = (p) => device.coversSync(p) && !(routing.isDaily!() && !device.withExpressways && typeof navigator !== 'undefined' && navigator.onLine);
     this.queue.setProviders(makeProviders(this.router));
   },
   /** Real trips auto-route; the stress-test trip never hits the routing servers. */

@@ -1,6 +1,6 @@
 import { db } from '../core/db';
 import type { LngLat } from '../core/geo';
-import type { Provider, LegResult } from '../core/router';
+import { avoidingBanned, type Provider, type LegResult } from '../core/router';
 import type { Turn } from '../core/turns';
 import { deriveTurns } from '../nav/detour';
 
@@ -33,6 +33,9 @@ function call<T = any>(msg: any, transfer: Transferable[] = []): Promise<T> {
 /** Zones available on this device (stored) and loaded in the routing thread. */
 export const device = {
   loaded: new Set<string>(),
+  /** per loaded zone: does its road map include expressways (flagged)? older downloads left them out */
+  expressways: new Map<string, boolean>(),
+  get withExpressways() { return [...this.loaded].every((z) => this.expressways.get(z)); },
   /** bounding boxes of loaded zones, for quick synchronous "is this point covered?" checks */
   boxes: new Map<string, [number, number, number, number]>(),
   coversSync(p: LngLat) { for (const b of this.boxes.values()) if (p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3]) return true; return false; },
@@ -46,7 +49,7 @@ export const device = {
   /** Load every stored zone into the routing thread (at app start). */
   async boot() {
     for (const g of await db.graphs.toArray()) {
-      try { const r = await call({ type: 'load', zone: g.zone, buf: await g.blob.arrayBuffer() }); this.loaded.add(g.zone); this.boxes.set(g.zone, r.bbox); } catch { /* corrupt → ignore */ }
+      try { const r = await call({ type: 'load', zone: g.zone, buf: await g.blob.arrayBuffer() }); this.loaded.add(g.zone); this.boxes.set(g.zone, r.bbox); this.expressways.set(g.zone, !!r.hasBanned); } catch { /* corrupt → ignore */ }
     }
     this.emit();
   },
@@ -67,7 +70,7 @@ export const device = {
     const meta = await fetch(`${import.meta.env.BASE_URL}graphs/${zone}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     await db.graphs.put({ zone, blob: new Blob([raw]), bytes: raw.byteLength, at: Date.now(), generated: meta?.generated });
     const r = await call({ type: 'load', zone, buf: raw }, [raw]);
-    this.loaded.add(zone); this.boxes.set(zone, r.bbox);
+    this.loaded.add(zone); this.boxes.set(zone, r.bbox); this.expressways.set(zone, !!r.hasBanned);
     // one detail level per region: drop the other tier of the same region
     const other = zone.endsWith('-main') ? zone.slice(0, -5) : `${zone}-main`;
     if (this.loaded.has(other) || (await db.graphs.get(other))) await this.remove(other);
@@ -77,7 +80,7 @@ export const device = {
   async remove(zone: string) {
     await db.graphs.delete(zone);
     await call({ type: 'unload', zone });
-    this.loaded.delete(zone); this.boxes.delete(zone);
+    this.loaded.delete(zone); this.boxes.delete(zone); this.expressways.delete(zone);
     this.emit();
   },
 
@@ -98,7 +101,8 @@ export const device = {
   },
 
   async route(points: LngLat[]): Promise<(LegResult | null)[]> {
-    const r = await call<{ result: ({ coords: LngLat[]; distM: number; names: (string | undefined)[] } | null)[] }>({ type: 'route', points });
+    // daily rides may use expressways; the expedition never does
+    const r = await call<{ result: ({ coords: LngLat[]; distM: number; names: (string | undefined)[] } | null)[] }>({ type: 'route', points, allowBanned: !avoidingBanned() });
     return r.result.map((leg) => {
       if (!leg) return null;
       // turn instructions from the geometry; each turn is named after the road it turns onto

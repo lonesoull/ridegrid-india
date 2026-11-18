@@ -11,8 +11,9 @@ const near = (p: number[], q: number[]) => Math.abs(p[0] - q[0]) < 1e-6 && Math.
 
 describe('on-device road graph', () => {
   it('loads the binary graph', () => {
-    expect(g.V).toBe(8);
-    expect(g.U).toBe(8);
+    expect(g.V).toBe(9);
+    expect(g.U).toBe(10); // includes the expressway 7-8-9, flagged as two-wheeler-banned
+    expect(g.hasBanned).toBe(true);
     expect(g.names).toContain('NH 32 · Beach Road');
   });
   it('routes along roads (no straight lines) and names them', () => {
@@ -31,6 +32,13 @@ describe('on-device road graph', () => {
     const r = route(g, [80.0, 13.02], [80.01, 13.02])!; // 7 → 8: the motorway between them was removed
     expect(r.distM).toBeGreaterThan(3000);
     expect(r.names.every((n) => !/Expressway/.test(n ?? ''))).toBe(true);
+  });
+  it('daily rides may use the expressway; the expedition never does', () => {
+    const exp = route(g, [80.0, 13.02], [80.01, 13.02])!;
+    expect(exp.distM).toBeGreaterThan(3000);
+    const daily = routeMulti([g], [80.0, 13.02], [80.01, 13.02], { allowBanned: true })!;
+    expect(daily.distM).toBeLessThan(1200);
+    expect(daily.names.some((n) => /Expressway/.test(n ?? ''))).toBe(true);
   });
   it('snaps points that are slightly off the road', () => {
     const s = g.snap([80.005, 13.0003])!;

@@ -27,12 +27,16 @@ export class Graph {
   private static CELL = 0.005;
 
   tier: 'main' | 'full';
+  /** expressways / motorcycle=no roads are in the graph, flagged 0x40 in cls (older graphs left them out) */
+  hasBanned = false;
   constructor(buf: ArrayBuffer) {
     const dv = new DataView(buf);
     const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
     if (magic !== 'RGG1' || dv.getUint32(4, true) !== 3) throw new Error('Not a RideGrid road graph (v3)');
     const V = (this.V = dv.getUint32(8, true)), U = (this.U = dv.getUint32(12, true)), S = (this.S = dv.getUint32(16, true));
-    this.tier = dv.getUint32(20, true) === 1 ? 'main' : 'full';
+    const flags = dv.getUint32(20, true);
+    this.tier = flags & 1 ? 'main' : 'full';
+    this.hasBanned = (flags & 2) !== 0;
     this.bbox = [dv.getFloat64(24, true), dv.getFloat64(32, true), dv.getFloat64(40, true), dv.getFloat64(48, true)];
     const b = new Uint8Array(buf);
     let o = 56;
@@ -99,7 +103,7 @@ export class Graph {
   contains(p: LngLat) { const b = this.bbox; return p[0] >= b[0] - 0.05 && p[0] <= b[2] + 0.05 && p[1] >= b[1] - 0.05 && p[1] <= b[3] + 0.05; }
 
   /** Nearest point on any road: edge, distance from the point, and position along the edge (metres from ea). */
-  snap(p: LngLat, maxM = 2000): { e: number; d: number; along: number; p: LngLat } | null {
+  snap(p: LngLat, maxM = 2000, allowBanned = false): { e: number; d: number; along: number; p: LngLat } | null {
     const C = Graph.CELL;
     const kx = Math.cos(p[1] * RAD) * R * RAD, ky = R * RAD;
     type Snap = { e: number; d: number; along: number; p: LngLat };
@@ -111,6 +115,7 @@ export class Graph {
         const list = this.grid.get((cx + dx + 100000) * 200000 + (cy + dy + 100000));
         if (!list) continue;
         for (const e of list) {
+          if (!allowBanned && this.cls[e] & 0x40) continue;
           const pts = this.edgeCoords(e);
           let acc = 0;
           for (let i = 0; i < pts.length - 1; i++) {
@@ -206,13 +211,15 @@ export interface RouteOpts {
   isGoal?: (g: Graph, v: number) => boolean;
   /** give up beyond this much riding time (s) */
   maxCostS?: number;
+  /** allow two-wheeler-banned roads (expressways) — daily rides only; the expedition never uses them */
+  allowBanned?: boolean;
 }
 
 export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpts = {}): Path | null {
-  const { blocked, isGoal, maxCostS = Infinity } = opts;
+  const { blocked, isGoal, maxCostS = Infinity, allowBanned = false } = opts;
   const snapBest = (p: LngLat) => {
     let best: { gi: number; s: NonNullable<ReturnType<Graph['snap']>> } | null = null;
-    gs.forEach((g, gi) => { if (!g.contains(p)) return; const s = g.snap(p, 500); if (s && (!best || s.d < best.s.d)) best = { gi, s }; });
+    gs.forEach((g, gi) => { if (!g.contains(p)) return; const s = g.snap(p, 500, allowBanned); if (s && (!best || s.d < best.s.d)) best = { gi, s }; });
     return best as { gi: number; s: NonNullable<ReturnType<Graph['snap']>> } | null;
   };
   const A = snapBest(from), B = snapBest(to);
@@ -256,6 +263,7 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpt
         if (!(g.adjFlag[i] & 1)) continue;
         const e = g.adjEdge[i], to2 = g.adjTo[i];
         if (blocked && e !== a.e && e !== b.e && blocked(g, e)) continue;
+        if (!allowBanned && g.cls[e] & 0x40) continue;
         const nd = dv + sec(g, e, edgeM(g, e));
         if (nd < w.dist[to2]) { setD(gi, to2, nd, e, id); heap.push(nd + h(g, to2), base[gi] + to2); }
       }
