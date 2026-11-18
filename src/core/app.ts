@@ -16,6 +16,8 @@ export const app = {
     this.router = await getSetting('router', DEFAULT_ROUTER);
     this.queue.setProvider(makeProvider(this.router));
   },
+  /** Real trips auto-route; the stress-test trip never hits the routing servers. */
+  applyTripRouting() { this.queue.setAuto(!engine.trip?.isStress); },
   async setRouter(s: RouterSettings) {
     this.router = s;
     await putSetting('router', s);

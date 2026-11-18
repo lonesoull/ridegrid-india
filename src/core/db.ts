@@ -14,6 +14,7 @@ export interface Trip {
   historyTop: number;    // highest seq stored
   draftSourceRouteId?: string;
   coveredM: number;      // filled by ride logging in Phase 2
+  isStress?: boolean;    // throw-away trip for scale testing (never auto-routed)
 }
 export interface Draft { tripId: string; stops: StopTuple[]; updatedAt: number }
 export interface SavedRoute { id: string; tripId: string; name: string; stops: StopTuple[]; distM: number; createdAt: number }

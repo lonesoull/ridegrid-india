@@ -1,5 +1,7 @@
 import { db, uid, type SavedRoute, type Trip } from './db';
 import { engine } from './engine';
+import { app } from './app';
+import { stressWalk } from './india';
 
 export async function createTrip(name: string, targetKm?: number): Promise<Trip> {
   const t: Trip = { id: uid(), name, targetKm, createdAt: Date.now(), updatedAt: Date.now(), sequenceLock: true, historyCursor: 0, historyTop: 0, coveredM: 0 };
@@ -26,12 +28,49 @@ export async function bootTrips() {
   const last = (await db.settings.get('activeTrip'))?.value as string | undefined;
   const t = trips.find((x) => x.id === last) ?? trips[0];
   await engine.loadTrip(t.id);
+  app.applyTripRouting();
   return t;
 }
 
 export async function switchTrip(id: string) {
   await engine.loadTrip(id);
+  app.applyTripRouting();
   await db.settings.put({ key: 'activeTrip', value: id });
+  if (!engine.trip?.isStress) await db.settings.put({ key: 'lastRealTrip', value: id });
+}
+
+// ---------- stress test sandbox ----------
+export const STRESS_NAME = '⚙ Stress Test';
+
+/** Switch to (or create) the dedicated stress-test trip so real trips are never touched. */
+export async function enterStressTrip() {
+  if (engine.trip?.isStress) return;
+  if (engine.trip) await db.settings.put({ key: 'lastRealTrip', value: engine.trip.id });
+  let t = (await db.trips.toArray()).find((x) => x.isStress);
+  if (!t) { t = await createTrip(STRESS_NAME); t.isStress = true; t.sequenceLock = false; await db.trips.put(t); }
+  await switchTrip(t.id);
+}
+
+export async function addStressStops(k: number) {
+  await enterStressTrip();
+  const last = engine.stops[engine.stops.length - 1];
+  const pts = stressWalk(k, last ? [last.lng, last.lat] : undefined);
+  await engine.addMany(pts.map((p) => ({ p })));
+}
+
+/** Go back to the trip that was active before the stress test. */
+export async function leaveStressTrip() {
+  const all = await db.trips.toArray();
+  const last = (await db.settings.get('lastRealTrip'))?.value as string | undefined;
+  const real = all.find((t) => t.id === last && !t.isStress) ?? all.filter((t) => !t.isStress).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? (await createTrip('My India Expedition'));
+  await switchTrip(real.id);
+}
+
+/** Clear all stress stops and delete the stress trip (with its undo history), then return to the real trip. */
+export async function deleteStressTrip() {
+  const t = (await db.trips.toArray()).find((x) => x.isStress);
+  if (engine.trip?.isStress) await leaveStressTrip();
+  if (t) await deleteTrip(t.id);
 }
 
 // ---------- saved routes library vs working draft ----------

@@ -298,31 +298,19 @@ function ToolsTab() {
   const [cacheCount, reloadCache] = useAsync(() => db.legs.count(), []);
   useEffect(() => setR(app.router), []);
 
-  const stress = (k: number) => act(`Generating ${k.toLocaleString('en-IN')} stops…`, async () => {
-    const c = mapCtl!.map.getCenter();
-    let p: LngLat = engine.stops.length ? [engine.stops[engine.stops.length - 1].lng, engine.stops[engine.stops.length - 1].lat] : [c.lng, c.lat];
-    let heading = Math.random() * Math.PI * 2;
-    const pts: { p: LngLat }[] = [];
-    for (let i = 0; i < k; i++) {
-      heading += (Math.random() - 0.5) * 0.9;
-      const step = 0.01 + Math.random() * 0.02;
-      p = [p[0] + Math.cos(heading) * step, p[1] + Math.sin(heading) * step * 0.9];
-      if (p[1] < 8 || p[1] > 35) heading = -heading;
-      if (p[0] < 69 || p[0] > 96) heading = Math.PI - heading;
-      pts.push({ p });
-    }
-    app.queue.setAuto(false);
-    await engine.addMany(pts);
+  const stress = (k: number) => act(`Generating ${k.toLocaleString('en-IN')} test stops…`, async () => {
+    await trips.addStressStops(k);
     ui.set({ fps: true });
-    toast(`+${k.toLocaleString('en-IN')} stops. Auto-route paused so test pins don't hit the routing server.`);
+    toast(`+${k.toLocaleString('en-IN')} test stops in the separate Stress Test trip (never routed).`);
   });
+  const isStress = !!engine.trip?.isStress;
 
   return (
     <div className="stack">
       <section>
         <h3>Road snapping engine</h3>
         <p className="muted">Status: <b>{status}</b> · {engine.pendingLegs.toLocaleString('en-IN')} pending · {engine.errorLegs} failed · {app.queue.requests} requests this session · {cacheCount?.toLocaleString('en-IN') ?? '…'} legs cached on device{app.queue.lastError ? ` · last error: ${app.queue.lastError}` : ''}</p>
-        <label className="check"><input type="checkbox" checked={app.queue.autoRoute} onChange={(e) => { app.queue.setAuto(e.target.checked); setR({ ...r }); }} /><span>Auto-route new legs (paced, cached, rate-limit safe)</span></label>
+        <label className="check"><input type="checkbox" disabled={isStress} checked={app.queue.autoRoute} onChange={(e) => { app.queue.setAuto(e.target.checked); setR({ ...r }); }} /><span>Auto-route new legs (paced, cached, rate-limit safe){isStress ? ' — always off in the Stress Test trip' : ''}</span></label>
         <label className="check"><input type="checkbox" checked={snap} onChange={(e) => ui.set({ snapToRoad: e.target.checked })} /><span>Snap tapped / dragged stops to the nearest road</span></label>
         <div className="grid2">
           <label className="field">Engine
@@ -345,12 +333,19 @@ function ToolsTab() {
 
       <section>
         <h3>Scale stress test</h3>
-        <p className="muted">Adds random-walk stops from the end of the route (or map centre) to check 60 fps at 10k–100k stops. One undo step each.</p>
+        <p className="muted">Adds random-walk test stops on Indian land inside a separate <b>Stress Test</b> trip, so your real trips are never touched and no routing requests are made. One undo step per batch.</p>
         <div className="btns">
           <button onClick={() => stress(100)}>+100</button>
           <button onClick={() => stress(1000)}>+1,000</button>
           <button onClick={() => stress(10000)}>+10,000</button>
         </div>
+        {isStress && (
+          <div className="btns">
+            <button disabled={!engine.stops.length} onClick={() => confirm(`Clear all ${engine.stops.length.toLocaleString('en-IN')} test stops?`) && act('Clearing…', () => engine.clear())}>Clear test stops</button>
+            <button onClick={() => act(null, () => trips.leaveStressTrip()).then(() => setTimeout(() => mapCtl?.fitRoute(), 300))}>← Back to my trip</button>
+          </div>
+        )}
+        <button className="danger" onClick={() => confirm('Clear ALL stress-test stops and delete the Stress Test trip?') && act('Clearing stress test…', () => trips.deleteStressTrip()).then(() => toast('Stress test cleared'))}>Clear all stress tests</button>
         <label className="check"><input type="checkbox" checked={fps} onChange={(e) => ui.set({ fps: e.target.checked })} /><span>Show FPS meter</span></label>
       </section>
 

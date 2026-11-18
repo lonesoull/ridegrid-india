@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MapController } from '../map/MapController';
 import { engine } from '../core/engine';
 import { app } from '../core/app';
-import { bootTrips } from '../core/trips';
+import { bootTrips, leaveStressTrip, deleteStressTrip } from '../core/trips';
 import { fmtKm } from '../core/geo';
 import { ui, useUI, toast, act, type TapMode } from './state';
 import { useEngine, useRouterStatus } from './hooks';
@@ -77,7 +77,14 @@ function Hud() {
         <span><b>{fmtKm(covered)}</b> covered</span>
         {target > 0 && <span><b>{fmtKm(Math.max(0, target - covered))}</b> left</span>}
       </div>
-      {(pending > 0 || errors > 0 || status === 'offline' || status === 'backoff' || status === 'paused') && (
+      {t?.isStress && (
+        <div className="hud-stress" onClick={(e) => e.stopPropagation()}>
+          <span>⚙ Stress test — not routed</span>
+          <button className="sm" onClick={() => act(null, () => leaveStressTrip()).then(() => setTimeout(() => mapCtl?.fitRoute(), 300))}>Back to my trip</button>
+          <button className="sm danger" onClick={() => confirm('Clear ALL stress-test stops and delete the Stress Test trip?') && act('Clearing stress test…', () => deleteStressTrip())}>Clear all</button>
+        </div>
+      )}
+      {!t?.isStress && (pending > 0 || errors > 0 || status === 'offline' || status === 'backoff' || status === 'paused') && (
         <div className={`hud-router st-${status}`}>
           {status === 'offline' ? '📴 Offline — ' : status === 'backoff' ? '⏳ Server busy, retrying — ' : status === 'paused' ? '⏸ Auto-route paused — ' : '🛣 Snapping to roads — '}
           {pending.toLocaleString('en-IN')} legs pending{errors ? ` · ${errors} failed` : ''}
