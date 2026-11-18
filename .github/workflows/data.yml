@@ -1,0 +1,34 @@
+name: Build India data
+
+# Downloads expressways (OpenStreetMap) and state boundaries (Natural Earth), simplifies them and
+# publishes them as assets of the "india-data" release. The site build downloads them from there,
+# so nothing is committed to the code automatically. Runs when the build script changes or on demand.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/build-data.mjs', '.github/workflows/data.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/build-data.mjs
+      - name: Publish to the "india-data" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: india-data
+          name: India map data
+          body: Expressways (© OpenStreetMap contributors, ODbL) and state boundaries (Natural Earth, public domain) used by RideGrid India.
+          files: |
+            data-out/expressways.json
+            data-out/india-states.json
+            data-out/summary.json

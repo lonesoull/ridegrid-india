@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # re-deploy when fresh India data has been published
+  workflow_run:
+    workflows: ['Build India data']
+    types: [completed]
 
 permissions:
   contents: read
@@ -24,6 +28,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Fetch India data (expressways, states) from the "india-data" release
+        run: |
+          mkdir -p public/data
+          for f in expressways.json india-states.json summary.json; do
+            curl -fsSL -o public/data/$f https://github.com/${{ github.repository }}/releases/download/india-data/$f || echo "no $f yet"
+          done
+          ls -la public/data
       - run: npm test
       - run: npx vite build
       - uses: actions/upload-pages-artifact@v3
