@@ -46,7 +46,7 @@ const alertOf = (t) => t.highway === 'speed_camera' ? 'camera' : t.traffic_calmi
   : t.highway === 'stop' ? 'stop' : t.hazard ? 'hazard' : null;
 
 const keys = 'amenity shop craft tourism historic leisure railway aeroway place natural waterway'.split(' ');
-execSync(`osmium tags-filter ${pbf} ${keys.map((k) => `nwr/${k}`).join(' ')} w/highway n/highway=speed_camera,traffic_signals,crossing,stop n/traffic_calming n/barrier=toll_booth n/hazard -o /tmp/poi.osm.pbf --overwrite`, { stdio: 'inherit' });
+execSync(`osmium tags-filter ${pbf} ${keys.map((k) => `nwr/${k}`).join(' ')} nwr/addr:housenumber w/highway n/highway=speed_camera,traffic_signals,crossing,stop n/traffic_calming n/barrier=toll_booth n/hazard -o /tmp/poi.osm.pbf --overwrite`, { stdio: 'inherit' });
 execSync(`osmium export /tmp/poi.osm.pbf -f geojsonseq -o /tmp/poi.geojsonseq --overwrite`, { stdio: 'inherit' });
 
 const clean = (s) => String(s ?? '').replace(/[\t\n\r]+/g, ' ').trim();
@@ -73,6 +73,13 @@ for await (const line of rl) {
   if (f.geometry.type === 'Point') {
     const a = alertOf(t);
     if (a) { alerts.push(`${r6(p[0])}\t${r6(p[1])}\t${a}${t.maxspeed ? '\t' + clean(t.maxspeed) : ''}`); counts['alert:' + a] = (counts['alert:' + a] ?? 0) + 1; }
+  }
+  // house-number addresses (OsmAnd address search): "12 MG Road, Bengaluru"
+  if (t['addr:housenumber'] && (t['addr:street'] || t['addr:place']) && !catOf(t)) {
+    const nm = `${clean(t['addr:housenumber'])} ${clean(t['addr:street'] || t['addr:place'])}`;
+    const k = `address|${nm}|${Math.round(p[0] * 2000)}|${Math.round(p[1] * 2000)}`;
+    if (!streets.has(k)) { streets.add(k); poi.push(`${r6(p[0])}\t${r6(p[1])}\taddress\t${nm}\t|||${clean(t['addr:city'] || t['addr:district'] || t['addr:suburb'] || t['addr:postcode'])}`); counts.address = (counts.address ?? 0) + 1; }
+    continue;
   }
   const cat = catOf(t);
   if (!cat) continue;

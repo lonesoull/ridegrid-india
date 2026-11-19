@@ -62,6 +62,12 @@ export function DailyRouteSettings() {
             <label key={k} className="check"><input type="checkbox" checked={s.alerts[k]} onChange={(e) => save({ alerts: { ...s.alerts, [k]: e.target.checked } })} /><span>{l}</span></label>
           ))}
         </div>
+        <div className="muted">Announce places ahead:</div>
+        <div className="grid2">
+          {([['fuel', '⛽ Petrol pumps'], ['food', '🍛 Restaurants'], ['mechanic', '🔧 Mechanics'], ['favourites', '★ My favourites']] as const).map(([k, l]) => (
+            <label key={k} className="check"><input type="checkbox" checked={s.ahead[k]} onChange={(e) => save({ ahead: { ...s.ahead, [k]: e.target.checked } })} /><span>{l}</span></label>
+          ))}
+        </div>
         <label className="field">Speed warning above the limit by <b>{s.speedTolerance} km/h</b>
           <input type="range" min={0} max={20} value={s.speedTolerance} onChange={(e) => save({ speedTolerance: +e.target.value })} />
         </label>

@@ -79,3 +79,16 @@ describe('shared locations', () => {
     expect(locationFromText('hello')).toBeNull();
   });
 });
+
+import { openState } from '../src/daily/openingHours';
+describe('opening hours', () => {
+  const at = (iso: string) => new Date(iso);
+  it('reads common Indian shop hours', () => {
+    expect(openState('24/7')!.open).toBe(true);
+    expect(openState('Mo-Sa 09:00-13:00,16:00-21:00; Su off', at('2026-11-19T10:00:00'))!.open).toBe(true); // Thursday
+    expect(openState('Mo-Sa 09:00-13:00,16:00-21:00; Su off', at('2026-11-19T14:00:00'))!.text).toMatch(/opens/);
+    expect(openState('Mo-Sa 09:00-13:00,16:00-21:00; Su off', at('2026-11-22T10:00:00'))!.open).toBe(false); // Sunday
+    expect(openState('18:00-02:00', at('2026-11-19T01:00:00'))!.open).toBe(true); // overnight from yesterday
+    expect(openState('sunrise-sunset')).toBeNull();
+  });
+});

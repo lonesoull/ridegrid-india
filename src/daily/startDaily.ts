@@ -8,6 +8,7 @@ import { markers } from './markers';
 import { say } from '../nav/audio';
 import { toast } from '../ui/state';
 import { access } from './access';
+import { announceAhead } from './aheadVoice';
 
 /** Daily-mode runtime hooks: road alerts / speed sign while riding, auto-zoom by speed. */
 export function startDaily(ctl: MapController) {
@@ -22,6 +23,7 @@ export function startDaily(ctl: MapController) {
     if (k === last) return;
     last = k;
     updateRoadInfo(nav.pos, nav.heading, nav.mode === 'sim' ? nav.settings.simKmh / 3.6 : nav.speedMps);
+    void announceAhead().catch(() => {});
     // vibrate shortly before each turn
     const t = nav.nextTurn;
     if (t && t.dist < 60 && buzzed !== t.s) { buzzed = t.s; access.buzz(t.c.includes('left') ? [300] : [100, 80, 100]); }

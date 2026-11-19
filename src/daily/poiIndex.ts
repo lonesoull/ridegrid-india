@@ -12,7 +12,7 @@ export const CAT_LABEL: Record<string, string> = {
   moto_shop: 'Motorcycle shop', mechanic: 'Mechanic', tyres: 'Tyres / puncture', supermarket: 'Supermarket', shop: 'Shop', food_shop: 'Bakery / food shop', mall: 'Mall',
   hotel: 'Hotel', guest_house: 'Guest house', hostel: 'Hostel', camp: 'Camp site', attraction: 'Attraction', viewpoint: 'Viewpoint', museum: 'Museum',
   picnic: 'Picnic spot', info: 'Tourist info', historic: 'Historic site', park: 'Park', rail: 'Railway station', airport: 'Airport',
-  city: 'City', town: 'Town', village: 'Village', hamlet: 'Hamlet', suburb: 'Suburb', locality: 'Area', peak: 'Peak', waterfall: 'Waterfall', beach: 'Beach', street: 'Street',
+  address: 'Address', city: 'City', town: 'Town', village: 'Village', hamlet: 'Hamlet', suburb: 'Suburb', locality: 'Area', peak: 'Peak', waterfall: 'Waterfall', beach: 'Beach', street: 'Street',
 };
 /** Words people type for a category (English + common Indian usage). */
 const SYN: Record<string, string[]> = {

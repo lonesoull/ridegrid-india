@@ -15,12 +15,15 @@ export interface DailyNavSettings {
   autoZoom: boolean;
   alerts: { camera: boolean; bump: boolean; rail: boolean; toll: boolean; signals: boolean; zebra: boolean; stop: boolean; hazard: boolean; speed: boolean };
   speedTolerance: number; // km/h over the posted limit before the warning
+  /** announce places ahead on the route (OsmAnd "Announce POIs / favourites") */
+  ahead: { fuel: boolean; favourites: boolean; food: boolean; mechanic: boolean };
 }
 export const DEFAULT_DAILY_NAV: DailyNavSettings = {
   route: { avoidToll: false, avoidFerry: false, avoidUnpaved: false, avoidMotorway: false, shortest: false },
   avoided: [], voice: 'en-IN', autoZoom: true,
   alerts: { camera: true, bump: true, rail: true, toll: true, signals: false, zebra: false, stop: false, hazard: true, speed: true },
   speedTolerance: 5,
+  ahead: { fuel: true, favourites: true, food: false, mechanic: false },
 };
 
 const isDaily = () => engine.trip?.kind === 'daily';
@@ -30,7 +33,7 @@ export const dailyNav = {
   listeners: new Set<() => void>(),
   async load() {
     const v = await getSetting<Partial<DailyNavSettings>>('dailyNav', {});
-    this.s = { ...DEFAULT_DAILY_NAV, ...v, route: { ...DEFAULT_DAILY_NAV.route, ...v.route }, alerts: { ...DEFAULT_DAILY_NAV.alerts, ...v.alerts } };
+    this.s = { ...DEFAULT_DAILY_NAV, ...v, route: { ...DEFAULT_DAILY_NAV.route, ...v.route }, alerts: { ...DEFAULT_DAILY_NAV.alerts, ...v.alerts }, ahead: { ...DEFAULT_DAILY_NAV.ahead, ...v.ahead } };
     routing.dailyOpts = () => (isDaily() ? this.s.route : null);
     routing.avoidSegs = () => (isDaily() && this.s.avoided.length ? segsOf(this.s.avoided) : undefined);
     legCache.tag = () => (isDaily() ? this.tag() : '');
