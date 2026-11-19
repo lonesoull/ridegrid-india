@@ -11,6 +11,8 @@ const BG = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 export interface GpsFix {
   lng: number; lat: number; acc: number;
   speed: number | null; heading: number | null; time: number;
+  /** metres above sea level, when the device reports it */
+  alt?: number | null;
   /** true when Android says the position came from a mock-location (fake GPS) app */
   mock: boolean;
 }
@@ -33,14 +35,14 @@ export async function watchGps(onFix: (f: GpsFix) => void, onError: (msg: string
           return;
         }
         if (!loc) return;
-        onFix({ lng: loc.longitude, lat: loc.latitude, acc: loc.accuracy, speed: loc.speed, heading: loc.bearing, time: loc.time ?? Date.now(), mock: !!loc.simulated });
+        onFix({ lng: loc.longitude, lat: loc.latitude, acc: loc.accuracy, speed: loc.speed, heading: loc.bearing, time: loc.time ?? Date.now(), mock: !!loc.simulated, alt: loc.altitude ?? null });
       },
     );
     return () => { void BG.removeWatcher({ id }); };
   }
   if (!navigator.geolocation) { onError('GPS is not available on this device.'); return () => {}; }
   const id = navigator.geolocation.watchPosition(
-    (p) => onFix({ lng: p.coords.longitude, lat: p.coords.latitude, acc: p.coords.accuracy, speed: p.coords.speed, heading: p.coords.heading, time: p.timestamp, mock: false }),
+    (p) => onFix({ lng: p.coords.longitude, lat: p.coords.latitude, acc: p.coords.accuracy, speed: p.coords.speed, heading: p.coords.heading, time: p.timestamp, mock: false, alt: p.coords.altitude }),
     (e) => onError(e.code === 1 ? 'Location permission denied — allow location for this site.' : `GPS: ${e.message}`, String(e.code)),
     { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
   );

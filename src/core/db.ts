@@ -23,13 +23,24 @@ export interface SavedRoute { id: string; tripId: string; name: string; stops: S
 export interface HistoryEntry { id?: number; tripId: string; seq: number; cmd: unknown }
 export interface LegCacheEntry { key: string; poly: string; distM: number; provider: string; at: number; turns?: import('./turns').Turn[] }
 export interface Setting { key: string; value: unknown }
-export interface Ride { id: string; tripId: string; startedAt: number; endedAt?: number; distM: number; points: number; simulated: boolean; name: string }
+export interface Ride { id: string; tripId: string; startedAt: number; endedAt?: number; distM: number; points: number; simulated: boolean; name: string;
+  /** Daily: track library folder, recorded by the track recorder (not navigation), imported GPX */
+  folder?: string; source?: 'nav' | 'recorder' | 'import' | 'plan'; color?: string }
 /** Ride GPS points in chunks: [timeMs, lng, lat, accuracyM, speedMps] */
-export type RidePoint = [number, number, number, number, number];
+export type RidePoint = [number, number, number, number, number] | [number, number, number, number, number, number]; // + altitude (m) for Daily recordings
 export interface RideChunk { id?: number; rideId: string; pts: RidePoint[] }
 export type StopType = 'start' | 'finish' | 'document' | 'daystart' | 'dayend' | 'overnight' | 'police' | 'witness' | 'fuel' | 'service' | 'food' | 'evidence' | 'media' | 'other' | 'break';
 /** Who signed / gave a witness statement (they write the statement themselves; the app only records who and where). */
 export interface Witness { name: string; role?: string; org?: string; phone?: string; gazetted?: boolean; independent?: boolean }
+/** Daily "My places": favourites, map markers, the parked bike and geo-notes (audio / photo / video / text). */
+export interface MyPlace {
+  id: string; kind: 'fav' | 'marker' | 'parking' | 'note';
+  name: string; p: [number, number]; at: number;
+  group?: string; color?: string; icon?: string; note?: string;
+  /** markers: shown in the markers bar */ active?: boolean;
+  /** parking: when the paid time / reminder ends */ until?: number;
+  media?: Blob[];
+}
 /** Logbook entry: a real stop (overnight, police signature…) or an automatically detected break. */
 export interface StopLog {
   id: string; tripId: string; rideId?: string;
@@ -57,6 +68,7 @@ export class RideDB extends Dexie {
   rideChunks!: Table<RideChunk, number>;
   stopLogs!: Table<StopLog, string>;
   graphs!: Table<{ zone: string; blob: Blob; bytes: number; at: number; generated?: string }, string>;
+  myplaces!: Table<MyPlace, string>;
   constructor(name = 'ridegrid') {
     super(name);
     this.version(1).stores({
@@ -73,6 +85,7 @@ export class RideDB extends Dexie {
     });
     this.version(3).stores({ stopLogs: 'id, tripId, at' });
     this.version(4).stores({ graphs: 'zone' });
+    this.version(5).stores({ myplaces: 'id, kind, group' });
   }
 }
 

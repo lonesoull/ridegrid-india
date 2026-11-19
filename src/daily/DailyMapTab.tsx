@@ -9,6 +9,7 @@ import { google } from '../core/google';
 import { sunTimes } from './sun';
 import { offlineSearch, type PoiZone } from './offlineSearch';
 import { canNativeFetch } from './nativeFetch';
+import { ScreenConfig } from './ScreenConfig';
 import { weatherAt, weatherText, type Weather } from './weather';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
@@ -53,6 +54,8 @@ export function DailyMapTab() {
         <Toggle on={s.photos} label="Street-level photos (Panoramax coverage)" onChange={(v) => set({ photos: v })} />
         <p className="muted">Terrain, satellite, radar, Wikipedia and photos need internet the first time; what you've viewed stays in the browser cache.</p>
       </section>
+
+      <ScreenConfig />
 
       <WeatherCard />
 

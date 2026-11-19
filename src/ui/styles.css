@@ -327,3 +327,24 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .ralert.k-camera, .ralert.k-rail { border: 2px solid #d71920; }
 .street { padding: 4px 12px; border-radius: 999px; font-weight: 600; font-size: 14px; align-self: flex-start; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile { width: 100%; height: 90px; display: block; margin: 6px 0; }
+/* Daily widgets, markers bar, quick actions */
+.wcol { position: absolute; top: 132px; display: flex; flex-direction: column; gap: 6px; z-index: 4; pointer-events: none; max-width: 42vw; }
+.wcol.left { left: 10px; } .wcol.right { right: 64px; align-items: flex-end; }
+.widget { padding: 4px 9px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; min-width: 58px; font-size: 11px; line-height: 1.15; }
+.widget b { font-size: 17px; } .widget span { opacity: .75; }
+.widget.w-nextTurn, .widget.w-secondTurn, .widget.w-markers { flex-direction: row; gap: 6px; align-items: center; }
+.widget.w-markers { flex-direction: column; align-items: flex-start; }
+.rulerbar { display: block; height: 6px; border: 2px solid currentColor; border-top: 0; margin-bottom: 2px; }
+.miniprof { width: 90px; height: 28px; }
+.markersbar { position: absolute; top: 132px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 4; }
+:root[data-mode="daily"] .wcol.left + .wcol.right ~ .markersbar { top: 132px; }
+.mk { display: flex; gap: 6px; align-items: center; padding: 4px 8px; border-radius: 10px; font-size: 12px; text-align: left; min-height: 0; }
+.mk .arrow { display: inline-block; font-size: 20px; transform-origin: 50% 50%; }
+.mk .arrow.park { font-weight: 800; color: #1565c0; transform: none; }
+.quickacts { position: absolute; left: 10px; bottom: 120px; display: flex; flex-direction: column; gap: 8px; z-index: 4; }
+.qa { font-size: 20px; }
+.qa.rec-on { color: #e53935; animation: pulse 1.4s infinite; }
+.trackdetail { padding: 6px 0 12px; }
+.trackdetail .grid3 > div { display: flex; flex-direction: column; align-items: center; }
+.graph { margin: 6px 0; } .graph svg { width: 100%; height: 70px; display: block; }
+.splits { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; font-size: 12px; }

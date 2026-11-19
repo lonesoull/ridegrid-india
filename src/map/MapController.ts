@@ -475,6 +475,9 @@ export class MapController {
       if (!this.styleReady) return;
       const pad = 12;
       const box: [[number, number], [number, number]] = [[e.point.x - pad, e.point.y - pad], [e.point.x + pad, e.point.y + pad]];
+      // Daily-mode layers (saved places, Wikipedia) handle their own taps
+      const own = ['d-places-dot', 'd-wiki-dot'].filter((id) => m.getLayer(id));
+      if (own.length && m.queryRenderedFeatures(box, { layers: own }).length) return;
       const cl = m.queryRenderedFeatures(box, { layers: ['rg-clusters'] })[0];
       if (cl) {
         const z = await (this.src(STOPS) as any).getClusterExpansionZoom(cl.properties!.cluster_id);

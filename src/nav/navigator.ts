@@ -48,6 +48,8 @@ export class Navigator {
   heading = 0;
   speedMps = 0;
   accuracy = 0;
+  /** GPS altitude (m), when available */
+  altitude: number | null = null;
   next = 0;                      // index of the next stop to reach
   offRoute = false;
   offDist = 0;
@@ -350,6 +352,7 @@ export class Navigator {
     const prev = this.pos;
     this.pos = p;
     this.accuracy = f.acc;
+    this.altitude = f.alt ?? null;
     this.gpsError = '';
     this.speedMps = f.speed ?? 0;
     if (f.heading != null && !Number.isNaN(f.heading) && (f.speed ?? 0) > 1) this.heading = f.heading;

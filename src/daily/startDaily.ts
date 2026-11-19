@@ -3,6 +3,10 @@ import { nav } from '../nav/navigator';
 import { mode } from '../core/mode';
 import { dailyNav } from './dailyNav';
 import { updateRoadInfo, roadInfo } from './roadAlerts';
+import { installTrackLayer } from './trackTools';
+import { markers } from './markers';
+import { say } from '../nav/audio';
+import { toast } from '../ui/state';
 
 /** Daily-mode runtime hooks: road alerts / speed sign while riding, auto-zoom by speed. */
 export function startDaily(ctl: MapController) {
@@ -17,6 +21,17 @@ export function startDaily(ctl: MapController) {
     last = k;
     updateRoadInfo(nav.pos, nav.heading, nav.mode === 'sim' ? nav.settings.simKmh / 3.6 : nav.speedMps);
   });
+  installTrackLayer(ctl);
+  // parked-bike reminder
+  let warned = '';
+  setInterval(() => {
+    const p = markers.parking();
+    if (!p?.until || Date.now() < p.until || warned === p.id + p.until) return;
+    warned = p.id + p.until;
+    toast('⏱ Parking time is up', 'error');
+    say('Parking time is up');
+    try { if ('Notification' in window && Notification.permission === 'granted') new Notification('RideGrid', { body: 'Parking time is up' }); } catch { /* ignore */ }
+  }, 30000);
   ctl.followZoom = () => {
     if (mode.current !== 'daily' || !dailyNav.s.autoZoom) return null;
     const kmh = (nav.mode === 'sim' ? nav.settings.simKmh * Math.min(nav.mult, 2) : nav.speedMps * 3.6);

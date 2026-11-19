@@ -56,3 +56,16 @@ describe('Indian-language voice', () => {
     expect(translate('Some new sentence', 'hi-IN')).toBe('Some new sentence');
   });
 });
+
+import { analyse } from '../src/daily/trackTools';
+describe('track analysis', () => {
+  it('distance, moving time, splits and climb', () => {
+    // 3 km east at 10 m/s, climbing 0 → 60 m
+    const pts = Array.from({ length: 311 }, (_, i) => [i * 1000, 77 + i * (10 / 108400), 13, 5, 10, i * 0.2] as any);
+    const s = analyse(pts);
+    expect(s.distM).toBeGreaterThan(3000); expect(s.distM).toBeLessThan(3200);
+    expect(Math.round(s.avgKmh)).toBe(36);
+    expect(s.splits.length).toBe(3);
+    expect(s.climbM).toBeGreaterThan(50);
+  });
+});

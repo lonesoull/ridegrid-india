@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { db, uid, type StopLog, type StopType } from '../core/db';
+import { db, uid, type StopLog, type StopType, type RidePoint } from '../core/db';
 import { haversine, type LngLat } from '../core/geo';
 import { loadStates, stateAt } from './states';
 
@@ -123,7 +123,7 @@ export async function daySummaries(tripId: string, rules: EvidenceRules = DEFAUL
     return chkIn;
   };
   const rides = (await db.rides.where('tripId').equals(tripId).filter((r) => !r.simulated).toArray()).sort((a, b) => a.startedAt - b.startedAt);
-  let prev: [number, number, number, number, number] | null = null;
+  let prev: RidePoint | null = null;
   for (const r of rides) {
     const chunks = await db.rideChunks.where('rideId').equals(r.id).sortBy('id');
     for (const c of chunks) for (const pt of c.pts) {
@@ -209,7 +209,7 @@ const ext = (b: Blob) => (b.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg').
 async function dayPoints(tripId: string, date: string) {
   const t0 = new Date(date + 'T00:00').getTime(), t1 = t0 + 86400000;
   const rides = (await db.rides.where('tripId').equals(tripId).filter((r) => !r.simulated && r.startedAt < t1 && (r.endedAt ?? Date.now()) >= t0).toArray()).sort((a, b) => a.startedAt - b.startedAt);
-  const out: [number, number, number, number, number][] = [];
+  const out: RidePoint[] = [];
   for (const r of rides) for (const c of await db.rideChunks.where('rideId').equals(r.id).sortBy('id')) for (const pt of c.pts) if (pt[0] >= t0 && pt[0] < t1) out.push(pt);
   return out;
 }

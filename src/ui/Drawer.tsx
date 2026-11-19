@@ -23,6 +23,8 @@ import { RideTab } from './RideTab';
 import { LogbookTab } from './LogbookTab';
 import { mode, MODE_LABEL } from '../core/mode';
 import { DailyMapTab } from '../daily/DailyMapTab';
+import { PlacesTab } from '../daily/PlacesTab';
+import { TracksTab } from '../daily/TracksTab';
 import { TeamTab } from './TeamTab';
 
 export function Drawer() {
@@ -38,10 +40,10 @@ export function Drawer() {
           <button className="x" onClick={() => ui.set({ drawer: false })}>✕</button>
         </div>
         <nav className="tabs">
-          {(mode.current === 'daily' ? ['trip', 'stops', 'ride', 'map', 'log', 'team', 'files', 'tools'] as const : ['trip', 'stops', 'ride', 'log', 'team', 'files', 'tools'] as const).map((t) => (
+          {(mode.current === 'daily' ? ['trip', 'stops', 'ride', 'map', 'places', 'tracks', 'log', 'team', 'files', 'tools'] as const : ['trip', 'stops', 'ride', 'log', 'team', 'files', 'tools'] as const).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => ui.set({ tab: t })}>
               {(mode.current === 'daily'
-                ? { trip: 'Rides', stops: 'Stops', ride: 'Navigate', map: 'Map', log: 'Diary', team: 'Team', files: 'Files', tools: 'Tools' } as Record<string, string>
+                ? { trip: 'Rides', stops: 'Stops', ride: 'Navigate', map: 'Map', places: 'Places', tracks: 'Tracks', log: 'Diary', team: 'Team', files: 'Files', tools: 'Tools' } as Record<string, string>
                 : { trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', team: 'Team', files: 'Files', tools: 'Tools' } as Record<string, string>)[t]}
             </button>
           ))}
@@ -51,6 +53,8 @@ export function Drawer() {
           {open && tab === 'stops' && <StopsTab />}
           {open && tab === 'ride' && <RideTab />}
           {open && tab === 'map' && mode.current === 'daily' && <DailyMapTab />}
+          {open && tab === 'places' && mode.current === 'daily' && <PlacesTab />}
+          {open && tab === 'tracks' && mode.current === 'daily' && <TracksTab />}
           {open && tab === 'log' && <LogbookTab />}
           {open && tab === 'team' && <TeamTab />}
           {open && tab === 'files' && <FilesTab />}

@@ -2,6 +2,9 @@ import { Popup, type Map as MLMap, type GeoJSONSource } from 'maplibre-gl';
 import type { MapController } from '../map/MapController';
 import { mode } from '../core/mode';
 import { dailyMap, wikiNear } from './mapLayers';
+import { markers } from './markers';
+import { quick } from './QuickActions';
+import { ui } from '../ui/state';
 
 /** Daily-mode overlays that are data, not tiles (Wikipedia places), refreshed as the map moves. */
 export function startDailyOverlays(ctl: MapController) {
@@ -22,6 +25,38 @@ export function startDailyOverlays(ctl: MapController) {
       layout: { 'text-field': ['get', 'title'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': ['Noto Sans Regular'], 'text-optional': true },
       paint: { 'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.2 } });
     refresh(m);
+  });
+  // My places: favourites, markers, parked bike, notes
+  const placesData = (): GeoJSON.FeatureCollection => (mode.current === 'daily' && !quick.hidePlaces ? markers.geojson() : { type: 'FeatureCollection', features: [] });
+  ctl.styleHooks.add((m) => {
+    if (m.getSource('d-places')) return;
+    m.addSource('d-places', { type: 'geojson', data: placesData() });
+    m.addLayer({ id: 'd-places-dot', type: 'circle', source: 'd-places', paint: { 'circle-radius': 11, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+    m.addLayer({ id: 'd-places-icon', type: 'symbol', source: 'd-places', layout: { 'text-field': ['get', 'icon'], 'text-size': 12, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff' } });
+    m.addLayer({ id: 'd-places-label', type: 'symbol', source: 'd-places', minzoom: 12, layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-font': ['Noto Sans Regular'], 'text-optional': true }, paint: { 'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.2 } });
+  });
+  markers.listeners.add(() => (ctl.map.getSource('d-places') as GeoJSONSource | undefined)?.setData(placesData()));
+  ctl.map.on('click', 'd-places-dot', (e) => {
+    const id = e.features?.[0]?.properties?.id;
+    const x = markers.all().find((k) => k.id === id);
+    if (!x) return;
+    e.preventDefault();
+    const el = document.createElement('div'); el.className = 'wikipop';
+    const h = document.createElement('b'); h.textContent = x.name; el.append(h);
+    if (x.note && x.note !== x.name) { const p = document.createElement('p'); p.textContent = x.note; el.append(p); }
+    for (const b of x.media ?? []) {
+      const u = URL.createObjectURL(b);
+      const media = b.type.startsWith('audio') ? Object.assign(document.createElement('audio'), { controls: true, src: u }) : b.type.startsWith('video') ? Object.assign(document.createElement('video'), { controls: true, src: u, width: 240 }) : Object.assign(document.createElement('img'), { src: u, width: 240 });
+      el.append(media);
+    }
+    const row = document.createElement('div'); row.className = 'btns sm';
+    const btn = (t: string, f: () => void) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { pop.remove(); f(); }; row.append(b); };
+    btn('Directions', () => ui.set({ place: { id: `my:${x.id}`, name: x.name, address: x.group ?? x.kind, p: x.p, provider: 'osm' } }));
+    if (x.kind === 'fav') btn('Marker', () => void markers.put({ kind: 'marker', name: x.name, p: x.p, active: true }));
+    if (x.kind === 'marker') btn('Done', () => void markers.update(x.id, { active: false }));
+    btn('Delete', () => { if (confirm(`Delete “${x.name}”?`)) void markers.remove(x.id); });
+    el.append(row);
+    const pop = new Popup({ maxWidth: '280px' }).setLngLat(x.p).setDOMContent(el).addTo(ctl.map);
   });
   const m = ctl.map;
   m.on('moveend', () => { if (mode.current === 'daily' && dailyMap.settings.wiki) refresh(m); });

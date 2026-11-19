@@ -33,6 +33,10 @@ import { nav } from '../nav/navigator';
 import { ModePicker } from './ModePicker';
 import { dailyMap } from '../daily/mapLayers';
 import { dailyNav } from '../daily/dailyNav';
+import { widgets } from '../daily/widgets';
+import { markers } from '../daily/markers';
+import { recorder } from '../daily/recorder';
+import { DailyLayer } from '../daily/DailyLayer';
 import { offlineMaps } from '../daily/offlineMap';
 import { offlineSearch } from '../daily/offlineSearch';
 import { startDailyOverlays } from '../daily/overlays';
@@ -57,6 +61,7 @@ export function App() {
       await google.load();
       await dailyMap.load();
       await dailyNav.load();
+      await Promise.all([widgets.load(), markers.load(), recorder.load()]);
       void offlineMaps.boot();
       void offlineSearch.boot();
       startDailyOverlays(mapCtl!);
@@ -127,6 +132,7 @@ export function App() {
       {ready && <Drawer />}
       {ready && <LogStopDialog />}
       {ready && <ModePicker />}
+      {ready && <DailyLayer />}
       <Toast />
       <FpsMeterGate />
     </div>
