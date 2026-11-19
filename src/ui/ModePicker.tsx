@@ -4,6 +4,7 @@ import { ui, useUI, act } from './state';
 import { mapCtl } from './App';
 import { nav } from '../nav/navigator';
 import { applyBase } from '../map/googleBase';
+import { access } from '../daily/access';
 
 const INFO: Record<AppMode, { icon: string; lines: string[] }> = {
   expedition: { icon: '🏁', lines: ['Fixed record route of waypoints', 'Guinness / Limca evidence logbook', 'No repeated roads, 20–30 m gap, no expressways'] },
@@ -19,6 +20,7 @@ export function ModePicker() {
     const changed = m !== mode.current || !mode.chosen;
     await switchMode(m);
     document.documentElement.dataset.mode = m;
+    access.apply();
     if (mapCtl) await applyBase(mapCtl, true);
     ui.set({ modePicker: false, drawer: false, tab: 'trip', selectedId: null, place: null, places: [] });
     if (changed) setTimeout(() => mapCtl?.fitRoute(), 300);

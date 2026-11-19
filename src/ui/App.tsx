@@ -36,6 +36,8 @@ import { dailyNav } from '../daily/dailyNav';
 import { widgets } from '../daily/widgets';
 import { markers } from '../daily/markers';
 import { recorder } from '../daily/recorder';
+import { bikes } from '../daily/profiles';
+import { access } from '../daily/access';
 import { DailyLayer } from '../daily/DailyLayer';
 import { offlineMaps } from '../daily/offlineMap';
 import { offlineSearch } from '../daily/offlineSearch';
@@ -61,7 +63,7 @@ export function App() {
       await google.load();
       await dailyMap.load();
       await dailyNav.load();
-      await Promise.all([widgets.load(), markers.load(), recorder.load()]);
+      await Promise.all([widgets.load(), markers.load(), recorder.load(), bikes.load()]);
       void offlineMaps.boot();
       void offlineSearch.boot();
       startDailyOverlays(mapCtl!);
@@ -91,6 +93,7 @@ export function App() {
       window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
       await bootTrips();
       document.documentElement.dataset.mode = mode.current;
+      void access.load();
       if (mode.current === 'daily') await applyBase(mapCtl!);
       if (!mode.chosen) ui.set({ modePicker: true });
       void reminder.start();

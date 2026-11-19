@@ -29,7 +29,9 @@ export type TeamEvent =
   | { type: 'track'; from: string; pts: [number, number, number][] }
   | { type: 'route-offer'; from: string; name: string; routeId: string; title: string; kind: 'expedition' | 'daily'; count: number; parts: number }
   | { type: 'route-part'; from: string; routeId: string; i: number; data: string }
-  | { type: 'stop'; from: string; name: string; label: string; pos: LngLat; t: number; place?: string };
+  | { type: 'stop'; from: string; name: string; label: string; pos: LngLat; t: number; place?: string }
+  /** Daily mode: favourites, markers, notes and settings shared with your other devices */
+  | { type: 'daily-sync'; from: string; name: string; bundle: unknown };
 
 type Status = 'off' | 'connecting' | 'online' | 'offline';
 

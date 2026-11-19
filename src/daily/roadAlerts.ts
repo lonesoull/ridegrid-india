@@ -4,6 +4,7 @@ import { say, sounds } from '../nav/audio';
 import { device } from '../route/device';
 import { alertData } from './offlineSearch';
 import { dailyNav } from './dailyNav';
+import { access } from './access';
 
 /**
  * Daily ride screen alerts (OsmAnd "Screen alerts"): speed cameras, speed breakers, rail crossings,
@@ -57,6 +58,7 @@ export function updateRoadInfo(p: LngLat, heading: number, speedMps: number) {
     if (best.dist <= warnAt && !spoken.has(key) && SPOKEN[best.kind]) {
       spoken.set(key, Date.now());
       sounds.arrival();
+      access.buzz([150, 80, 150]);
       say(SPOKEN[best.kind]!);
     }
   }

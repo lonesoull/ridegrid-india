@@ -63,6 +63,11 @@ export function startTeamEvents() {
       case 'sos-ack':
         if (e.to === team.settings?.deviceId) { toast(`${e.name} received your SOS and is responding`); say(`${e.name} is responding`); }
         break;
+      case 'daily-sync': {
+        const { applyBundle } = await import('../daily/syncBackup');
+        if (confirm(`${e.name} sent their Daily places & settings. Apply them on this device?`)) { await applyBundle(e.bundle as any); toast('Daily places & settings updated'); }
+        break;
+      }
       case 'stop':
         toast(`${e.name}: ${e.label}${e.place ? ` at ${e.place}` : ''}`);
         break;

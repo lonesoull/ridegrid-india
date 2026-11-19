@@ -25,6 +25,7 @@ import { mode, MODE_LABEL } from '../core/mode';
 import { DailyMapTab } from '../daily/DailyMapTab';
 import { PlacesTab } from '../daily/PlacesTab';
 import { TracksTab } from '../daily/TracksTab';
+import { DailyControl } from '../daily/DailyControl';
 import { TeamTab } from './TeamTab';
 
 export function Drawer() {
@@ -337,6 +338,7 @@ function ToolsTab() {
 
   return (
     <div className="stack">
+      {mode.current === 'daily' && <DailyControl />}
       <section>
         <h3>Road snapping engine</h3>
         <p className="muted">Status: <b>{status}</b> · {engine.pendingLegs.toLocaleString('en-IN')} pending · {engine.errorLegs} failed · {app.queue.requests} requests this session · {cacheCount?.toLocaleString('en-IN') ?? '…'} legs cached on device{app.queue.lastError ? ` · last error: ${app.queue.lastError}` : ''}</p>

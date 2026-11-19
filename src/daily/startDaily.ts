@@ -7,10 +7,12 @@ import { installTrackLayer } from './trackTools';
 import { markers } from './markers';
 import { say } from '../nav/audio';
 import { toast } from '../ui/state';
+import { access } from './access';
 
 /** Daily-mode runtime hooks: road alerts / speed sign while riding, auto-zoom by speed. */
 export function startDaily(ctl: MapController) {
   let last = '';
+  let buzzed = -1;
   nav.subscribe(() => {
     if (mode.current !== 'daily' || nav.mode === 'off' || !nav.pos) {
       if (roadInfo.ahead || roadInfo.limit || roadInfo.road) { roadInfo.ahead = null; roadInfo.limit = null; roadInfo.road = ''; roadInfo.emit(); }
@@ -20,6 +22,9 @@ export function startDaily(ctl: MapController) {
     if (k === last) return;
     last = k;
     updateRoadInfo(nav.pos, nav.heading, nav.mode === 'sim' ? nav.settings.simKmh / 3.6 : nav.speedMps);
+    // vibrate shortly before each turn
+    const t = nav.nextTurn;
+    if (t && t.dist < 60 && buzzed !== t.s) { buzzed = t.s; access.buzz(t.c.includes('left') ? [300] : [100, 80, 100]); }
   });
   installTrackLayer(ctl);
   // parked-bike reminder

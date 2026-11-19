@@ -6,13 +6,14 @@ import { haversine, type LngLat } from '../core/geo';
 export type WidgetId =
   | 'speed' | 'avgSpeed' | 'maxSpeed' | 'altitude' | 'climb' | 'bearing' | 'battery' | 'gps' | 'clock' | 'sun'
   | 'coords' | 'centre' | 'tripDist' | 'rideTime' | 'movingTime' | 'toDest' | 'eta' | 'toNext' | 'nextTurn' | 'secondTurn'
-  | 'ruler' | 'elevProfile' | 'markers' | 'recording';
+  | 'ruler' | 'elevProfile' | 'markers' | 'recording' | 'heartRate' | 'cadence' | 'sensorSpeed' | 'temp' | 'fuelRange' | 'service';
 export const WIDGET_LABEL: Record<WidgetId, string> = {
   speed: 'Current speed', avgSpeed: 'Average speed', maxSpeed: 'Max speed', altitude: 'Altitude', climb: 'Climb so far', bearing: 'Heading',
   battery: 'Battery', gps: 'GPS accuracy', clock: 'Clock', sun: 'Sunrise / sunset', coords: 'My coordinates', centre: 'Map-centre coordinates',
   tripDist: 'Trip distance', rideTime: 'Ride time', movingTime: 'Moving time', toDest: 'Distance to destination', eta: 'Arrival time',
   toNext: 'Distance to next stop', nextTurn: 'Next turn', secondTurn: 'Second next turn', ruler: 'Scale ruler', elevProfile: 'Altitude graph',
   markers: 'Distance to markers', recording: 'Track recording',
+  heartRate: 'Heart rate (Bluetooth)', cadence: 'Cadence (Bluetooth)', sensorSpeed: 'Wheel speed (Bluetooth)', temp: 'Temperature (Bluetooth)', fuelRange: 'Fuel range', service: 'Next service',
 };
 export interface WidgetSettings { left: WidgetId[]; right: WidgetId[] }
 export const DEFAULT_WIDGETS: WidgetSettings = { left: ['clock', 'battery'], right: ['tripDist', 'avgSpeed', 'altitude'] };

@@ -9,6 +9,12 @@ import { widgets, stats, WIDGET_LABEL, type WidgetId } from './widgets';
 import { sunTimes } from './sun';
 import { markers } from './markers';
 import { recorder } from './recorder';
+import { sensors } from './sensors';
+import { bikes, bikeStatus } from './profiles';
+
+let bike = { km: NaN, serviceLeft: NaN };
+setInterval(() => void bikeStatus().then((b) => { bike = b; }).catch(() => {}), 30000);
+void Promise.resolve().then(() => bikeStatus().then((b) => { bike = b; }).catch(() => {}));
 
 const hm = (s: number) => `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
 const dist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : fmtKm(m));
@@ -26,10 +32,10 @@ export function DailyWidgets() {
   const [, tick] = useState(0);
   useEffect(() => {
     const f = () => tick((x) => x + 1);
-    widgets.listeners.add(f); markers.listeners.add(f); recorder.listeners.add(f);
+    widgets.listeners.add(f); markers.listeners.add(f); recorder.listeners.add(f); sensors.listeners.add(f); bikes.listeners.add(f);
     const i = setInterval(f, 5000);
     mapCtl?.map.on('moveend', f);
-    return () => { widgets.listeners.delete(f); markers.listeners.delete(f); recorder.listeners.delete(f); clearInterval(i); mapCtl?.map.off('moveend', f); };
+    return () => { widgets.listeners.delete(f); markers.listeners.delete(f); recorder.listeners.delete(f); sensors.listeners.delete(f); bikes.listeners.delete(f); clearInterval(i); mapCtl?.map.off('moveend', f); };
   }, []);
   const w = widgets.s;
   return (
@@ -100,6 +106,12 @@ function value(id: WidgetId): React.ReactNode | null {
       if (!me || !ms.length) return null;
       return <>{ms.map((k) => <span key={k.id} style={{ color: k.color }}>● {k.name}: {dist(haversine(me, k.p))}</span>)}</>;
     }
+    case 'heartRate': return sensors.hr !== null ? big(`♥ ${sensors.hr}`, 'bpm') : null;
+    case 'cadence': return sensors.cadence !== null ? big(Math.round(sensors.cadence), 'rpm') : null;
+    case 'sensorSpeed': return sensors.speedKmh !== null ? big(Math.round(sensors.speedKmh), 'wheel km/h') : null;
+    case 'temp': return sensors.tempC !== null ? big(`${sensors.tempC.toFixed(1)}°`, 'temp') : null;
+    case 'fuelRange': return Number.isFinite(bike.km) ? big(`${Math.round(bike.km)} km`, bike.km < 40 ? '⛽ refuel soon!' : '⛽ range') : null;
+    case 'service': return Number.isFinite(bike.serviceLeft) ? big(bike.serviceLeft > 0 ? `${Math.round(bike.serviceLeft)} km` : 'due', '🔧 service') : null;
     case 'recording': return recorder.on ? big(`● ${dist(recorder.distM)}`, `REC ${hm((Date.now() - recorder.startedAt) / 1000)}`) : null;
   }
 }

@@ -348,3 +348,8 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .trackdetail .grid3 > div { display: flex; flex-direction: column; align-items: center; }
 .graph { margin: 6px 0; } .graph svg { width: 100%; height: 70px; display: block; }
 .splits { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; font-size: 12px; }
+/* Daily accessibility */
+:root[data-mode="daily"] .drawer, :root[data-mode="daily"] .navpanel, :root[data-mode="daily"] .turnbar, :root[data-mode="daily"] .widget, :root[data-mode="daily"] .search { zoom: var(--ui-scale, 1); }
+:root.hc { --glass: #000; }
+:root.hc .glass { background: #000 !important; color: #fff !important; border: 2px solid #fff; }
+:root.hc .muted { color: #ddd !important; opacity: 1; }
