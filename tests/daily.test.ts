@@ -46,3 +46,13 @@ describe('coordinate input', () => {
   it('UTM', () => close(parseCoords('43P 781481 1435426'), [77.5946, 12.9716], 1e-4));
   it('rejects text', () => expect(parseCoords('Beach Road')).toBeNull());
 });
+
+import { translate } from '../src/daily/voice';
+describe('Indian-language voice', () => {
+  it('translates turn prompts and keeps road names', () => {
+    expect(translate('In 300 metres, turn left onto MG Road', 'hi-IN')).toBe('300 मीटर बाद, MG Road पर बाएँ मुड़ें');
+    expect(translate('At the roundabout, take the 2nd exit', 'ta-IN')).toBe('ரவுண்டானாவில் 2 வெளியேறலை எடுக்கவும்');
+    expect(translate('Speed camera ahead', 'kn-IN')).toBe('ಮುಂದೆ ವೇಗ ಕ್ಯಾಮೆರಾ ಇದೆ');
+    expect(translate('Some new sentence', 'hi-IN')).toBe('Some new sentence');
+  });
+});

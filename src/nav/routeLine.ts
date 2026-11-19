@@ -2,7 +2,7 @@ import { engine, type Leg } from '../core/engine';
 import { haversine, type LngLat } from '../core/geo';
 import type { Turn, TurnCode } from '../core/turns';
 
-export interface LineTurn { s: number; c: TurnCode; n?: string; x?: number; txt?: string }
+export interface LineTurn { s: number; c: TurnCode; n?: string; x?: number; txt?: string; l?: string }
 export interface Approach { coords: LngLat[]; turns?: Turn[] }
 
 const RAD = Math.PI / 180;
@@ -39,7 +39,7 @@ export function buildRouteLine(): RouteLine {
     stopS[i] = d;
     const at: number[] = [cum.length - 1];
     for (let k = 1; k < coords.length; k++) { push(coords[k]); at.push(cum.length - 1); }
-    if (l?.status === 'ok' && l.turns) for (const t of l.turns) { const j = at[t.i]; if (j !== undefined) turns.push({ s: cum[j], c: t.c, n: t.n, x: t.x }); }
+    if (l?.status === 'ok' && l.turns) for (const t of l.turns) { const j = at[t.i]; if (j !== undefined) turns.push({ s: cum[j], c: t.c, n: t.n, x: t.x, l: t.l }); }
   }
   return { x: Float64Array.from(xs), y: Float64Array.from(ys), cum: Float64Array.from(cum), n: xs.length, stopS, total: d, turns };
 }

@@ -188,6 +188,12 @@ export function linkGraphs(a: Graph, b: Graph): number {
   return n;
 }
 
+const CLASS_KMH = [70, 50, 60, 45, 50, 40, 40, 35, 30, 25, 15, 30, 80, 50];
+/** Riding speed for time estimates: the posted limit never raises the class speed. */
+export const speedOf = (g: Graph, e: number) => (g.cls[e] & 0x20 ? Math.min(g.kmh[e], CLASS_KMH[g.cls[e] & 0x1f] ?? g.kmh[e]) : g.kmh[e]);
+/** Posted speed limit of edge e, if tagged in OpenStreetMap. */
+export const postedLimit = (g: Graph, e: number) => (g.cls[e] & 0x20 ? g.kmh[e] : null);
+
 /** Forget every link into graph `gone` (when a region is removed). */
 export function unlinkGraph(gone: Graph, others: Iterable<Graph>) {
   for (const g of others) for (const [v, ls] of g.links) {
@@ -213,10 +219,12 @@ export interface RouteOpts {
   maxCostS?: number;
   /** allow two-wheeler-banned roads (expressways) — daily rides only; the expedition never uses them */
   allowBanned?: boolean;
+  /** shortest distance instead of fastest time (Daily route option) */
+  shortest?: boolean;
 }
 
 export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpts = {}): Path | null {
-  const { blocked, isGoal, maxCostS = Infinity, allowBanned = false } = opts;
+  const { blocked, isGoal, maxCostS = Infinity, allowBanned = false, shortest = false } = opts;
   const snapBest = (p: LngLat) => {
     let best: { gi: number; s: NonNullable<ReturnType<Graph['snap']>> } | null = null;
     gs.forEach((g, gi) => { if (!g.contains(p)) return; const s = g.snap(p, 500, allowBanned); if (s && (!best || s.d < best.s.d)) best = { gi, s }; });
@@ -229,7 +237,7 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpt
   for (const g of gs) base.push(base[base.length - 1] + g.V);
   const dec = (id: number) => { let i = 0; while (id >= base[i + 1]) i++; return i; };
   const W = gs.map((g) => g.work());
-  const sec = (g: Graph, e: number, m: number) => m / (g.kmh[e] / 3.6);
+  const sec = shortest ? (_g: Graph, _e: number, m: number) => m / (40 / 3.6) : (g: Graph, e: number, m: number) => m / (speedOf(g, e) / 3.6);
   const edgeM = (g: Graph, e: number) => g.len[e] / 10;
   const oneway = (g: Graph, e: number) => (g.cls[e] & 0x80) !== 0;
   const touched: number[] = [];
@@ -238,7 +246,8 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpt
     w.dist[v] = d; w.prevE[v] = e; w.prevV[v] = pv;
   };
   const kx = Math.cos(to[1] * RAD) * 111320;
-  const h = (g: Graph, v: number) => Math.hypot((g.lon[v] / 1e6 - to[0]) * kx, (g.lat[v] / 1e6 - to[1]) * 110540) / (75 / 3.6);
+  const hSpeed = shortest ? 40 / 3.6 : 75 / 3.6;
+  const h = (g: Graph, v: number) => Math.hypot((g.lon[v] / 1e6 - to[0]) * kx, (g.lat[v] / 1e6 - to[1]) * 110540) / hSpeed;
   const heap = new Heap();
   const startTo = (v: number, cost: number) => { if (cost < W[A.gi].dist[v]) { setD(A.gi, v, cost, -1, -1); heap.push(cost + h(ga, v), base[A.gi] + v); } };
   startTo(ga.eb[a.e], sec(ga, a.e, edgeM(ga, a.e) - a.along));

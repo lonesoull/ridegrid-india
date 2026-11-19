@@ -72,9 +72,11 @@ for await (const line of rl) {
     if (refs.length < 2) continue;
     const ow = t.oneway === 'yes' || t.oneway === '1' || t.oneway === 'true' || t.junction === 'roundabout' || t.junction === 'circular' ? 1 : t.oneway === '-1' ? -1 : 0;
     const max = parseInt(t.maxspeed ?? '', 10);
-    const kmh = Math.min(KMH[hw], Number.isFinite(max) && max > 5 ? max : 999);
+    const posted = Number.isFinite(max) && max > 5 && max <= 150;
+    // with a posted limit, kmh = that limit and flag 0x20 says so (Daily speed-limit sign); routing speed stays capped by class
+    const kmh = posted ? max : KMH[hw];
     const label = [t.ref, t.name].filter(Boolean).join(' · ');
-    ways.push({ refs: Uint32Array.from(ow === -1 ? refs.reverse() : refs), cls: CLASSES.indexOf(hw) | (banned ? 0x40 : 0), kmh, oneway: ow !== 0, name: nameIdx(label) });
+    ways.push({ refs: Uint32Array.from(ow === -1 ? refs.reverse() : refs), cls: CLASSES.indexOf(hw) | (banned ? 0x40 : 0) | (posted ? 0x20 : 0), kmh, oneway: ow !== 0, name: nameIdx(label) });
   }
 }
 log('ways', ways.length, 'skipped', skipped);

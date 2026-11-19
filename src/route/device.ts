@@ -1,6 +1,6 @@
 import { db } from '../core/db';
 import type { LngLat } from '../core/geo';
-import { avoidingBanned, type Provider, type LegResult } from '../core/router';
+import { avoidingBanned, routing, type Provider, type LegResult } from '../core/router';
 import type { Turn } from '../core/turns';
 import { deriveTurns } from '../nav/detour';
 
@@ -94,6 +94,12 @@ export const device = {
     return { coords: leg.coords, distM: leg.distM, turns };
   },
 
+  /** The road at a point (within maxM): name, posted limit, optionally its geometry. */
+  async roadAt(p: LngLat, maxM = 40, geom = false): Promise<{ name: string; limit: number | null; d: number; coords?: LngLat[] } | null> {
+    if (!this.loaded.size) return null;
+    return (await call<{ result: any }>({ type: 'roadAt', p, maxM, geom })).result;
+  },
+
   async covers(points: LngLat[]): Promise<boolean> {
     if (!this.loaded.size) return false;
     const r = await call<{ result: boolean[] }>({ type: 'covers', points });
@@ -101,8 +107,8 @@ export const device = {
   },
 
   async route(points: LngLat[]): Promise<(LegResult | null)[]> {
-    // daily rides may use expressways; the expedition never does
-    const r = await call<{ result: ({ coords: LngLat[]; distM: number; names: (string | undefined)[] } | null)[] }>({ type: 'route', points, allowBanned: !avoidingBanned() });
+    // daily rides may use expressways (unless the rider avoids them); the expedition never does
+    const r = await call<{ result: ({ coords: LngLat[]; distM: number; names: (string | undefined)[] } | null)[] }>({ type: 'route', points, allowBanned: !avoidingBanned() && !routing.dailyOpts?.()?.avoidMotorway, avoidSegs: routing.avoidSegs?.(), shortest: !!routing.dailyOpts?.()?.shortest });
     return r.result.map((leg) => {
       if (!leg) return null;
       // turn instructions from the geometry; each turn is named after the road it turns onto

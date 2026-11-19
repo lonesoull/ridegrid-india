@@ -5,7 +5,17 @@
 export type TurnCode =
   | 'straight' | 'slight-right' | 'right' | 'sharp-right' | 'uturn' | 'sharp-left' | 'left' | 'slight-left'
   | 'roundabout' | 'keep-left' | 'keep-right' | 'merge' | 'ramp-left' | 'ramp-right' | 'exit-left' | 'exit-right';
-export interface Turn { i: number; c: TurnCode; n?: string; x?: number; /** ready-made instruction (Google) */ txt?: string }
+export interface Turn { i: number; c: TurnCode; n?: string; x?: number; /** ready-made instruction (Google) */ txt?: string;
+  /** lanes at the junction, left→right, '|' between lanes, '+' between arrows, '*' = lane to use (e.g. "left*|straight|straight+right") */
+  l?: string }
+
+/** OSRM lane info → compact lane string (undefined when the road has no lane tags). */
+export function osrmLanes(step: any): string | undefined {
+  const ins = step.intersections ?? [];
+  const lanes = ins[0]?.lanes;
+  if (!Array.isArray(lanes) || lanes.length < 2) return undefined;
+  return lanes.map((ln: any) => (ln.indications ?? ['none']).join('+') + (ln.valid ? '*' : '')).join('|');
+}
 
 const MOD: Record<string, TurnCode> = {
   'uturn': 'uturn', 'sharp right': 'sharp-right', 'right': 'right', 'slight right': 'slight-right',
@@ -33,7 +43,7 @@ export function osrmTurn(step: any, i: number): Turn | null {
     default: c = MOD[mod] ?? null;
   }
   if (!c || (c === 'straight' && t !== 'end of road')) return null;
-  return { i, c, n: name, x: m.exit };
+  return { i, c, n: name, x: m.exit, l: osrmLanes(step) };
 }
 
 /** Valhalla maneuver type → Turn. */

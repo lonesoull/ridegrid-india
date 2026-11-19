@@ -30,12 +30,18 @@ export const sounds = {
   test() { unlockAudio(); tone(660, 0, 0.15, 'sine', 0.4); },
 };
 
+/** Voice language hook: Daily mode sets it (Indian languages); expedition keeps Indian English. */
+export const voiceHook: { lang: () => string; tr: (text: string) => string } = { lang: () => 'en-IN', tr: (t) => t };
+
 export function say(text: string) {
   try {
     if (!('speechSynthesis' in window)) return;
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-IN'; u.rate = 1.05; u.volume = 1;
+    const lang = voiceHook.lang();
+    const u = new SpeechSynthesisUtterance(voiceHook.tr(text));
+    u.lang = lang; u.rate = 1.05; u.volume = 1;
+    const v = speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-') === lang);
+    if (v) u.voice = v;
     speechSynthesis.speak(u);
   } catch { /* ignore */ }
 }

@@ -4,7 +4,12 @@ import { cacheKey, engine, type RouteEngine } from './engine';
 import { osrmTurn, valhallaTurn, type Turn } from './turns';
 
 /** Global routing preferences (set from app settings). */
-export const routing: { avoidExpressways: boolean; covers?: (p: LngLat) => boolean; isDaily?: () => boolean } = { avoidExpressways: true };
+export const routing: {
+  avoidExpressways: boolean; covers?: (p: LngLat) => boolean; isDaily?: () => boolean;
+  /** Daily mode: route options (tolls, ferries, unpaved, shortest…) and roads the rider chose to avoid */
+  dailyOpts?: () => DailyRouteOpts | null; avoidSegs?: () => number[] | undefined;
+} = { avoidExpressways: true };
+export interface DailyRouteOpts { avoidToll: boolean; avoidFerry: boolean; avoidUnpaved: boolean; avoidMotorway: boolean; shortest: boolean }
 /** Keep off two-wheeler-banned expressways? (expedition trips only — daily trips may use them) */
 export const avoidingBanned = () => routing.avoidExpressways && !routing.isDaily?.();
 
@@ -63,8 +68,21 @@ export function osrmProvider(base = 'https://router.project-osrm.org', profile =
       // two-wheelers are banned on Indian motorways/expressways → exclude them (falls back if a server can't)
       const q = `overview=false&steps=true&geometries=polyline6&continue_straight=false`;
       let j: any;
-      try { j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}${avoidingBanned() ? '&exclude=motorway' : ''}`, { signal }); }
-      catch (e) { if (avoidingBanned() && e instanceof HttpError && e.status === 400 && /exclude|InvalidValue/i.test(e.message)) j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}`, { signal }); else throw e; }
+      const d = routing.dailyOpts?.();
+      if (d) {
+        // Daily route options: try every requested exclusion, then fewer (public servers accept only some combinations)
+        const ex = [d.avoidMotorway && 'motorway', d.avoidToll && 'toll', d.avoidFerry && 'ferry'].filter(Boolean) as string[];
+        const tries = ex.length ? [ex, ...ex.map((x) => [x]), []] : [[]];
+        let last: unknown;
+        for (const t of tries) {
+          try { j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}${t.length ? `&exclude=${t.join(',')}` : ''}`, { signal }); break; }
+          catch (e) { last = e; if (!(e instanceof HttpError && e.status === 400)) throw e; }
+        }
+        if (!j) throw last;
+      } else {
+        try { j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}${avoidingBanned() ? '&exclude=motorway' : ''}`, { signal }); }
+        catch (e) { if (avoidingBanned() && e instanceof HttpError && e.status === 400 && /exclude|InvalidValue/i.test(e.message)) j = await getJSON(`${base}/route/v1/${profile}/${coords}?${q}`, { signal }); else throw e; }
+      }
       if (j.code !== 'Ok') throw new HttpError(422, j.message || j.code);
       return j.routes[0].legs.map((leg: any) => {
         const { coords: c, turns } = joinSteps(leg.steps);
@@ -91,7 +109,7 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
       const body = {
         locations: points.map(([lon, lat]) => ({ lon, lat, type: 'break' })),
         costing: 'motorcycle',
-        costing_options: { motorcycle: { use_highways: avoidingBanned() ? 0 : 0.5 } },
+        costing_options: { motorcycle: dailyCosting() ?? { use_highways: avoidingBanned() ? 0 : 0.5 } },
         directions_type: 'maneuvers',
         ...(excludePolygons.length ? { exclude_polygons: excludePolygons } : {}),
       };
@@ -112,14 +130,60 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
   };
 }
 
+/** Valhalla motorcycle costing for Daily route options (null outside Daily mode). */
+export function dailyCosting() {
+  const d = routing.dailyOpts?.();
+  if (!d) return null;
+  return { use_highways: d.avoidMotorway ? 0 : 0.5, use_tolls: d.avoidToll ? 0 : 0.5, use_ferry: d.avoidFerry ? 0 : 0.5, exclude_unpaved: d.avoidUnpaved, shortest: d.shortest };
+}
+
+/** Polygons around roads the Daily rider marked "avoid" near a leg (for Valhalla exclude_polygons). */
+function avoidedPolygons(from: LngLat, to: LngLat, widthM = 20): LngLat[][] {
+  const segs = routing.avoidSegs?.() ?? [];
+  const pad = 0.1, box = [Math.min(from[0], to[0]) - pad, Math.min(from[1], to[1]) - pad, Math.max(from[0], to[0]) + pad, Math.max(from[1], to[1]) + pad];
+  const out: LngLat[][] = [];
+  for (let i = 0; i < segs.length; i += 4) {
+    const a: LngLat = [segs[i], segs[i + 1]], b: LngLat = [segs[i + 2], segs[i + 3]];
+    if (Math.max(a[0], b[0]) < box[0] || Math.min(a[0], b[0]) > box[2] || Math.max(a[1], b[1]) < box[1] || Math.min(a[1], b[1]) > box[3]) continue;
+    const kx = Math.cos(a[1] * Math.PI / 180) * 111320, ky = 110540;
+    let dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky; const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    const ox = (-dy * widthM) / kx, oy = (dx * widthM) / ky;
+    out.push([[a[0] + ox, a[1] + oy], [b[0] + ox, b[1] + oy], [b[0] - ox, b[1] - oy], [a[0] - ox, a[1] - oy], [a[0] + ox, a[1] + oy]]);
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+
+/** Does a leg run along a road the Daily rider chose to avoid (≥ 50 m within 15 m)? */
+export function legOnAvoided(coords: LngLat[]): boolean {
+  const segs = routing.avoidSegs?.() ?? [];
+  if (!segs.length) return false;
+  let run = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i], b = coords[i + 1];
+    const kx = Math.cos(a[1] * Math.PI / 180) * 111320, ky = 110540;
+    const m = Math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * ky);
+    let near = false;
+    for (let k = 0; k < segs.length && !near; k += 4) {
+      const ax = (segs[k] - a[0]) * kx, ay = (segs[k + 1] - a[1]) * ky, bx = (segs[k + 2] - a[0]) * kx, by = (segs[k + 3] - a[1]) * ky;
+      const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+      near = Math.hypot(ax + t * dx, ay + t * dy) < 15;
+    }
+    if (near) { run += m; if (run >= 50) return true; } else run = 0;
+  }
+  return false;
+}
+
 /** Valhalla motorcycle (honours "no motorcycles") with banned roads near the leg blocked out. */
 async function routeAvoidingBanned(from: LngLat, to: LngLat, signal: AbortSignal): Promise<LegResult> {
   const { bannedPolygonsNear } = await import('../nav/expressways');
-  const polys = await bannedPolygonsNear(from, to);
+  const daily = routing.dailyOpts?.();
+  // Daily: block the roads the rider chose to avoid (expressways are allowed there); expedition: banned roads
+  const polys = daily ? avoidedPolygons(from, to) : await bannedPolygonsNear(from, to);
   const j = await getJSON('https://valhalla1.openstreetmap.de/route', {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }], costing: 'motorcycle', directions_type: 'maneuvers',
-      costing_options: { motorcycle: { use_highways: 0 } }, ...(polys.length ? { exclude_polygons: polys } : {}) }),
+      costing_options: { motorcycle: dailyCosting() ?? { use_highways: 0 } }, ...(polys.length ? { exclude_polygons: polys } : {}) }),
   });
   const leg = j.trip.legs[0];
   const c = decode6(leg.shape);
@@ -244,6 +308,11 @@ export class RoutingQueue {
           if (avoidingBanned()) for (let i = 0; i < run.length; i++) {
             const r = legs[i];
             if (r && !this.avoidTried.has(run[i].key) && (await legOnBanned(r.coords))) { this.avoid.add(run[i].key); legs[i] = undefined as any; }
+          }
+          // Daily: roads the rider chose to avoid → send the leg back for a re-route around them
+          if (routing.dailyOpts?.()) for (let i = 0; i < run.length; i++) {
+            const r = legs[i];
+            if (r && !this.avoidTried.has(run[i].key) && legOnAvoided(r.coords)) { this.avoid.add(run[i].key); legs[i] = undefined as any; }
           }
           w.backoffMs = 0; this.lastError = '';
           const rows = run.map((l, i) => ({ l, r: legs[i] })).filter((x) => x.r && x.r.coords.length >= 2);

@@ -32,6 +32,7 @@ import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
 import { ModePicker } from './ModePicker';
 import { dailyMap } from '../daily/mapLayers';
+import { dailyNav } from '../daily/dailyNav';
 import { offlineMaps } from '../daily/offlineMap';
 import { offlineSearch } from '../daily/offlineSearch';
 import { startDailyOverlays } from '../daily/overlays';
@@ -54,6 +55,7 @@ export function App() {
       await nav.loadSettings();
       await google.load();
       await dailyMap.load();
+      await dailyNav.load();
       void offlineMaps.boot();
       void offlineSearch.boot();
       startDailyOverlays(mapCtl!);

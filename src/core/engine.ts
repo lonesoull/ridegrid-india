@@ -24,7 +24,9 @@ export interface LegDiff { add: Leg[]; remove: Leg[]; update: Leg[] }
 
 const toTuple = (s: Stop): StopTuple => (s.name ? [s.id, s.lng, s.lat, s.name] : [s.id, s.lng, s.lat]);
 const fromTuple = (t: StopTuple): Stop => ({ id: t[0], lng: t[1], lat: t[2], name: t[3] });
-export const cacheKey = (a: LngLat, b: LngLat) => `${ckey(a)}|${ckey(b)}`;
+/** Road-leg cache namespace: '' for expedition (unchanged keys); Daily mode adds its own tag (route options), so the two never share routes. */
+export const legCache = { tag: (): string => '' };
+export const cacheKey = (a: LngLat, b: LngLat) => `${legCache.tag()}${ckey(a)}|${ckey(b)}`;
 
 function invert(c: Cmd): Cmd {
   switch (c.t) {

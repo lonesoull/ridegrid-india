@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { makeAvoid, makeNearGoal } from './avoid';
-import { Graph, routeMulti, linkGraphs, unlinkGraph, type LngLat } from './graph';
+import { Graph, postedLimit, routeMulti, linkGraphs, unlinkGraph, type LngLat } from './graph';
 
 /** Background thread: holds the downloaded road graphs and answers routing requests. */
 const graphs = new Map<string, Graph>();
@@ -29,9 +29,10 @@ self.onmessage = (ev: MessageEvent) => {
     } else if (m.type === 'route') {
       const pts = m.points as LngLat[];
       const legs = [];
+      let avoid: ReturnType<typeof makeAvoid> | undefined;
       const t = performance.now();
       for (let i = 0; i < pts.length - 1; i++) {
-        const r = routeMulti([...graphs.values()], pts[i], pts[i + 1], { allowBanned: !!m.allowBanned });
+        const r = routeMulti([...graphs.values()], pts[i], pts[i + 1], { allowBanned: !!m.allowBanned, shortest: !!m.shortest, blocked: m.avoidSegs?.length ? (avoid ??= makeAvoid(m.avoidSegs, 15)) : undefined });
         legs.push(r ? { coords: r.coords, distM: r.distM, names: r.names, timeS: r.timeS } : null);
       }
       (self as any).postMessage({ id: m.id, ok: true, result: legs, ms: performance.now() - t });
@@ -45,6 +46,12 @@ self.onmessage = (ev: MessageEvent) => {
         maxCostS: 1200 + (4 * crow) / (60 / 3.6),
       });
       (self as any).postMessage({ id: m.id, ok: true, result: r ? { coords: r.coords, distM: r.distM, names: r.names } : null });
+    } else if (m.type === 'roadAt') {
+      // the road under the rider: name, posted speed limit, geometry (Daily speed sign / street name / avoid road)
+      let best: { g: Graph; s: NonNullable<ReturnType<Graph['snap']>> } | null = null;
+      for (const g of graphs.values()) { if (!g.contains(m.p)) continue; const s = g.snap(m.p, m.maxM ?? 40, true); if (s && (!best || s.d < best.s.d)) best = { g, s }; }
+      const r = best && { name: best.g.names[best.g.name[best.s.e]] || '', limit: postedLimit(best.g, best.s.e), d: best.s.d, coords: m.geom ? best.g.edgeCoords(best.s.e) : undefined };
+      (self as any).postMessage({ id: m.id, ok: true, result: r });
     } else if (m.type === 'snap') {
       const g = [...graphs.values()].find((x) => x.contains(m.p));
       const s = g?.snap(m.p, 300);
