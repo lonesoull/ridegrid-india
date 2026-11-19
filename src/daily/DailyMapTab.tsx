@@ -8,6 +8,7 @@ import { act, toast } from '../ui/state';
 import { google } from '../core/google';
 import { sunTimes } from './sun';
 import { offlineSearch, type PoiZone } from './offlineSearch';
+import { canNativeFetch } from './nativeFetch';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
 
@@ -82,11 +83,11 @@ function OfflineMapDownloads() {
   useEffect(() => {
     void reload();
     for (const z of ZONES) void fetch(`${import.meta.env.BASE_URL}poi/${z.zone}.poi.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => setPoiMeta((m) => ({ ...m, [z.zone]: j })));
-    for (const z of ZONES) void fetch(`${server}/${z.zone}.tiles.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => setMeta((m) => ({ ...m, [z.zone]: j })));
+    for (const z of ZONES) void offlineMaps.meta(z.zone, server).then((j) => setMeta((m) => ({ ...m, [z.zone]: j })));
   }, [server]);
   const dl = (zone: string) => {
     setProg((x) => ({ ...x, [zone]: 'starting…' }));
-    void offlineMaps.download(zone, `${server}/${zone}.pmtiles`, (d, t) => setProg((x) => ({ ...x, [zone]: t ? `${Math.round((d / t) * 100)}% (${mb(d)} of ${mb(t)})` : mb(d) })))
+    void offlineMaps.download(zone, server, (d, t) => setProg((x) => ({ ...x, [zone]: t ? `${Math.round((d / t) * 100)}% (${mb(d)} of ${mb(t)})` : mb(d) })))
       .then(() => { toast('Offline map ready'); if (mapCtl) void applyBase(mapCtl, true); if (!poi.some((x) => x.zone === zone) && poiMeta[zone]) getSearch(zone); })
       .catch((e) => toast(e.message, 'error'))
       .finally(() => { setProg((x) => { const y = { ...x }; delete y[zone]; return y; }); void reload(); });
@@ -94,7 +95,8 @@ function OfflineMapDownloads() {
   return (
     <section>
       <h3>Offline maps</h3>
-      <p className="muted">Download a region's full map (roads, places, buildings, water, parks) for use with no internet. Where nothing is downloaded the map loads online. Use Wi-Fi — regions are a few hundred MB.</p>
+      <p className="muted">Download a region's full map (roads, places, buildings, water, parks) for use with no internet. Where nothing is downloaded the map loads online. Use Wi-Fi — regions are 120–630 MB; an interrupted download resumes.</p>
+      {!canNativeFetch() && <p className="warn">Offline map downloads work in the RideGrid Android app (and the laptop app). In a browser tab the map loads online.</p>}
       {ZONES.map((z) => {
         const have = inst.find((i) => i.zone === z.zone), m = meta[z.zone], p = prog[z.zone];
         const sHave = poi.find((i) => i.zone === z.zone), sm = poiMeta[z.zone], sp = prog['s:' + z.zone];

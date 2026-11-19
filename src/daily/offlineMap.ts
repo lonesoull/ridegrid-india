@@ -2,6 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification, RequestParameters } from 'maplibre-gl';
 import { PMTiles, type Source, type RangeResponse } from 'pmtiles';
 import { getSetting, putSetting } from '../core/db';
+import { canNativeFetch, nativeDownload, nativeJson, RELEASES } from './nativeFetch';
 
 /**
  * Daily-mode map engine (OsmAnd-style offline maps).
@@ -62,39 +63,59 @@ export const offlineMaps = {
     archives.set(zone, { pm, bounds: [h.minLon, h.minLat, h.maxLon, h.maxLat], maxZoom: h.maxZoom });
   },
 
-  /** Stream a region file straight to device storage (hundreds of MB — never held in memory). */
-  async download(zone: string, url: string, onProgress?: (done: number, total: number) => void) {
+  /** Size + date of a region's map file (from the app's GitHub releases in the apps, else the map server). */
+  async meta(zone: string, server: string): Promise<{ bytes: number; generated?: string } | null> {
+    if (canNativeFetch()) return nativeJson(`${RELEASES}/india-tiles/${zone}.tiles.json`);
+    return fetch(`${server}/${zone}.tiles.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  },
+
+  /** Download a region file straight to device storage (hundreds of MB — never held in memory). */
+  async download(zone: string, server: string, onProgress?: (done: number, total: number) => void) {
     if (!navigator.storage?.getDirectory) throw new Error('This browser cannot store offline maps');
     void navigator.storage.persist?.();
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok || !res.body) throw new Error(`This map isn't available yet (${res.status})`);
-    const total = +(res.headers.get('content-length') ?? 0);
+    const meta = await this.meta(zone, server);
+    if (!meta) throw new Error("This region's map isn't available yet");
     const d = await dir();
     const tmp = await d.getFileHandle(`${zone}.part`, { create: true });
-    const w = await (tmp as any).createWritable();
-    let done = 0;
-    const reader = res.body.getReader();
+    // resume a partial download (same file version only)
+    const partOf = (await getSetting<string | null>(`mapPart.${zone}`, null));
+    const have = partOf === meta.generated ? (await tmp.getFile()).size : 0;
+    const w = await (tmp as any).createWritable({ keepExistingData: have > 0 });
+    if (have) await w.seek(have);
+    await putSetting(`mapPart.${zone}`, meta.generated ?? '');
+    let done = have;
     try {
-      for (;;) {
-        const { value, done: end } = await reader.read();
-        if (end) break;
-        await w.write(value);
-        done += value.byteLength;
-        onProgress?.(done, total);
+      if (canNativeFetch()) {
+        done = await nativeDownload(`${RELEASES}/india-tiles/${zone}.pmtiles`, meta.bytes, (c) => w.write(c), have, onProgress);
+      } else {
+        const res = await fetch(`${server}/${zone}.pmtiles`, { cache: 'no-store', headers: have ? { Range: `bytes=${have}-` } : {} });
+        if (!res.ok || !res.body) throw new Error(`This map isn't available yet (${res.status})`);
+        if (have && res.status !== 206) { await w.truncate(0); done = 0; }
+        const reader = res.body.getReader();
+        for (;;) {
+          const { value, done: end } = await reader.read();
+          if (end) break;
+          await w.write(value);
+          done += value.byteLength;
+          onProgress?.(done, meta.bytes);
+        }
       }
       await w.close();
-    } catch (e) { await w.abort?.(); throw e; }
+    } catch (e) { try { await w.close(); } catch { /* keep the partial file for resuming */ } throw e; }
+    if (meta.bytes && done < meta.bytes) throw new Error('Download incomplete — tap Download again to resume');
     // swap in the new file
     archives.delete(zone);
-    const final = await d.getFileHandle(`${zone}.pmtiles`, { create: true });
-    const fw = await (final as any).createWritable();
-    await fw.write(await (await tmp.getFile()));
-    await fw.close();
-    await d.removeEntry(`${zone}.part`);
+    try { await d.removeEntry(`${zone}.pmtiles`); } catch { /* first download */ }
+    try { if ((tmp as any).move) await (tmp as any).move(`${zone}.pmtiles`); } catch { /* fall back to copying */ }
+    if (!(await d.getFileHandle(`${zone}.pmtiles`).then(() => true, () => false))) {
+      const fw = await ((await d.getFileHandle(`${zone}.pmtiles`, { create: true })) as any).createWritable();
+      await (await tmp.getFile()).stream().pipeTo(fw);
+      await d.removeEntry(`${zone}.part`);
+    }
+    await putSetting(`mapPart.${zone}`, null);
     await this.open(zone);
-    const meta = await fetch(url.replace(/\.pmtiles$/, '.tiles.json')).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     const list = (await this.installed()).filter((z) => z.zone !== zone);
-    list.push({ zone, bytes: done, generated: meta?.generated, at: Date.now() });
+    list.push({ zone, bytes: done, generated: meta.generated, at: Date.now() });
     await putSetting('mapZones', list);
     this.emit();
   },
