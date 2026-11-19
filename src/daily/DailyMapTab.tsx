@@ -9,6 +9,7 @@ import { google } from '../core/google';
 import { sunTimes } from './sun';
 import { offlineSearch, type PoiZone } from './offlineSearch';
 import { canNativeFetch } from './nativeFetch';
+import { weatherAt, weatherText, type Weather } from './weather';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
 
@@ -52,6 +53,8 @@ export function DailyMapTab() {
         <Toggle on={s.photos} label="Street-level photos (Panoramax coverage)" onChange={(v) => set({ photos: v })} />
         <p className="muted">Terrain, satellite, radar, Wikipedia and photos need internet the first time; what you've viewed stays in the browser cache.</p>
       </section>
+
+      <WeatherCard />
 
       {sun && <section>
         <h3>Sun</h3>
@@ -121,6 +124,25 @@ function OfflineMapDownloads() {
         <input value={server} onChange={(e) => setServer(e.target.value)} onBlur={() => { try { localStorage.setItem('ridegrid.mapServer', server); } catch { /* ignore */ } }} />
       </details>
       <p className="muted small-note">Map data © OpenStreetMap contributors (ODbL), © OpenMapTiles. Online map: OpenFreeMap.</p>
+    </section>
+  );
+}
+
+function WeatherCard() {
+  const [w, setW] = useState<Weather | null | undefined>(undefined);
+  useEffect(() => { const c = mapCtl?.map.getCenter(); if (c) void weatherAt([c.lng, c.lat]).then(setW); }, []);
+  if (w === undefined) return <section><h3>Weather</h3><p className="muted">Loading…</p></section>;
+  if (!w) return <section><h3>Weather</h3><p className="muted">Needs internet.</p></section>;
+  const rainSoon = w.hours.find((h) => h.rainPct >= 50);
+  return (
+    <section>
+      <h3>Weather (map centre)</h3>
+      <p><b>{weatherText(w.now.code)}</b> · {Math.round(w.now.temp)}°C · wind {Math.round(w.now.windKmh)} km/h · rain {w.now.rainPct}%</p>
+      {rainSoon && <p className="warn">🌧 Rain likely from {new Date(rainSoon.t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} ({rainSoon.rainPct}%)</p>}
+      <div className="wxrow">{w.hours.slice(0, 12).map((h) => (
+        <div key={h.t}><span className="muted">{new Date(h.t).toLocaleTimeString('en-IN', { hour: 'numeric' })}</span><span>{weatherText(h.code).split(' ')[0]}</span><b>{Math.round(h.temp)}°</b><span className="muted">{h.rainPct}%</span></div>
+      ))}</div>
+      <p className="muted small-note">Forecast: Open-Meteo</p>
     </section>
   );
 }

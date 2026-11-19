@@ -308,3 +308,5 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .nearcat { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; margin: 2px 0; }
 .nearcat .muted:first-child { min-width: 92px; }
 .chip.on { background: var(--accent); color: #fff; }
+.wxrow { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0; }
+.wxrow > div { display: flex; flex-direction: column; align-items: center; min-width: 38px; font-size: 12px; }
