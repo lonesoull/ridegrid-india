@@ -353,3 +353,9 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 :root.hc { --glass: #000; }
 :root.hc .glass { background: #000 !important; color: #fff !important; border: 2px solid #fff; }
 :root.hc .muted { color: #ddd !important; opacity: 1; }
+.shield { display: inline-block; padding: 0 6px; margin-right: 4px; border-radius: 4px; font-size: 12px; font-weight: 800; border: 2px solid #fff; box-shadow: 0 0 0 1px #333; }
+.shield.nh { background: #1b7f3b; color: #fff; } .shield.sh { background: #f2c200; color: #111; }
+.street.next { font-weight: 500; font-size: 13px; }
+.screenlock { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.02); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 28px; touch-action: none; }
+.unlock { position: relative; overflow: hidden; padding: 14px 22px; border-radius: 999px; font-weight: 700; font-size: 16px; user-select: none; }
+.unlock i { position: absolute; left: 0; bottom: 0; height: 4px; background: #0a84ff; }

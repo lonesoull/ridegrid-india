@@ -10,6 +10,7 @@ import { sunTimes } from './sun';
 import { markers } from './markers';
 import { recorder } from './recorder';
 import { sensors } from './sensors';
+import { moonPhase } from './mapExtras';
 import { bikes, bikeStatus } from './profiles';
 
 let bike = { km: NaN, serviceLeft: NaN };
@@ -112,6 +113,7 @@ function value(id: WidgetId): React.ReactNode | null {
     case 'temp': return sensors.tempC !== null ? big(`${sensors.tempC.toFixed(1)}°`, 'temp') : null;
     case 'fuelRange': return Number.isFinite(bike.km) ? big(`${Math.round(bike.km)} km`, bike.km < 40 ? '⛽ refuel soon!' : '⛽ range') : null;
     case 'service': return Number.isFinite(bike.serviceLeft) ? big(bike.serviceLeft > 0 ? `${Math.round(bike.serviceLeft)} km` : 'due', '🔧 service') : null;
+    case 'moon': { const mp = moonPhase(); return big(mp.name.split(' ')[0], `${mp.illum}% lit`); }
     case 'recording': return recorder.on ? big(`● ${dist(recorder.distM)}`, `REC ${hm((Date.now() - recorder.startedAt) / 1000)}`) : null;
   }
 }

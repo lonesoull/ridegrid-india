@@ -13,8 +13,11 @@ export interface DailyMapSettings {
   hillshade: boolean; contours: boolean; terrain3d: boolean;
   rain: boolean; satellite: boolean; wiki: boolean; photos: boolean;
   autoNight: boolean;
+  /** switch day/night map by sunrise & sunset */ autoDayNight: boolean;
+  grid: boolean; regions: boolean; rings: boolean;
+  orientation: 'heading' | 'north' | 'compass';
 }
-export const DEFAULT_DAILY_MAP: DailyMapSettings = { style: 'day', hillshade: false, contours: false, terrain3d: false, rain: false, satellite: false, wiki: false, photos: false, autoNight: true };
+export const DEFAULT_DAILY_MAP: DailyMapSettings = { style: 'day', hillshade: false, contours: false, terrain3d: false, rain: false, satellite: false, wiki: false, photos: false, autoNight: true, autoDayNight: false, grid: false, regions: false, rings: false, orientation: 'heading' };
 
 export const dailyMap = {
   settings: { ...DEFAULT_DAILY_MAP },

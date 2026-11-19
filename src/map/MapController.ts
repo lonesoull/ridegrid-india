@@ -363,12 +363,17 @@ export class MapController {
       // Daily mode auto-zoom by speed (hook unset in expedition)
       const az = this.followZoom?.();
       if (az !== null && az !== undefined && !('zoom' in cam) && Math.abs(az - this.map.getZoom()) > 0.3) cam.zoom = az;
-      if (sim) this.map.jumpTo({ center: pos, bearing: heading, ...cam });
-      else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
+      const brg = this.followBearing?.(heading) ?? heading;
+      if (sim) this.map.jumpTo({ center: pos, bearing: brg, ...cam });
+      else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: brg, duration: 900, ...cam }); }
     }
   }
   /** Optional follow-camera zoom (Daily auto-zoom by speed). */
   followZoom: (() => number | null) | null = null;
+  /** Optional follow-camera bearing (Daily: north-up / compass); null = direction of travel. */
+  followBearing: ((heading: number) => number | null) | null = null;
+  /** Daily: taps on map features; return true when handled. */
+  tapHooks: ((e: MapMouseEvent, box: [[number, number], [number, number]]) => boolean)[] = [];
   private bannedFc: GeoJSON.FeatureCollection | null = null;
   setBanned(fc: GeoJSON.FeatureCollection | null) { this.bannedFc = fc; this.src(BANNED)?.setData(fc ?? empty()); }
   private riddenFc: GeoJSON.FeatureCollection | null = null;
@@ -478,6 +483,8 @@ export class MapController {
       // Daily-mode layers (saved places, Wikipedia) handle their own taps
       const own = ['d-places-dot', 'd-wiki-dot'].filter((id) => m.getLayer(id));
       if (own.length && m.queryRenderedFeatures(box, { layers: own }).length) return;
+      // Daily mode: tap a place on the map → info card (hook unset in expedition)
+      for (const h of this.tapHooks) if (h(e, box)) return;
       const cl = m.queryRenderedFeatures(box, { layers: ['rg-clusters'] })[0];
       if (cl) {
         const z = await (this.src(STOPS) as any).getClusterExpansionZoom(cl.properties!.cluster_id);

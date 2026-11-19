@@ -61,3 +61,11 @@ function utm(s: string): LngLat | null {
   const lng = (D - (1 + 2 * T1 + C1) * D ** 3 / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D ** 5 / 120) / Math.cos(p1);
   return [((zone - 1) * 6 - 180 + 3) + lng * 180 / Math.PI, lat * 180 / Math.PI];
 }
+
+/** Find coordinates in a shared text: geo: URIs, Google Maps / WhatsApp links, plain "lat, lng". */
+export function locationFromText(t: string): [number, number] | null {
+  const s = decodeURIComponent(t);
+  const pats = [/geo:(-?\d+\.\d+),(-?\d+\.\d+)/, /[@?&](?:q|query|ll|destination|daddr|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/, /@(-?\d+\.\d+),(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/];
+  for (const re of pats) { const m = re.exec(s); if (m) return [+m[2], +m[1]]; }
+  return parseCoords(s.trim());
+}

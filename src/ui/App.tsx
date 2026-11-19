@@ -43,6 +43,8 @@ import { offlineMaps } from '../daily/offlineMap';
 import { offlineSearch } from '../daily/offlineSearch';
 import { startDailyOverlays } from '../daily/overlays';
 import { startDaily } from '../daily/startDaily';
+import { startMapExtras } from '../daily/mapExtras';
+import { handleLaunch, listenAppLinks } from '../daily/launch';
 import { mode, MODE_LABEL } from '../core/mode';
 
 export let mapCtl: MapController | null = null;
@@ -68,6 +70,7 @@ export function App() {
       void offlineSearch.boot();
       startDailyOverlays(mapCtl!);
       startDaily(mapCtl!);
+      startMapExtras(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance();
       void device.boot().then(() => app.queue.kick());
@@ -97,6 +100,8 @@ export function App() {
       if (mode.current === 'daily') await applyBase(mapCtl!);
       if (!mode.chosen) ui.set({ modePicker: true });
       void reminder.start();
+      void handleLaunch().catch((e) => toast(String(e?.message ?? e), 'error'));
+      void listenAppLinks();
       setReady(true);
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
     })().catch((e) => toast(String(e), 'error'));

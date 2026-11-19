@@ -11,12 +11,12 @@ import { myLocation } from '../nav/directions';
 import type { LngLat } from '../core/geo';
 
 /** OsmAnd "Quick actions": user-chosen one-tap buttons on the Daily map. */
-export type QA = 'fav' | 'marker' | 'park' | 'note' | 'photo' | 'audio' | 'rec' | 'voice' | 'night' | 'style' | 'hideplaces' | 'search' | 'nav' | 'zoomin' | 'zoomout' | 'mylocation';
+export type QA = 'fav' | 'marker' | 'park' | 'note' | 'photo' | 'audio' | 'rec' | 'voice' | 'night' | 'style' | 'hideplaces' | 'search' | 'nav' | 'zoomin' | 'zoomout' | 'mylocation' | 'lock';
 export const QA_LABEL: Record<QA, string> = { fav: '★ Add favourite here', marker: '⚑ Marker at map centre', park: 'P Park bike here', note: '✎ Text note here', photo: '📷 Photo note here',
   audio: '🎙 Voice note here', rec: '● Start / stop recording', voice: '🔊 Voice on / off', night: '🌙 Day / night', style: '🗺 Next map style', hideplaces: '👁 Show / hide my places',
-  search: '🔍 Search', nav: '🧭 Navigate / stop', zoomin: '＋ Zoom in', zoomout: '－ Zoom out', mylocation: '◎ My location' };
-export const DEFAULT_QA: QA[] = ['park', 'marker', 'rec'];
-const ICON: Record<QA, string> = { fav: '★', marker: '⚑', park: 'P', note: '✎', photo: '📷', audio: '🎙', rec: '●', voice: '🔊', night: '🌙', style: '🗺', hideplaces: '👁', search: '🔍', nav: '🧭', zoomin: '＋', zoomout: '－', mylocation: '◎' };
+  search: '🔍 Search', nav: '🧭 Navigate / stop', zoomin: '＋ Zoom in', zoomout: '－ Zoom out', mylocation: '◎ My location', lock: '🔒 Lock screen (no accidental taps)' };
+export const DEFAULT_QA: QA[] = ['lock', 'park', 'marker', 'rec'];
+const ICON: Record<QA, string> = { fav: '★', marker: '⚑', park: 'P', note: '✎', photo: '📷', audio: '🎙', rec: '●', voice: '🔊', night: '🌙', style: '🗺', hideplaces: '👁', search: '🔍', nav: '🧭', zoomin: '＋', zoomout: '－', mylocation: '◎', lock: '🔒' };
 
 export const quick = {
   list: [...DEFAULT_QA] as QA[], hidePlaces: false,
@@ -35,6 +35,7 @@ export function QuickActions() {
   const [, tick] = useState(0);
   const photo = useRef<HTMLInputElement>(null);
   const [recording, setRecording] = useState<MediaRecorder | null>(null);
+  const [locked, setLocked] = useState(false);
   useEffect(() => { void quick.load().then(() => tick((x) => x + 1)); const f = () => tick((x) => x + 1); quick.listeners.add(f); recorder.listeners.add(f); return () => { quick.listeners.delete(f); recorder.listeners.delete(f); }; }, []);
 
   const run = (a: QA) => {
@@ -55,6 +56,7 @@ export function QuickActions() {
       case 'zoomin': mapCtl?.map.zoomIn(); return;
       case 'zoomout': mapCtl?.map.zoomOut(); return;
       case 'mylocation': void here().then((p) => mapCtl?.showMe(p)); return;
+      case 'lock': setLocked(true); return;
     }
   };
   async function toggleAudio() {
@@ -67,6 +69,7 @@ export function QuickActions() {
       rec.start(); setRecording(rec); toast('Recording voice note — tap 🎙 again to stop');
     } catch { toast('Microphone not available', 'error'); }
   }
+  if (locked) return <ScreenLock onUnlock={() => setLocked(false)} />;
   if (!quick.list.length) return null;
   return (
     <div className="quickacts">
@@ -74,6 +77,21 @@ export function QuickActions() {
       {quick.list.map((a) => (
         <button key={a} className={`fab glass qa ${a === 'rec' && recorder.on ? 'rec-on' : ''} ${a === 'audio' && recording ? 'rec-on' : ''}`} title={QA_LABEL[a]} onClick={() => void run(a)}>{ICON[a]}</button>
       ))}
+    </div>
+  );
+}
+
+/** OsmAnd screen lock: blocks every touch on the map while riding; hold the button 1.5 s to unlock. */
+function ScreenLock({ onUnlock }: { onUnlock: () => void }) {
+  const [hold, setHold] = useState(0);
+  const t = useRef<number | null>(null);
+  const start = () => { const t0 = Date.now(); t.current = window.setInterval(() => { const p = (Date.now() - t0) / 1500; setHold(p); if (p >= 1) { clearInterval(t.current!); onUnlock(); } }, 50); };
+  const stop = () => { if (t.current) clearInterval(t.current); setHold(0); };
+  return (
+    <div className="screenlock" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+      <button className="unlock glass" onPointerDown={start} onPointerUp={stop} onPointerLeave={stop}>
+        🔒 Hold to unlock<i style={{ width: `${Math.min(100, hold * 100)}%` }} />
+      </button>
     </div>
   );
 }

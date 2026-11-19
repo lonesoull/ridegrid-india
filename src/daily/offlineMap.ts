@@ -127,6 +127,9 @@ export const offlineMaps = {
     this.emit();
   },
 
+  /** Bounding boxes of downloaded map regions. */
+  bounds(): [string, number[]][] { return [...archives.entries()].map(([z, a]) => [z, a.bounds]); },
+
   /** Does a downloaded region cover this point? */
   covers(lng: number, lat: number) {
     for (const a of archives.values()) if (lng >= a.bounds[0] && lng <= a.bounds[2] && lat >= a.bounds[1] && lat <= a.bounds[3]) return true;

@@ -41,6 +41,12 @@ export function DailyMapTab() {
           ))}
         </div>
         <label className="check"><input type="checkbox" checked={s.autoNight} onChange={(e) => set({ autoNight: e.target.checked })} /><span>Switch to the night map with the app's night mode</span></label>
+        <label className="check"><input type="checkbox" checked={s.autoDayNight} onChange={(e) => set({ autoDayNight: e.target.checked })} /><span>Night mode automatically after sunset, day mode after sunrise</span></label>
+        <label className="field">Map orientation while riding
+          <select value={s.orientation} onChange={(e) => set({ orientation: e.target.value as DailyMapSettings['orientation'] })}>
+            <option value="heading">Direction of travel</option><option value="north">North up</option><option value="compass">Compass (when standing still)</option>
+          </select>
+        </label>
       </section>
 
       <section>
@@ -52,6 +58,9 @@ export function DailyMapTab() {
         <Toggle on={s.rain} label="Live rain radar (updates every 10 min)" onChange={(v) => set({ rain: v })} />
         <Toggle on={s.wiki} label="Wikipedia places (tap for the article)" onChange={(v) => set({ wiki: v })} />
         <Toggle on={s.photos} label="Street-level photos (Panoramax coverage)" onChange={(v) => set({ photos: v })} />
+        <Toggle on={s.grid} label="Coordinate grid" onChange={(v) => set({ grid: v })} />
+        <Toggle on={s.regions} label="Outlines of downloaded regions" onChange={(v) => set({ regions: v })} />
+        <Toggle on={s.rings} label="Distance rings around me" onChange={(v) => set({ rings: v })} />
         <p className="muted">Terrain, satellite, radar, Wikipedia and photos need internet the first time; what you've viewed stays in the browser cache.</p>
       </section>
 

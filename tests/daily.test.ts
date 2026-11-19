@@ -69,3 +69,13 @@ describe('track analysis', () => {
     expect(s.climbM).toBeGreaterThan(50);
   });
 });
+
+import { locationFromText } from '../src/daily/coords';
+describe('shared locations', () => {
+  it('reads geo:, Google Maps and WhatsApp links', () => {
+    expect(locationFromText('geo:12.9716,77.5946?q=12.9716,77.5946')).toEqual([77.5946, 12.9716]);
+    expect(locationFromText('https://www.google.com/maps/place/X/@13.0827,80.2707,15z')).toEqual([80.2707, 13.0827]);
+    expect(locationFromText('https://maps.google.com/?q=28.6139,77.2090')).toEqual([77.209, 28.6139]);
+    expect(locationFromText('hello')).toBeNull();
+  });
+});

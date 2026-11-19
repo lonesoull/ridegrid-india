@@ -1,11 +1,73 @@
 {
-  "name": "RideGrid India",
-  "short_name": "RideGrid",
-  "start_url": "./",
-  "scope": "./",
-  "display": "fullscreen",
-  "orientation": "any",
-  "background_color": "#0b0f14",
-  "theme_color": "#0b0f14",
-  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+ "name": "RideGrid India",
+ "short_name": "RideGrid",
+ "start_url": "./",
+ "scope": "./",
+ "display": "fullscreen",
+ "orientation": "any",
+ "background_color": "#0b0f14",
+ "theme_color": "#0b0f14",
+ "icons": [
+  {
+   "src": "icon.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any maskable"
+  }
+ ],
+ "shortcuts": [
+  {
+   "name": "Navigate home",
+   "short_name": "Home",
+   "url": "./?go=home",
+   "icons": [
+    {
+     "src": "icon.svg",
+     "sizes": "any"
+    }
+   ]
+  },
+  {
+   "name": "Navigate to work",
+   "short_name": "Work",
+   "url": "./?go=work",
+   "icons": [
+    {
+     "src": "icon.svg",
+     "sizes": "any"
+    }
+   ]
+  },
+  {
+   "name": "Record a ride",
+   "short_name": "Record",
+   "url": "./?do=rec",
+   "icons": [
+    {
+     "src": "icon.svg",
+     "sizes": "any"
+    }
+   ]
+  },
+  {
+   "name": "Park here",
+   "short_name": "Park",
+   "url": "./?do=park",
+   "icons": [
+    {
+     "src": "icon.svg",
+     "sizes": "any"
+    }
+   ]
+  }
+ ],
+ "share_target": {
+  "action": "./",
+  "method": "GET",
+  "params": {
+   "title": "title",
+   "text": "text",
+   "url": "url"
+  }
+ }
 }

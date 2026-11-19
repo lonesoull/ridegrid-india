@@ -5,6 +5,12 @@ import { TurnIcon } from '../ui/Icon';
 import type { TurnCode } from '../core/turns';
 
 const ARROW: Record<string, TurnCode> = { left: 'left', 'slight left': 'slight-left', 'sharp left': 'sharp-left', right: 'right', 'slight right': 'slight-right', 'sharp right': 'sharp-right', straight: 'straight', uturn: 'uturn', none: 'straight' };
+const REF = /\b(NH|SH|MDR|AH|ODR)[\s-]?\d+[A-Z]?\b/gi;
+/** Highway number badges (OsmAnd road shields): NH green, SH/others yellow. */
+function shields(text: string) {
+  const refs = [...new Set(text.match(REF) ?? [])];
+  return refs.map((r) => <span key={r} className={`shield ${/^NH|^AH/i.test(r) ? 'nh' : 'sh'}`}>{r.toUpperCase().replace(/\s|-/, ' ')}</span>);
+}
 const fmt = (m: number) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`);
 
 /** Daily ride screen: lanes, speed-limit sign, current street, next road alert (OsmAnd widgets). */
@@ -31,7 +37,8 @@ export function DailyNavExtras() {
         {nav.mode !== 'off' && <div className={`speedo glass ${roadInfo.over ? 'over' : ''}`}><b>{kmh}</b><span>km/h</span></div>}
         {a && <div className={`ralert glass k-${a.kind}`}><span className="ri">{ALERT_ICON[a.kind]}</span><span><b>{ALERT_TEXT[a.kind]}</b>{a.limit ? ` · ${a.limit}` : ''}<br />{fmt(a.dist)}</span></div>}
       </div>
-      {roadInfo.road && <div className="street glass">{roadInfo.road}</div>}
+      {roadInfo.road && <div className="street glass">{shields(roadInfo.road)}{roadInfo.road.replace(REF, '').replace(/^[\s·]+|[\s·]+$/g, '') || ''}</div>}
+      {turn && turn.n && turn.dist < 2000 && REF.test(turn.n) && <div className="street glass next">Next: {shields(turn.n)}</div>}
     </div>
   );
 }
