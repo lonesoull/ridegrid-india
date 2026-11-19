@@ -6,8 +6,22 @@ import { download, safeName } from '../io/exporters';
 import { mapCtl } from '../ui/App';
 import { act, toast, ui } from '../ui/state';
 import { recorder } from './recorder';
-import { analyse, colouredTrack, gpxOf, importGpxTrack, saveLineAsTrack, showTrack, trackPoints, type TrackStats } from './trackTools';
+import { analyse, colouredTrack, gpxOf, importGpxTrack, saveLineAsTrack, showTrack, trackPoints, joinTracks, splitTrack, snapTrack, type TrackStats, type ColourBy } from './trackTools';
+import type { RidePoint } from '../core/db';
 import { device } from '../route/device';
+
+/** Tracks shown on the map together (OsmAnd: several visible tracks), each in its colouring. */
+const visible = new Map<string, GeoJSON.Feature[]>();
+let colourBy: ColourBy = 'speed';
+const SOLID = ['#e53935', '#1e88e5', '#43a047', '#8e24aa', '#fb8c00', '#00897b'];
+function redraw() { if (mapCtl) showTrack(mapCtl, visible.size ? { type: 'FeatureCollection', features: [...visible.values()].flat() } : null); }
+async function toggleVisible(r: Ride, pts?: RidePoint[]) {
+  if (visible.has(r.id)) { visible.delete(r.id); redraw(); return false; }
+  const p = pts ?? (await trackPoints(r.id));
+  visible.set(r.id, colouredTrack(p, colourBy, SOLID[visible.size % SOLID.length]).features);
+  redraw();
+  return true;
+}
 
 const hm = (s: number) => `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -17,6 +31,7 @@ export function TracksTab() {
   const [, tick] = useState(0);
   const [rides, setRides] = useState<Ride[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
   const reload = async () => {
     const daily = new Set((await db.trips.toArray()).filter((t) => t.kind === 'daily').map((t) => t.id));
     setRides((await db.rides.toArray()).filter((r) => daily.has(r.tripId) && !r.simulated).sort((a, b) => b.startedAt - a.startedAt));
@@ -46,20 +61,31 @@ export function TracksTab() {
 
       <section>
         <h3>My tracks</h3>
+        <div className="btns sm">
+          <label className="field">Colour tracks by
+            <select value={colourBy} onChange={(e) => { colourBy = e.target.value as ColourBy; const ids = [...visible.keys()]; visible.clear(); void Promise.all(rides.filter((r) => ids.includes(r.id)).map((r) => toggleVisible(r))).then(() => tick((x) => x + 1)); }}>
+              <option value="speed">Speed</option><option value="altitude">Altitude</option><option value="slope">Slope (up / down)</option><option value="solid">One colour per track</option>
+            </select>
+          </label>
+          {visible.size > 0 && <button onClick={() => { visible.clear(); redraw(); tick((x) => x + 1); }}>Hide all from map ({visible.size})</button>}
+          {sel.size >= 2 && <button onClick={() => act('Joining…', async () => { await joinTracks(rides.filter((r) => sel.has(r.id)), engine.trip!.id); setSel(new Set()); await reload(); toast('Joined into a new track'); })}>Join {sel.size} selected</button>}
+        </div>
         <label className="photo-btn">
-          <input type="file" accept=".gpx,application/gpx+xml" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; void act('Importing…', async () => { for (const f of fs) await importGpxTrack(f, engine.trip!.id, 'Imported'); await reload(); toast(`${fs.length} track(s) imported`); }); }} />
-          ⬆ Import GPX tracks
+          <input type="file" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ''; void act('Importing…', async () => { for (const f of fs) await importGpxTrack(f, engine.trip!.id, 'Imported'); await reload(); toast(`${fs.length} track(s) imported`); }); }} />
+          ⬆ Import GPX / KML tracks
         </label>
         {!rides.length && <p className="muted">No tracks yet.</p>}
         {folders.map((f) => (
           <details key={f} open>
             <summary><b>📁 {f}</b> <span className="muted">({rides.filter((r) => (r.folder || 'Navigation rides') === f).length} · {fmtKm(rides.filter((r) => (r.folder || 'Navigation rides') === f).reduce((m, r) => m + r.distM, 0))})</span></summary>
             {rides.filter((r) => (r.folder || 'Navigation rides') === f).map((r) => (
-              <div key={r.id}>
+              <div key={r.id} className="trackrow">
+                <input type="checkbox" aria-label="Select" checked={sel.has(r.id)} onChange={(e) => { const n = new Set(sel); if (e.target.checked) n.add(r.id); else n.delete(r.id); setSel(n); }} />
                 <button className="link result" onClick={() => setOpen(open === r.id ? null : r.id)}>
                   <b>{r.name}</b><div className="muted">{new Date(r.startedAt).toLocaleString('en-IN')} · {fmtKm(r.distM)}{r.source === 'import' ? ' · imported' : r.source === 'plan' ? ' · planned' : ''}</div>
                 </button>
-                {open === r.id && <TrackDetail r={r} onChange={reload} />}
+                {visible.has(r.id) && <span className="pill">on map</span>}
+                {open === r.id && <TrackDetail r={r} onChange={() => { void reload(); tick((x) => x + 1); }} />}
               </div>
             ))}
           </details>
@@ -71,11 +97,11 @@ export function TracksTab() {
 
 function TrackDetail({ r, onChange }: { r: Ride; onChange: () => void }) {
   const [st, setSt] = useState<TrackStats | null>(null);
-  useEffect(() => { void trackPoints(r.id).then((p) => setSt(analyse(p))); return () => { if (mapCtl) showTrack(mapCtl, null); }; }, [r.id]);
+  useEffect(() => { void trackPoints(r.id).then((p) => setSt(analyse(p))); }, [r.id]);
   if (!st) return <p className="muted">Loading…</p>;
-  const show = () => {
+  const show = async () => {
     if (!mapCtl || st.pts.length < 2) return;
-    showTrack(mapCtl, colouredTrack(st.pts));
+    if (!(await toggleVisible(r, st.pts))) { onChange(); return; }
     const xs = st.pts.map((p) => p[1]), ys = st.pts.map((p) => p[2]);
     mapCtl.map.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 60 });
     ui.set({ drawer: false });
@@ -96,7 +122,9 @@ function TrackDetail({ r, onChange }: { r: Ride; onChange: () => void }) {
       {st.splits.length > 0 && <details><summary className="muted">Splits per km{best ? ` (fastest: km ${best.km}, ${mmss(best.s)})` : ''}</summary>
         <div className="splits">{st.splits.map((x) => <span key={x.km}>km {x.km}: <b>{mmss(x.s)}</b> ({(3600 / x.s).toFixed(0)} km/h)</span>)}</div></details>}
       <div className="btns sm">
-        <button onClick={show}>Show on map (coloured by speed)</button>
+        <button onClick={() => void show()}>{visible.has(r.id) ? 'Hide from map' : 'Show on map'}</button>
+        <button onClick={() => act('Matching to roads…', async () => { await snapTrack(r, async (pts) => (await device.route(pts)).map((l) => l?.coords ?? null)); onChange(); toast('Saved a copy that follows the roads'); })}>Snap to roads</button>
+        <button onClick={() => act(null, async () => { const k = prompt(`Split at which km? (0–${(st.distM / 1000).toFixed(1)})`); if (k) { await splitTrack(r, +k); onChange(); toast('Split into two tracks'); } })}>Split</button>
         <button onClick={() => download(`${safeName(r.name)}.gpx`, new Blob([gpxOf(r, st.pts)], { type: 'application/gpx+xml' }))}>Export GPX</button>
         <button onClick={() => { const n = prompt('Name', r.name); if (n) void db.rides.update(r.id, { name: n }).then(onChange); }}>Rename</button>
         <button onClick={() => { const f = prompt('Move to folder', r.folder ?? 'Rides'); if (f) void db.rides.update(r.id, { folder: f }).then(onChange); }}>Folder</button>

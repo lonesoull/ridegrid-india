@@ -359,3 +359,7 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .screenlock { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.02); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 28px; touch-action: none; }
 .unlock { position: relative; overflow: hidden; padding: 14px 22px; border-radius: 999px; font-weight: 700; font-size: 16px; user-select: none; }
 .unlock i { position: absolute; left: 0; bottom: 0; height: 4px; background: #0a84ff; }
+.trackrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
+.trackrow > input { margin-top: 12px; }
+.trackrow > .result { flex: 1; }
+.trackrow > .trackdetail { flex-basis: 100%; }
