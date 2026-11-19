@@ -359,11 +359,16 @@ export class MapController {
     if (pos && this.follow && !this.drag) {
       const now = performance.now();
       // first follow frame (or after zooming far out): bring the camera down to riding view
-      const cam = this.map.getZoom() < 13 ? { zoom: 15.5, pitch: 55 } : {};
+      const cam: { zoom?: number; pitch?: number } = this.map.getZoom() < 13 ? { zoom: 15.5, pitch: 55 } : {};
+      // Daily mode auto-zoom by speed (hook unset in expedition)
+      const az = this.followZoom?.();
+      if (az !== null && az !== undefined && !('zoom' in cam) && Math.abs(az - this.map.getZoom()) > 0.3) cam.zoom = az;
       if (sim) this.map.jumpTo({ center: pos, bearing: heading, ...cam });
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: heading, duration: 900, ...cam }); }
     }
   }
+  /** Optional follow-camera zoom (Daily auto-zoom by speed). */
+  followZoom: (() => number | null) | null = null;
   private bannedFc: GeoJSON.FeatureCollection | null = null;
   setBanned(fc: GeoJSON.FeatureCollection | null) { this.bannedFc = fc; this.src(BANNED)?.setData(fc ?? empty()); }
   private riddenFc: GeoJSON.FeatureCollection | null = null;

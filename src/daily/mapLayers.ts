@@ -94,3 +94,19 @@ export async function wikiNear(map: MLMap): Promise<GeoJSON.FeatureCollection> {
   const j = await fetch(url).then((r) => r.json()).catch(() => null);
   return { type: 'FeatureCollection', features: (j?.query?.geosearch ?? []).map((g: any) => ({ type: 'Feature', properties: { title: g.title, id: g.pageid }, geometry: { type: 'Point', coordinates: [g.lon, g.lat] } })) };
 }
+
+/** Ground elevation (m) at points, from the terrain tiles (zoom 11, ~60 m pixels). */
+export async function elevations(pts: [number, number][]): Promise<number[]> {
+  const d = demSource(), z = 11, n = 2 ** z;
+  const tiles = new Map<string, Promise<{ width: number; height: number; data: Float32Array } | null>>();
+  return Promise.all(pts.map(async ([lng, lat]) => {
+    const x = ((lng + 180) / 360) * n;
+    const yr = (1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2 * n;
+    const tx = Math.floor(x), ty = Math.floor(yr), k = `${tx}/${ty}`;
+    if (!tiles.has(k)) tiles.set(k, d.getDemTile(z, tx, ty).catch(() => null));
+    const t = await tiles.get(k);
+    if (!t) return NaN;
+    const px = Math.min(t.width - 1, Math.floor((x - tx) * t.width)), py = Math.min(t.height - 1, Math.floor((yr - ty) * t.height));
+    return t.data[py * t.width + px];
+  }));
+}

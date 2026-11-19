@@ -14,6 +14,7 @@ import { sendSos } from '../team/actions';
 import { useEffect, useRef, useState } from 'react';
 import { compliance } from '../nav/compliance';
 import { reminder, saveEvidence } from '../nav/evidence';
+import { DailyNavExtras } from '../daily/DailyNavExtras';
 import { myLocation } from '../nav/directions';
 
 const fmtDist = (m: number) => (m < 1000 ? `${m < 100 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m` : fmtKm(m));
@@ -93,6 +94,7 @@ export function NavPanel() {
         )}
       </div>
 
+      {!exp && <DailyNavExtras />}
       <div className="navpanel glass">
         {nav.gpsError && <div className="offbanner warn">{nav.gpsError}</div>}
         <CompAlerts />

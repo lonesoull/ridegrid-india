@@ -14,6 +14,7 @@ import { useAsync, useEngine } from './hooks';
 import { useNav } from './navHooks';
 import { startRide } from './startRide';
 import { Icon } from './Icon';
+import { DailyRouteSettings } from '../daily/DailyRouteSettings';
 
 export function RideTab() {
   useEngine(); useNav();
@@ -78,7 +79,7 @@ export function RideTab() {
         </div>
       </section>
 
-      <RulesSection />
+      {isExpedition() ? <RulesSection /> : <DailyRouteSettings />}
 
       <section>
         <h3>Logbook</h3>

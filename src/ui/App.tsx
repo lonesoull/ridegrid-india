@@ -36,6 +36,7 @@ import { dailyNav } from '../daily/dailyNav';
 import { offlineMaps } from '../daily/offlineMap';
 import { offlineSearch } from '../daily/offlineSearch';
 import { startDailyOverlays } from '../daily/overlays';
+import { startDaily } from '../daily/startDaily';
 import { mode, MODE_LABEL } from '../core/mode';
 
 export let mapCtl: MapController | null = null;
@@ -59,6 +60,7 @@ export function App() {
       void offlineMaps.boot();
       void offlineSearch.boot();
       startDailyOverlays(mapCtl!);
+      startDaily(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance();
       void device.boot().then(() => app.queue.kick());
