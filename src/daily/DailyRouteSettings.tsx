@@ -10,6 +10,7 @@ import { act, toast, ui } from '../ui/state';
 import { dailyNav, type DailyNavSettings, type VoiceLang } from './dailyNav';
 import { VOICE_LABEL } from './voice';
 import { elevations } from './mapLayers';
+import { googleReady, googleElevations } from './gfeatures';
 import { weatherAt, weatherText } from './weather';
 import { offlineMaps } from './offlineMap';
 import { say } from '../nav/audio';
@@ -176,7 +177,10 @@ function RouteDetails() {
     if (L.n < 2 || L.total < 100) throw new Error('Plan a route first');
     const N = 160, pts: LngLat[] = [];
     for (let i = 0; i <= N; i++) pts.push(pointAt(L, (L.total * i) / N).p);
-    const ele = (await elevations(pts)).map((v) => (Number.isFinite(v) ? v : NaN));
+    // Google elevation first (online), our terrain data otherwise
+    let ele: number[];
+    try { if (!googleReady()) throw new Error('offline'); ele = await googleElevations(pts, pts.length); }
+    catch { ele = (await elevations(pts)).map((v) => (Number.isFinite(v) ? v : NaN)); }
     let up = 0, down = 0;
     for (let i = 1; i < ele.length; i++) { const dz = ele[i] - ele[i - 1]; if (Number.isFinite(dz)) { if (dz > 0) up += dz; else down -= dz; } }
     const ok = ele.filter(Number.isFinite);

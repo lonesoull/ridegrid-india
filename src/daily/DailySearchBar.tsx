@@ -11,9 +11,13 @@ import { offlineSearch, history, remember, clearHistory, type HistItem } from '.
 import { parseCoords } from './coords';
 import { CAT_LABEL, type Hit } from './poiIndex';
 import { openState } from './openingHours';
+import { googleReady, exploreNearby, searchAlongRoute, type GPlace } from './gfeatures';
 
 const fmtDist = (m?: number) => (m === undefined ? '' : m < 1000 ? `${Math.round(m)} m` : fmtKm(m));
 const CHIPS = ['fuel', 'restaurant', 'mechanic', 'tyres', 'atm', 'hospital', 'pharmacy', 'hotel', 'police', 'toilets', 'parking', 'cafe', 'ev'];
+
+const gToPlace = (g: GPlace, near: LngLat | null): Place => ({ id: `g:${g.id}`, name: g.name, address: [g.type, g.address].filter(Boolean).join(' · '), p: g.p, provider: 'google',
+  distM: near ? Math.hypot((g.p[0] - near[0]) * 111320 * Math.cos((near[1] * Math.PI) / 180), (g.p[1] - near[1]) * 110540) : undefined });
 
 const toPlace = (h: Hit, i: number): Place => {
   const [hours, phone, , city] = h.info.split('|');
@@ -50,6 +54,7 @@ export function DailySearchBar() {
   const [openNow, setOpenNow] = useState(false);
   const [near, setNear] = useState<{ cat: string; label: string; hits: Hit[] }[]>([]);
   const [hist, setHist] = useState<HistItem[]>(history());
+  const [popular, setPopular] = useState<Place[] | null>(null);
   const ctl = useRef<AbortController | null>(null);
   const meta = useRef(new Map<string, Hit>());
 
@@ -73,6 +78,15 @@ export function DailySearchBar() {
         if (xy) out.push({ id: `xy:${xy}`, name: `${xy[1].toFixed(6)}, ${xy[0].toFixed(6)}`, address: 'Coordinates', p: xy, provider: 'osm' });
         const centre = searchCentre();
         const rp = along ? routePoints() : null;
+        // Google first: search along the route (online), else the offline index below
+        if (rp && !cat && googleReady()) {
+          try {
+            const g = await searchAlongRoute(text, rp.pts);
+            const list = g.map((x) => gToPlace(x, centre));
+            if (!c.signal.aborted) { ui.set({ places: list }); mapCtl?.setPlaces(list, null); }
+            return;
+          } catch { /* fall back to offline */ }
+        }
         let hits = await offlineSearch.search(cat ? '' : text, { near: centre, cat, limit: openNow ? 200 : 25, along: rp ? { pts: rp.pts, maxM: 2000, fromS: rp.fromS } : undefined });
         // "Open now": keep places whose hours say open (24/7 included); unknown hours are dropped
         if (openNow) hits = hits.filter((h) => { const oh = h.info.split('|')[0]; return oh && openState(oh)?.open; }).slice(0, 25);
@@ -132,6 +146,11 @@ export function DailySearchBar() {
                 🕘 <b>{h.name}</b><div className="muted">{h.address}</div>
               </button>
             ))}
+          </>}
+          {!q && googleReady() && <>
+            <div className="dsec">Explore nearby (Google)</div>
+            {!popular ? <button className="link" onClick={() => { const c = searchCentre(); void exploreNearby(c).then((g) => setPopular(g.map((x) => gToPlace(x, c)))).catch(() => setPopular([])); }}>⭐ Show popular places around here</button>
+              : popular.map((x) => <button key={x.id} className="link result" onClick={() => pick(x)}><b>{x.name}</b>{x.distM !== undefined && <span className="muted"> · {fmtDist(x.distM)}</span>}<div className="muted">{x.address}</div></button>)}
           </>}
           {!q && near.length > 0 && <>
             <div className="dsec">Nearby{me ? '' : ' (map centre)'}</div>

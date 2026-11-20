@@ -9,6 +9,8 @@ import { device } from '../route/device';
 import { offlineSearch } from './offlineSearch';
 import { sunTimes } from './sun';
 import type { LngLat } from '../core/geo';
+import { google } from '../core/google';
+import { placeAt } from './gfeatures';
 
 /**
  * Daily map extras (OsmAnd): tap any place for its card, automatic day/night, north-up / compass
@@ -36,6 +38,18 @@ export function startMapExtras(ctl: MapController) {
       const cur = ui.get().place;
       if (cur?.id === `map:${p}`) ui.set({ place: { ...cur, address: [h.label, hours && `🕒 ${hours}`, phone && `☎ ${phone}`, brand, city].filter(Boolean).join(' · ') } });
     }).catch(() => {});
+    return true;
+  });
+
+  // ---- Google base: long-press (or tap in view-only mode) → Google place / address card
+  const googlePlace = (lng: number, lat: number) => void placeAt([lng, lat]).then((g) => {
+    if (!g) return;
+    ui.set({ place: { id: g.id ? `g:${g.id}` : `addr:${lng},${lat}`, name: g.name, address: [g.type, g.address].filter(Boolean).join(' · '), p: g.p, provider: 'google' }, selectedId: null });
+  }).catch(() => {});
+  m.on('contextmenu', (e) => { if (daily() && google.tilesOk) googlePlace(e.lngLat.lng, e.lngLat.lat); });
+  ctl.tapHooks.push((e) => {
+    if (!daily() || !google.tilesOk || ui.get().tapMode !== 'off') return false;
+    googlePlace(e.lngLat.lng, e.lngLat.lat);
     return true;
   });
 

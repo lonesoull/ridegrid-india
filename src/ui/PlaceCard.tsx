@@ -6,6 +6,7 @@ import { isExpedition, T } from '../core/terms';
 import { nav } from '../nav/navigator';
 import { directionsToPoint, fixProblem, myFix, rideMinutes, type Directions } from '../nav/directions';
 import { TransitPanel } from '../daily/TransitPanel';
+import { GooglePlaceExtras } from '../daily/GooglePlaceExtras';
 import { buildRouteLine, matchToRoute, type RouteLine } from '../nav/routeLine';
 import { SegIndex } from '../nav/spatial';
 import { safeRoute, type SafeRoute } from '../nav/detour';
@@ -122,6 +123,7 @@ export function PlaceCard() {
             <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${p[1]},${p[0]}&travelmode=two-wheeler`, '_blank', 'noopener')}><Icon name="gmaps" size={18} /> Google Maps</button>
             <TransitPanel from={async () => nav.pos ?? (await myFix()).p} to={p} />
           </div>
+          <GooglePlaceExtras p={p} placeId={(pl ?? sel).id.startsWith('g:') ? (pl ?? sel).id.slice(2) : undefined} name={sel.name} from={where} />
         </>}
       </>}
     </div>

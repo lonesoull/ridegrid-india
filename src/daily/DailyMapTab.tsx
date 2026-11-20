@@ -15,6 +15,7 @@ import { RASTER_PRESETS, rasterSource } from './mapLayers';
 import { saveRasterArea } from './offlineMap';
 import { offlineTerrain, type DemZone } from './offlineTerrain';
 import { weatherAt, weatherText, type Weather } from './weather';
+import { googleReady, googleWeather, airQuality, pollen, type GWeather } from './gfeatures';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
 
@@ -183,7 +184,38 @@ function OfflineMapDownloads() {
 
 function WeatherCard() {
   const [w, setW] = useState<Weather | null | undefined>(undefined);
-  useEffect(() => { const c = mapCtl?.map.getCenter(); if (c) void weatherAt([c.lng, c.lat]).then(setW); }, []);
+  const [gw, setGw] = useState<GWeather | null>(null);
+  const [aq, setAq] = useState<Awaited<ReturnType<typeof airQuality>>>(null);
+  const [pol, setPol] = useState<{ name: string; level: string }[]>([]);
+  useEffect(() => {
+    const c = mapCtl?.map.getCenter(); if (!c) return;
+    const p: [number, number] = [c.lng, c.lat];
+    // Google first (weather, air quality, pollen); Open-Meteo when there is no Google key / signal / allowance
+    if (googleReady()) {
+      void googleWeather(p).then(setGw).catch(() => void weatherAt(p).then(setW));
+      void airQuality(p).then(setAq).catch(() => {});
+      void pollen(p).then(setPol).catch(() => {});
+    } else void weatherAt(p).then(setW);
+  }, []);
+  const extras = <>
+    {aq && <p>Air quality: <b style={{ color: aq.color }}>AQI {aq.aqi}</b> · {aq.category}{aq.pollutant ? ` · mainly ${aq.pollutant.toUpperCase()}` : ''}</p>}
+    {pol.length > 0 && <p className="muted">Pollen: {pol.map((x) => `${x.name} ${x.level.toLowerCase()}`).join(' · ')}</p>}
+  </>;
+  if (gw) {
+    const rainSoon = gw.hours.find((h) => h.rainPct >= 50);
+    return (
+      <section>
+        <h3>Weather (map centre)</h3>
+        <p>{gw.icon && <img src={gw.icon} alt="" className="wxicon" />}<b>{gw.text}</b> · {Math.round(gw.temp)}°C (feels {Math.round(gw.feels)}°) · wind {Math.round(gw.windKmh)} km/h · rain {gw.rainPct}%</p>
+        {rainSoon && <p className="warn">🌧 Rain likely from {new Date(rainSoon.t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} ({rainSoon.rainPct}%)</p>}
+        {extras}
+        <div className="wxrow">{gw.hours.map((h) => (
+          <div key={h.t}><span className="muted">{new Date(h.t).toLocaleTimeString('en-IN', { hour: 'numeric' })}</span>{h.icon ? <img src={h.icon} alt={h.text} className="wxicon sm" /> : <span>·</span>}<b>{Math.round(h.temp)}°</b><span className="muted">{h.rainPct}%</span></div>
+        ))}</div>
+        <p className="muted small-note">Weather, air quality & pollen: Google</p>
+      </section>
+    );
+  }
   if (w === undefined) return <section><h3>Weather</h3><p className="muted">Loading…</p></section>;
   if (!w) return <section><h3>Weather</h3><p className="muted">Needs internet.</p></section>;
   const rainSoon = w.hours.find((h) => h.rainPct >= 50);
@@ -192,6 +224,7 @@ function WeatherCard() {
       <h3>Weather (map centre)</h3>
       <p><b>{weatherText(w.now.code)}</b> · {Math.round(w.now.temp)}°C · wind {Math.round(w.now.windKmh)} km/h · rain {w.now.rainPct}%</p>
       {rainSoon && <p className="warn">🌧 Rain likely from {new Date(rainSoon.t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} ({rainSoon.rainPct}%)</p>}
+      {extras}
       <div className="wxrow">{w.hours.slice(0, 12).map((h) => (
         <div key={h.t}><span className="muted">{new Date(h.t).toLocaleTimeString('en-IN', { hour: 'numeric' })}</span><span>{weatherText(h.code).split(' ')[0]}</span><b>{Math.round(h.temp)}°</b><span className="muted">{h.rainPct}%</span></div>
       ))}</div>

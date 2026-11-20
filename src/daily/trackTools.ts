@@ -162,7 +162,9 @@ export async function snapTrack(r: Ride, routeOffline: (pts: LngLat[]) => Promis
     if (!i || acc >= 100 || i === pts.length - 1) { smp.push([pts[i][1], pts[i][2]]); acc = 0; }
   }
   let line: LngLat[] = [];
-  if (navigator.onLine) {
+  // Google Roads "snap to roads" first, then OSRM map-matching, then the on-device router
+  try { const { googleReady, googleSnap } = await import('./gfeatures'); if (googleReady()) line = await googleSnap(smp); } catch { line = []; }
+  if (!line.length && navigator.onLine) {
     for (let i = 0; i < smp.length - 1; i += 99) {
       const chunk = smp.slice(i, i + 100);
       const j = await fetch(`https://router.project-osrm.org/match/v1/driving/${chunk.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(';')}?overview=full&geometries=geojson&radiuses=${chunk.map(() => 30).join(';')}&gaps=ignore`).then((x) => x.json()).catch(() => null);
