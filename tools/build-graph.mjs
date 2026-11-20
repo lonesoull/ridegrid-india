@@ -44,6 +44,7 @@ log('nodes', nodeCount);
 const nid = new Float64Array(nodeCount), nlon = new Int32Array(nodeCount), nlat = new Int32Array(nodeCount);
 const ways = []; // { refs: Uint32Array (node index), cls, kmh, oneway, name }
 const names = new Map(); names.set('', 0);
+const lanes = new Map(); // "fwd\u0001bwd" → index (1-based; 0 = no lane info)
 const nameIdx = (n) => { let i = names.get(n); if (i === undefined) { i = names.size; names.set(n, i); } return i; };
 const findNode = (id) => { let lo = 0, hi = nodeCount - 1; while (lo <= hi) { const m = (lo + hi) >>> 1; const v = nid[m]; if (v === id) return m; if (v < id) lo = m + 1; else hi = m - 1; } return -1; };
 let ni = 0, skipped = { access: 0, motorway: 0 }; // motorway = kept but flagged two-wheeler-banned
@@ -76,7 +77,12 @@ for await (const line of rl) {
     // with a posted limit, kmh = that limit and flag 0x20 says so (Daily speed-limit sign); routing speed stays capped by class
     const kmh = posted ? max : KMH[hw];
     const label = [t.ref, t.name].filter(Boolean).join(' · ');
-    ways.push({ refs: Uint32Array.from(ow === -1 ? refs.reverse() : refs), cls: CLASSES.indexOf(hw) | (banned ? 0x40 : 0) | (posted ? 0x20 : 0), kmh, oneway: ow !== 0, name: nameIdx(label) });
+    // lane markings (turn:lanes) for offline lane arrows: forward | backward of the way's drawing direction
+    const lf = t['turn:lanes'] && ow !== 0 ? t['turn:lanes'] : t['turn:lanes:forward'], lb = ow !== 0 ? undefined : t['turn:lanes:backward'];
+    const laneKey = lf || lb ? `${lf ?? ''}\u0001${lb ?? ''}` : '';
+    let lane = 0;
+    if (laneKey) { lane = lanes.get(laneKey) ?? 0; if (!lane) { lane = lanes.size + 1; lanes.set(laneKey, lane); } }
+    ways.push({ refs: Uint32Array.from(ow === -1 ? refs.reverse() : refs), cls: CLASSES.indexOf(hw) | (banned ? 0x40 : 0) | (posted ? 0x20 : 0), kmh, oneway: ow !== 0, name: nameIdx(label), lane });
   }
 }
 log('ways', ways.length, 'skipped', skipped);
@@ -113,7 +119,7 @@ const simplify = (pts, tolM = 2) => {
   }
   return pts.filter((_, i) => keep[i]);
 };
-const eFrom = [], eTo = [], eLen = [], eCls = [], eKmh = [], eName = [], shapeStart = [0], shape = [];
+const eFrom = [], eTo = [], eLen = [], eCls = [], eKmh = [], eName = [], eLane = [], shapeStart = [0], shape = [];
 for (const w of ways) {
   let start = 0, len = 0;
   for (let k = 1; k < w.refs.length; k++) {
@@ -121,7 +127,7 @@ for (const w of ways) {
     if (vOf[w.refs[k]] >= 0) {
       const a = vOf[w.refs[start]], b = vOf[w.refs[k]];
       if (a !== b || k - start > 1) {
-        eFrom.push(a); eTo.push(b); eLen.push(Math.max(1, Math.round(len * 10))); eCls.push(w.cls | (w.oneway ? 0x80 : 0)); eKmh.push(w.kmh); eName.push(w.name);
+        eFrom.push(a); eTo.push(b); eLen.push(Math.max(1, Math.round(len * 10))); eCls.push(w.cls | (w.oneway ? 0x80 : 0)); eKmh.push(w.kmh); eName.push(w.name); eLane.push(w.lane);
         const pts = []; for (let j = start; j <= k; j++) pts.push([nlon[w.refs[j]], nlat[w.refs[j]]]);
         const simp = simplify(pts);
         for (let j = 1; j < simp.length - 1; j++) shape.push(simp[j][0], simp[j][1]);
@@ -147,7 +153,7 @@ const order = Uint32Array.from({ length: V }, (_, i) => i).sort((a, b) => keys[a
 const newId = new Uint32Array(V); order.forEach((old, n) => { newId[old] = n; });
 const eOrder = Uint32Array.from({ length: U }, (_, i) => i).sort((x, y) => (newId[eFrom[x]] - newId[eFrom[y]]) || (newId[eTo[x]] - newId[eTo[y]]));
 
-// ---- 6. write format v3: varint / zig-zag delta streams (adjacency is rebuilt on the device)
+// ---- 6. write format v4 (v3 + a lane-info index per edge and a lanes table): varint / zig-zag delta streams (adjacency is rebuilt on the device)
 const tier = process.argv[3] === 'main' ? 'main' : 'full';
 let buf = Buffer.alloc(64 << 20), n = 0;
 const need = (k) => { if (n + k > buf.length) { const nb = Buffer.alloc(buf.length * 2); buf.copy(nb, 0, 0, n); buf = nb; } };
@@ -155,7 +161,7 @@ const u = (v) => { need(10); while (v >= 0x80) { buf[n++] = (v % 0x80) | 0x80; v
 const z = (v) => u(v < 0 ? -2 * v - 1 : 2 * v);
 const namesJson = Buffer.from(JSON.stringify([...names.keys()]));
 const S = shape.length / 2;
-need(64); buf.write('RGG1', 0); buf.writeUInt32LE(3, 4); buf.writeUInt32LE(V, 8); buf.writeUInt32LE(U, 12); buf.writeUInt32LE(S, 16); buf.writeUInt32LE((tier === 'main' ? 1 : 0) | 2, 20); // bit 1: main tier, bit 2: banned roads included (flag 0x40)
+need(64); buf.write('RGG1', 0); buf.writeUInt32LE(4, 4); buf.writeUInt32LE(V, 8); buf.writeUInt32LE(U, 12); buf.writeUInt32LE(S, 16); buf.writeUInt32LE((tier === 'main' ? 1 : 0) | 2, 20); // bit 1: main tier, bit 2: banned roads included (flag 0x40)
 [minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6].forEach((x, i) => buf.writeDoubleLE(x, 24 + i * 8));
 n = 56;
 let px = 0, py = 0;
@@ -164,17 +170,19 @@ let pa = 0;
 for (const e of eOrder) {
   const a = newId[eFrom[e]], b = newId[eTo[e]];
   u(a - pa); z(b - a); pa = a;
-  u(eLen[e]); u(eCls[e]); u(eKmh[e]); u(eName[e]);
+  u(eLen[e]); u(eCls[e]); u(eKmh[e]); u(eName[e]); u(eLane[e]);
   const s0 = shapeStart[e], s1 = shapeStart[e + 1];
   u(s1 - s0);
   let qx = vlon0[eFrom[e]], qy = vlat0[eFrom[e]];
   for (let s = s0; s < s1; s++) { z(shape[2 * s] - qx); z(shape[2 * s + 1] - qy); qx = shape[2 * s]; qy = shape[2 * s + 1]; }
 }
 need(4 + namesJson.length); buf.writeUInt32LE(namesJson.length, n); n += 4; namesJson.copy(buf, n); n += namesJson.length;
+const lanesJson = Buffer.from(JSON.stringify([...lanes.keys()]));
+need(4 + lanesJson.length); buf.writeUInt32LE(lanesJson.length, n); n += 4; lanesJson.copy(buf, n); n += lanesJson.length;
 const file = buf.subarray(0, n);
 const name = tier === 'main' ? `${zone}-main` : zone;
 await writeFile(`${OUT}/${name}.rgg`, file);
 const km = eLen.reduce((a, b) => a + b, 0) / 10000;
-const stats = { zone, tier, generated: new Date().toISOString(), nodes: nodeCount, ways: ways.length, skipped, vertices: V, edges: U, shapePoints: S, names: names.size, km: Math.round(km), bytes: file.length, bbox: [minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6], seconds: Math.round((Date.now() - t0) / 1000) };
+const stats = { zone, tier, generated: new Date().toISOString(), nodes: nodeCount, ways: ways.length, skipped, vertices: V, edges: U, shapePoints: S, names: names.size, laneSets: lanes.size, km: Math.round(km), bytes: file.length, bbox: [minX / 1e6, minY / 1e6, maxX / 1e6, maxY / 1e6], seconds: Math.round((Date.now() - t0) / 1000) };
 await writeFile(`${OUT}/${name}.json`, JSON.stringify(stats, null, 1));
 log(JSON.stringify(stats));

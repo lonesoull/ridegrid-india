@@ -32,8 +32,8 @@ self.onmessage = (ev: MessageEvent) => {
       let avoid: ReturnType<typeof makeAvoid> | undefined;
       const t = performance.now();
       for (let i = 0; i < pts.length - 1; i++) {
-        const r = routeMulti([...graphs.values()], pts[i], pts[i + 1], { allowBanned: !!m.allowBanned, shortest: !!m.shortest, blocked: m.avoidSegs?.length ? (avoid ??= makeAvoid(m.avoidSegs, 15)) : undefined });
-        legs.push(r ? { coords: r.coords, distM: r.distM, names: r.names, timeS: r.timeS } : null);
+        const r = routeMulti([...graphs.values()], pts[i], pts[i + 1], { allowBanned: !!m.allowBanned, shortest: !!m.shortest, longDistance: !!m.longDistance, blocked: m.avoidSegs?.length ? (avoid ??= makeAvoid(m.avoidSegs, 15)) : undefined });
+        legs.push(r ? { coords: r.coords, distM: r.distM, names: r.names, timeS: r.timeS, lanes: r.lanes } : null);
       }
       (self as any).postMessage({ id: m.id, ok: true, result: legs, ms: performance.now() - t });
     } else if (m.type === 'avoid') {

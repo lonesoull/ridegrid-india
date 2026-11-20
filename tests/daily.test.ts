@@ -92,3 +92,12 @@ describe('opening hours', () => {
     expect(openState('sunrise-sunset')).toBeNull();
   });
 });
+
+import { lanesForTurn } from '../src/core/turns';
+describe('offline lanes', () => {
+  it('marks the lanes for the turn', () => {
+    expect(lanesForTurn('left|through|through;right', 'right')).toBe('left|straight|straight+right*');
+    expect(lanesForTurn('left|through|through', 'left')).toBe('left*|straight|straight');
+    expect(lanesForTurn('through|through', 'left')).toBeUndefined();
+  });
+});

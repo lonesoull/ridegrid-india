@@ -80,3 +80,16 @@ export function turnText(t: { c: TurnCode; n?: string; x?: number; txt?: string 
     default: return `Continue${onto}`;
   }
 }
+
+/** OSM turn:lanes ("left|through|through;right") → compact lane string, marking the lanes for this turn with '*'. */
+export function lanesForTurn(osm: string | undefined, c: TurnCode): string | undefined {
+  if (!osm) return undefined;
+  const lanes = osm.split('|');
+  if (lanes.length < 2) return undefined;
+  const MAP: Record<string, string> = { left: 'left', slight_left: 'slight left', sharp_left: 'sharp left', through: 'straight', right: 'right', slight_right: 'slight right', sharp_right: 'sharp right', reverse: 'uturn', merge_to_left: 'slight left', merge_to_right: 'slight right', none: 'none', '': 'none' };
+  const side = /left/.test(c) ? 'left' : /right/.test(c) ? 'right' : c === 'uturn' ? 'uturn' : 'straight';
+  const ok = (ind: string[]) => ind.some((x) => (side === 'left' ? /left/.test(x) : side === 'right' ? /right/.test(x) : side === 'uturn' ? x === 'uturn' : x === 'straight'));
+  const parsed = lanes.map((l) => l.split(';').map((x) => MAP[x.trim()] ?? 'none'));
+  if (!parsed.some(ok)) return undefined;
+  return parsed.map((ind) => ind.join('+') + (ok(ind) ? '*' : '')).join('|');
+}

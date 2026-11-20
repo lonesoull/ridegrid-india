@@ -13,6 +13,14 @@ export class Graph {
   adjStart: Uint32Array; adjTo: Uint32Array; adjEdge: Uint32Array; adjFlag: Uint8Array;
   len: Uint32Array; cls: Uint8Array; kmh: Uint8Array; name: Uint32Array; shapeStart: Uint32Array; shape: Int32Array;
   names: string[];
+  /** v4: lane-marking set per edge (0 = none) and the sets ("fwd\u0001bwd" OSM turn:lanes) */
+  lane: Uint32Array; lanes: string[] = [];
+  /** OSM turn:lanes for travel along edge e (forward = ea → eb). */
+  laneOf(e: number, forward: boolean): string | undefined {
+    const k = this.lane[e]; if (!k) return undefined;
+    const [f, b] = this.lanes[k - 1].split('\u0001');
+    return (forward ? f : b) || undefined;
+  }
   /** first/second endpoint of each edge */
   ea: Uint32Array; eb: Uint32Array;
   private grid = new Map<number, number[]>();
@@ -32,7 +40,8 @@ export class Graph {
   constructor(buf: ArrayBuffer) {
     const dv = new DataView(buf);
     const magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
-    if (magic !== 'RGG1' || dv.getUint32(4, true) !== 3) throw new Error('Not a RideGrid road graph (v3)');
+    const ver = dv.getUint32(4, true);
+    if (magic !== 'RGG1' || (ver !== 3 && ver !== 4)) throw new Error('Not a RideGrid road graph (v3/v4)');
     const V = (this.V = dv.getUint32(8, true)), U = (this.U = dv.getUint32(12, true)), S = (this.S = dv.getUint32(16, true));
     const flags = dv.getUint32(20, true);
     this.tier = flags & 1 ? 'main' : 'full';
@@ -46,12 +55,13 @@ export class Graph {
     let x = 0, y = 0;
     for (let v = 0; v < V; v++) { x += z(); y += z(); this.lon[v] = x; this.lat[v] = y; }
     this.ea = new Uint32Array(U); this.eb = new Uint32Array(U); this.len = new Uint32Array(U); this.cls = new Uint8Array(U); this.kmh = new Uint8Array(U);
-    this.name = new Uint32Array(U); this.shapeStart = new Uint32Array(U + 1); this.shape = new Int32Array(2 * S);
+    this.name = new Uint32Array(U); this.lane = new Uint32Array(U); this.shapeStart = new Uint32Array(U + 1); this.shape = new Int32Array(2 * S);
     let a = 0, sp = 0;
     for (let e = 0; e < U; e++) {
       a += u(); const bb = a + z();
       this.ea[e] = a; this.eb[e] = bb;
       this.len[e] = u(); this.cls[e] = u(); this.kmh[e] = u(); this.name[e] = u();
+      if (ver >= 4) this.lane[e] = u();
       const k = u();
       let qx = this.lon[a], qy = this.lat[a];
       for (let i = 0; i < k; i++) { qx += z(); qy += z(); this.shape[2 * sp] = qx; this.shape[2 * sp + 1] = qy; sp++; }
@@ -59,6 +69,7 @@ export class Graph {
     }
     const nb = new DataView(buf, o, 4).getUint32(0, true);
     this.names = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, o + 4, nb)));
+    if (ver >= 4) { const o2 = o + 4 + nb, lb = new DataView(buf, o2, 4).getUint32(0, true); this.lanes = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, o2 + 4, lb))); }
     // adjacency (both endpoints, direction flags) rebuilt here instead of being downloaded
     const deg = new Uint32Array(V + 1);
     for (let e = 0; e < U; e++) { deg[this.ea[e]]++; deg[this.eb[e]]++; }
@@ -157,7 +168,7 @@ class Heap {
   peekKey() { return this.k[0]; }
 }
 
-export interface Path { coords: LngLat[]; distM: number; timeS: number; names: (string | undefined)[]; settled: number }
+export interface Path { coords: LngLat[]; distM: number; timeS: number; names: (string | undefined)[]; settled: number; /** OSM turn:lanes of the road each point is on */ lanes?: (string | undefined)[] }
 
 /**
  * Join two neighbouring region graphs at their shared junctions (the same OSM nodes appear in both
@@ -221,10 +232,27 @@ export interface RouteOpts {
   allowBanned?: boolean;
   /** shortest distance instead of fastest time (Daily route option) */
   shortest?: boolean;
+  /** Daily: long legs search main roads only away from both ends (OsmAnd-style road hierarchy) — much faster */
+  longDistance?: boolean;
+  /** internal: hierarchy on for this attempt */
+  _hier?: boolean;
 }
 
 export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpts = {}): Path | null {
-  const { blocked, isGoal, maxCostS = Infinity, allowBanned = false, shortest = false } = opts;
+  // long legs: first try the fast main-roads search (trunk / primary / secondary away from the ends), then the full one
+  if (opts.longDistance && !opts._hier) {
+    const crowKm = Math.hypot((to[0] - from[0]) * Math.cos(from[1] * RAD) * 111.32, (to[1] - from[1]) * 110.54);
+    if (crowKm > 80) { const r = routeMulti(gs, from, to, { ...opts, _hier: true }); if (r) return r; }
+  }
+  return routeCore(gs, from, to, opts);
+}
+
+/** Classes allowed away from the ends in hierarchy mode: trunk, primary, secondary (+ links), motorways. */
+const MAIN_CLASS = new Uint8Array(32); [0, 1, 2, 3, 4, 5, 12, 13].forEach((c) => (MAIN_CLASS[c] = 1));
+
+function routeCore(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpts): Path | null {
+  const { blocked, isGoal, maxCostS = Infinity, allowBanned = false, shortest = false, _hier = false } = opts;
+  const fkx = Math.cos(from[1] * RAD) * 111320, NEAR = 15000;
   const snapBest = (p: LngLat) => {
     let best: { gi: number; s: NonNullable<ReturnType<Graph['snap']>> } | null = null;
     gs.forEach((g, gi) => { if (!g.contains(p)) return; const s = g.snap(p, 500, allowBanned); if (s && (!best || s.d < best.s.d)) best = { gi, s }; });
@@ -246,7 +274,8 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpt
     w.dist[v] = d; w.prevE[v] = e; w.prevV[v] = pv;
   };
   const kx = Math.cos(to[1] * RAD) * 111320;
-  const hSpeed = shortest ? 40 / 3.6 : 75 / 3.6;
+  // hierarchy mode also uses a slightly greedy heuristic (weighted A*): routes found far faster, within a few % of optimal
+  const hSpeed = (shortest ? 40 / 3.6 : 75 / 3.6) / (_hier ? 1.15 : 1);
   const h = (g: Graph, v: number) => Math.hypot((g.lon[v] / 1e6 - to[0]) * kx, (g.lat[v] / 1e6 - to[1]) * 110540) / hSpeed;
   const heap = new Heap();
   const startTo = (v: number, cost: number) => { if (cost < W[A.gi].dist[v]) { setD(A.gi, v, cost, -1, -1); heap.push(cost + h(ga, v), base[A.gi] + v); } };
@@ -268,9 +297,13 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpt
       const gc = goalCost(gi, v);
       if (dv + gc < bestTotal) { bestTotal = dv + gc; bestEnd = id; endAtVertex = false; }
       if (isGoal && dv < bestTotal && isGoal(g, v)) { bestTotal = dv; bestEnd = id; endAtVertex = true; }
+      // hierarchy: far from both ends, stay on main roads
+      const far = _hier && Math.hypot((g.lon[v] / 1e6 - from[0]) * fkx, (g.lat[v] / 1e6 - from[1]) * 110540) > NEAR
+        && Math.hypot((g.lon[v] / 1e6 - to[0]) * kx, (g.lat[v] / 1e6 - to[1]) * 110540) > NEAR;
       for (let i = g.adjStart[v]; i < g.adjStart[v + 1]; i++) {
         if (!(g.adjFlag[i] & 1)) continue;
         const e = g.adjEdge[i], to2 = g.adjTo[i];
+        if (far && !MAIN_CLASS[g.cls[e] & 0x1f]) continue;
         if (blocked && e !== a.e && e !== b.e && blocked(g, e)) continue;
         if (!allowBanned && g.cls[e] & 0x40) continue;
         const nd = dv + sec(g, e, edgeM(g, e));
@@ -288,8 +321,8 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpt
   } catch (e) { cleanup(); throw e; }
   if (bestEnd === -1) { cleanup(); return null; }
   // ---- rebuild geometry
-  const coords: LngLat[] = [], names: (string | undefined)[] = [];
-  const add = (pts: LngLat[], name: string | undefined) => { for (const p of pts) { const l = coords[coords.length - 1]; if (l && l[0] === p[0] && l[1] === p[1]) continue; coords.push(p); names.push(name); } };
+  const coords: LngLat[] = [], names: (string | undefined)[] = [], lanes: (string | undefined)[] = [];
+  const add = (pts: LngLat[], name: string | undefined, lane?: string) => { for (const p of pts) { const l = coords[coords.length - 1]; if (l && l[0] === p[0] && l[1] === p[1]) continue; coords.push(p); names.push(name); lanes.push(lane); } };
   const cut = (g: Graph, e: number, fromM: number, toM: number): LngLat[] => {
     // part of edge e between two distances from ea (either order)
     const pts = g.edgeCoords(e), rev = toM < fromM, lo = Math.min(fromM, toM), hi = Math.max(fromM, toM);
@@ -307,26 +340,27 @@ export function routeMulti(gs: Graph[], from: LngLat, to: LngLat, opts: RouteOpt
   };
   const nameOf = (g: Graph, e: number) => g.names[g.name[e]] || undefined;
   if (bestEnd === -2) {
-    add(cut(ga, a.e, a.along, b.along), nameOf(ga, a.e));
+    add(cut(ga, a.e, a.along, b.along), nameOf(ga, a.e), ga.laneOf(a.e, b.along >= a.along));
   } else {
     const chain: number[] = [];
     let cur = bestEnd;
     for (;;) { const gi = dec(cur), v = cur - base[gi]; if (W[gi].prevE[v] === -1) break; chain.push(cur); cur = W[gi].prevV[v]; }
     const startV = cur - base[A.gi];
-    add(cut(ga, a.e, a.along, startV === ga.ea[a.e] ? 0 : edgeM(ga, a.e)), nameOf(ga, a.e));
+    add(cut(ga, a.e, a.along, startV === ga.ea[a.e] ? 0 : edgeM(ga, a.e)), nameOf(ga, a.e), ga.laneOf(a.e, startV !== ga.ea[a.e]));
     for (let k = chain.length - 1; k >= 0; k--) {
       const gi = dec(chain[k]), g = gs[gi], v = chain[k] - base[gi], e = W[gi].prevE[v];
       if (e === -2) continue; // border hop: same point in the next region
       const pts = g.edgeCoords(e);
-      add(g.ea[e] === v ? pts.reverse() : pts, nameOf(g, e));
+      const fwd = g.ea[e] !== v;
+      add(fwd ? pts : pts.reverse(), nameOf(g, e), g.lane ? g.laneOf(e, fwd) : undefined);
     }
     if (!endAtVertex) {
       const endV = bestEnd - base[B.gi];
-      add(cut(gb, b.e, endV === gb.ea[b.e] ? 0 : edgeM(gb, b.e), b.along), nameOf(gb, b.e));
+      add(cut(gb, b.e, endV === gb.ea[b.e] ? 0 : edgeM(gb, b.e), b.along), nameOf(gb, b.e), gb.laneOf(b.e, endV === gb.ea[b.e]));
     }
   }
   cleanup();
   let distM = 0;
   for (let i = 1; i < coords.length; i++) distM += Math.hypot((coords[i][0] - coords[i - 1][0]) * Math.cos(coords[i][1] * RAD) * 111320, (coords[i][1] - coords[i - 1][1]) * 110540);
-  return { coords, distM, timeS: bestTotal, names, settled };
+  return { coords, distM, timeS: bestTotal, names, settled, lanes };
 }

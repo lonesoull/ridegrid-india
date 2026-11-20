@@ -1,7 +1,7 @@
 import { db } from '../core/db';
 import type { LngLat } from '../core/geo';
 import { avoidingBanned, routing, type Provider, type LegResult } from '../core/router';
-import type { Turn } from '../core/turns';
+import { lanesForTurn, type Turn } from '../core/turns';
 import { deriveTurns } from '../nav/detour';
 
 /**
@@ -108,11 +108,11 @@ export const device = {
 
   async route(points: LngLat[]): Promise<(LegResult | null)[]> {
     // daily rides may use expressways (unless the rider avoids them); the expedition never does
-    const r = await call<{ result: ({ coords: LngLat[]; distM: number; names: (string | undefined)[] } | null)[] }>({ type: 'route', points, allowBanned: !avoidingBanned() && !routing.dailyOpts?.()?.avoidMotorway, avoidSegs: routing.avoidSegs?.(), shortest: !!routing.dailyOpts?.()?.shortest });
+    const r = await call<{ result: ({ coords: LngLat[]; distM: number; names: (string | undefined)[]; lanes?: (string | undefined)[] } | null)[] }>({ type: 'route', points, allowBanned: !avoidingBanned() && !routing.dailyOpts?.()?.avoidMotorway, avoidSegs: routing.avoidSegs?.(), shortest: !!routing.dailyOpts?.()?.shortest, longDistance: !!routing.dailyOpts?.() });
     return r.result.map((leg) => {
       if (!leg) return null;
       // turn instructions from the geometry; each turn is named after the road it turns onto
-      const turns: Turn[] = deriveTurns(leg.coords).map((t) => ({ ...t, n: leg.names[Math.min(leg.names.length - 1, t.i + 1)] }));
+      const turns: Turn[] = deriveTurns(leg.coords).map((t) => ({ ...t, n: leg.names[Math.min(leg.names.length - 1, t.i + 1)], l: lanesForTurn(leg.lanes?.[t.i], t.c) }));
       return { coords: leg.coords, distM: leg.distM, turns };
     });
   },

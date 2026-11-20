@@ -93,3 +93,15 @@ describe('detours that keep away from other planned roads', () => {
     expect(routeMulti([g], [80.0, 13.005], [80.01, 13.005], { blocked: avoid })).toBeNull();
   });
 });
+
+import { lanesForTurn } from '../src/core/turns';
+import { deriveTurns } from '../src/nav/detour';
+describe('offline lane arrows', () => {
+  it('a left turn off a road with turn:lanes gets its lane arrows', () => {
+    const l = ld('test-lanes.rgg');
+    const r = routeMulti([l], [80.0, 13.0], [79.99, 13.01])!;
+    const t = deriveTurns(r.coords)[0];
+    expect(t.c).toMatch(/left/);
+    expect(lanesForTurn(r.lanes?.[t.i], t.c)).toBe('left*|straight|straight');
+  });
+});
