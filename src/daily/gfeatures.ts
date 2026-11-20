@@ -175,3 +175,17 @@ export async function roadTimes(pts: LngLat[]): Promise<number[][]> {
   for (let i = 0; i < n; i++) m[i][i] = 0;
   return m;
 }
+
+/** Walking route: Google when ready (Google first), else the OpenStreetMap foot router (FOSSGIS), else a straight line at 4.5 km/h. */
+export async function walkRoute(from: LngLat, to: LngLat): Promise<{ coords: LngLat[]; distM: number; minutes: number; by: string }> {
+  if (googleReady()) { try { return { ...(await googleWalk(from, to)), by: 'Google' }; } catch { /* below */ } }
+  if (navigator.onLine) {
+    try {
+      const j = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/foot/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson`).then((r) => r.json());
+      const r = j.routes?.[0];
+      if (r) return { coords: r.geometry.coordinates, distM: r.distance, minutes: r.distance / 75, by: 'OpenStreetMap' };
+    } catch { /* below */ }
+  }
+  const d = Math.hypot((to[0] - from[0]) * 111320 * Math.cos((from[1] * Math.PI) / 180), (to[1] - from[1]) * 110540) * 1.3;
+  return { coords: [from, to], distM: d, minutes: d / 75, by: 'straight line (offline estimate)' };
+}

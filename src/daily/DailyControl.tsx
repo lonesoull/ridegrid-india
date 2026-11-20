@@ -12,6 +12,7 @@ import { nav } from '../nav/navigator';
 import type { LngLat } from '../core/geo';
 import { liveShare } from './liveShare';
 import { obd } from './obd';
+import { resetSetup } from './SetupWizard';
 import { extras, BTN_LABEL, type BtnAction, type Extras } from './extras';
 import type { CoordFormat } from './coords';
 
@@ -82,6 +83,11 @@ export function DailyControl() {
       </section>
 
       <RideExtras />
+
+      <section>
+        <h3>Setup</h3>
+        <button onClick={() => { resetSetup(); window.dispatchEvent(new Event('ridegrid:setup')); }}>Run the setup steps again</button>
+      </section>
 
       <section>
         <h3>Accessibility</h3>

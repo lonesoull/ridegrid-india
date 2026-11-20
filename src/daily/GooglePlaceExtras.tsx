@@ -3,7 +3,7 @@ import type { LngLat } from '../core/geo';
 import { mapCtl } from '../ui/App';
 import { act, toast } from '../ui/state';
 import { showTrack } from './trackTools';
-import { googleReady, openInGoogleMaps, openStreetView, placePhotos, streetViewPhoto, googleWalk } from './gfeatures';
+import { googleReady, openInGoogleMaps, openStreetView, placePhotos, streetViewPhoto, walkRoute } from './gfeatures';
 
 /** Daily place card extras from Google: Street View, photos, open in the Google Maps app, walking route. */
 export function GooglePlaceExtras({ p, placeId, name, from }: { p: LngLat; placeId?: string; name: string; from: () => Promise<LngLat> }) {
@@ -19,10 +19,10 @@ export function GooglePlaceExtras({ p, placeId, name, from }: { p: LngLat; place
       <div className="btns sm">
         <button onClick={() => openInGoogleMaps(p, placeId, name)}>Open in Google Maps (ratings, hours, reviews)</button>
         {ok && placeId && !photos && <button onClick={() => act(null, async () => setPhotos(await placePhotos(placeId)))}>📷 Photos</button>}
-        {ok && <button onClick={() => act('Walking route…', async () => {
-          const w = await googleWalk(await from(), p);
+        {<button onClick={() => act('Walking route…', async () => {
+          const w = await walkRoute(await from(), p);
           if (mapCtl) showTrack(mapCtl, { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { c: '#1971c2' }, geometry: { type: 'LineString', coordinates: w.coords } }] });
-          toast(`Walk ${w.distM < 1000 ? `${Math.round(w.distM)} m` : `${(w.distM / 1000).toFixed(1)} km`} · about ${Math.round(w.minutes)} min`);
+          toast(`Walk ${w.distM < 1000 ? `${Math.round(w.distM)} m` : `${(w.distM / 1000).toFixed(1)} km`} · about ${Math.round(w.minutes)} min · ${w.by}`);
         })}>🚶 Walk here</button>}
       </div>
       {sv && !pano && <button className="svthumb" onClick={() => setPano(true)} title="Open Street View"><img src={sv} alt="Street View" /><span>Street View ▸</span></button>}
