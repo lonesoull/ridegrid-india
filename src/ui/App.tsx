@@ -41,6 +41,7 @@ import { access } from '../daily/access';
 import { DailyLayer } from '../daily/DailyLayer';
 import { offlineMaps } from '../daily/offlineMap';
 import { offlineSearch } from '../daily/offlineSearch';
+import { offlineTerrain } from '../daily/offlineTerrain';
 import { startDailyOverlays } from '../daily/overlays';
 import { startDaily } from '../daily/startDaily';
 import { startMapExtras } from '../daily/mapExtras';
@@ -69,6 +70,7 @@ export function App() {
       await Promise.all([widgets.load(), markers.load(), recorder.load(), bikes.load()]);
       void offlineMaps.boot();
       void offlineSearch.boot();
+      void offlineTerrain.boot();
       startDailyOverlays(mapCtl!);
       startDaily(mapCtl!);
       startMapExtras(mapCtl!);

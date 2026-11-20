@@ -1,0 +1,42 @@
+name: Build offline terrain
+
+# Offline terrain (hills, contours, 3D, altitude) for Daily ride mode: Terrarium elevation tiles for each
+# India zone (AWS Open Data) packed into PMTiles, published to the "india-terrain" release.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/build-terrain.py', '.github/workflows/terrain.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  terrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        zone: [southern-zone, western-zone, northern-zone, central-zone, eastern-zone, north-eastern-zone]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect elevation tiles
+        run: python3 tools/build-terrain.py ${{ matrix.zone }} ${{ matrix.zone }}.mbtiles
+      - name: Convert to PMTiles
+        run: |
+          curl -fsSL --retry 5 -o pmtiles.tar.gz https://github.com/protomaps/go-pmtiles/releases/download/v1.22.3/go-pmtiles_1.22.3_Linux_x86_64.tar.gz
+          tar xzf pmtiles.tar.gz pmtiles
+          ./pmtiles convert ${{ matrix.zone }}.mbtiles ${{ matrix.zone }}.dem.pmtiles
+          echo "{\"zone\":\"${{ matrix.zone }}\",\"bytes\":$(stat -c %s ${{ matrix.zone }}.dem.pmtiles),\"generated\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > ${{ matrix.zone }}.dem.json
+          ls -la *.pmtiles; cat ${{ matrix.zone }}.dem.json
+      - name: Publish to the "india-terrain" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: india-terrain
+          name: India offline terrain
+          body: Elevation (Terrarium PNG) per India zone from Terrain Tiles on AWS Open Data (Mapzen; SRTM, GMTED, ETOPO1 and others).
+          files: |
+            ${{ matrix.zone }}.dem.pmtiles
+            ${{ matrix.zone }}.dem.json

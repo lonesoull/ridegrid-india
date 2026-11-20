@@ -29,6 +29,8 @@ export function startDaily(ctl: MapController) {
     if (t && t.dist < 60 && buzzed !== t.s) { buzzed = t.s; access.buzz(t.c.includes('left') ? [300] : [100, 80, 100]); }
   });
   installTrackLayer(ctl);
+  // once a day: tell the rider when newer offline maps / search data are published
+  setTimeout(() => void checkUpdates(), 15000);
   // parked-bike reminder
   let warned = '';
   setInterval(() => {
@@ -44,4 +46,19 @@ export function startDaily(ctl: MapController) {
     const kmh = (nav.mode === 'sim' ? nav.settings.simKmh * Math.min(nav.mult, 2) : nav.speedMps * 3.6);
     return kmh < 15 ? 17 : kmh < 35 ? 16.3 : kmh < 60 ? 15.6 : kmh < 85 ? 15 : 14.5;
   };
+}
+
+async function checkUpdates() {
+  if (mode.current !== 'daily' || !navigator.onLine) return;
+  try { if (Date.now() - +(localStorage.getItem('ridegrid.updcheck') ?? 0) < 86400000) return; localStorage.setItem('ridegrid.updcheck', String(Date.now())); } catch { /* ignore */ }
+  const { offlineMaps } = await import('./offlineMap');
+  const { offlineSearch } = await import('./offlineSearch');
+  const { mapServer } = await import('./DailyMapTab');
+  const stale: string[] = [];
+  for (const z of await offlineMaps.installed()) { const m = await offlineMaps.meta(z.zone, mapServer()); if (m?.generated && m.generated !== z.generated) stale.push(`${z.zone} map`); }
+  for (const z of await offlineSearch.installed()) {
+    const m = await fetch(`${import.meta.env.BASE_URL}poi/${z.zone}.poi.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (m?.generated && m.generated !== z.generated) stale.push(`${z.zone} search`);
+  }
+  if (stale.length) toast(`Map updates available (${stale.length}) — Map tab → Offline maps → Update`);
 }

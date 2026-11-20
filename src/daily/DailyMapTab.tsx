@@ -12,6 +12,7 @@ import { canNativeFetch } from './nativeFetch';
 import { ScreenConfig } from './ScreenConfig';
 import { RASTER_PRESETS, rasterSource } from './mapLayers';
 import { saveRasterArea } from './offlineMap';
+import { offlineTerrain, type DemZone } from './offlineTerrain';
 import { weatherAt, weatherText, type Weather } from './weather';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
@@ -89,6 +90,8 @@ export function DailyMapTab() {
       </section>}
 
       <OfflineMapDownloads />
+
+      <OfflineTerrain />
     </div>
   );
 }
@@ -211,6 +214,31 @@ function RasterMaps() {
       ))}
       {prog && <p className="muted">{prog}</p>}
       <p className="muted">Built-in maps load online and stay cached once viewed (their servers don't allow bulk downloads). Your own sources can be saved for an area.</p>
+    </section>
+  );
+}
+
+/** Offline terrain downloads per region (hills, contours, 3D and altitude work without internet). */
+function OfflineTerrain() {
+  const [inst, setInst] = useState<DemZone[]>([]);
+  const [meta, setMeta] = useState<Record<string, DemZone | null>>({});
+  const [prog, setProg] = useState<Record<string, string>>({});
+  const reload = () => offlineTerrain.installed().then(setInst);
+  useEffect(() => { void reload(); for (const z of ZONES) void offlineTerrain.meta(z.zone).then((m) => setMeta((x) => ({ ...x, [z.zone]: m }))); }, []);
+  return (
+    <section>
+      <h3>Offline terrain</h3>
+      <p className="muted">Elevation for hillshade, contour lines, 3D, altitude colours and route elevation profiles with no internet.</p>
+      {ZONES.map((z) => {
+        const have = inst.find((i) => i.zone === z.zone), m = meta[z.zone], p = prog[z.zone];
+        return (
+          <div key={z.zone} className="item"><div><b>{z.label}</b> {have && <span className="pill">ready</span>}<div className="muted">{m ? mb(m.bytes) : m === null ? 'not available yet' : '…'}</div></div>
+            <div className="btns sm">{p ? <span className="muted">{p}</span> : have
+              ? <button onClick={() => act(null, () => offlineTerrain.remove(z.zone)).then(reload)}>Remove</button>
+              : <button disabled={!m || !canNativeFetch()} onClick={() => { setProg((x) => ({ ...x, [z.zone]: 'starting…' })); void offlineTerrain.download(z.zone, (d, t) => setProg((x) => ({ ...x, [z.zone]: `${Math.round((d / t) * 100)}%` })))
+                  .then(() => toast('Offline terrain ready')).catch((e) => toast(e.message, 'error')).finally(() => { setProg((x) => { const y = { ...x }; delete y[z.zone]; return y; }); void reload(); }); }}>Download</button>}</div></div>
+        );
+      })}
     </section>
   );
 }

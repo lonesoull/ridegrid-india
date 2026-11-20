@@ -3,6 +3,9 @@ import type { Map as MLMap, StyleSpecification } from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
 import { getSetting, putSetting } from '../core/db';
 import { dailyStyle, type DailyStyle } from './offlineMap';
+import { offlineTerrain } from './offlineTerrain';
+/** Offline terrain is stored to zoom 10; online tiles go to 13. */
+const offlineTerrainMax = () => (offlineTerrain.zones.length && !navigator.onLine ? 10 : 13);
 
 /**
  * Daily ride map settings + overlays (OsmAnd "Configure map"):
@@ -50,7 +53,8 @@ const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}
 let dem: InstanceType<typeof mlcontour.DemSource> | null = null;
 function demSource() {
   if (!dem) {
-    dem = new mlcontour.DemSource({ url: DEM_URL, encoding: 'terrarium', maxzoom: 13, worker: true });
+    // main-thread fetches, so downloaded offline terrain can answer them (see offlineTerrain.ts)
+    dem = new mlcontour.DemSource({ url: DEM_URL, encoding: 'terrarium', maxzoom: offlineTerrainMax(), worker: false });
     dem.setupMaplibre(maplibregl as any);
   }
   return dem;
