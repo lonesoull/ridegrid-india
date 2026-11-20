@@ -12,8 +12,11 @@ export const CAT_LABEL: Record<string, string> = {
   moto_shop: 'Motorcycle shop', mechanic: 'Mechanic', tyres: 'Tyres / puncture', supermarket: 'Supermarket', shop: 'Shop', food_shop: 'Bakery / food shop', mall: 'Mall',
   hotel: 'Hotel', guest_house: 'Guest house', hostel: 'Hostel', camp: 'Camp site', attraction: 'Attraction', viewpoint: 'Viewpoint', museum: 'Museum',
   picnic: 'Picnic spot', info: 'Tourist info', historic: 'Historic site', park: 'Park', rail: 'Railway station', airport: 'Airport',
-  address: 'Address', city: 'City', town: 'Town', village: 'Village', hamlet: 'Hamlet', suburb: 'Suburb', locality: 'Area', peak: 'Peak', waterfall: 'Waterfall', beach: 'Beach', street: 'Street',
+  address: 'Address', city: 'City', town: 'Town', village: 'Village', hamlet: 'Hamlet', suburb: 'Suburb', locality: 'Area', peak: 'Peak', waterfall: 'Waterfall', beach: 'Beach', street: 'Street', postcode: 'PIN code',
 };
+/** Rider filters stored with each place (from OpenStreetMap tags). */
+export const FLAG_LABEL: Record<string, string> = { veg: '🥗 Veg', pureveg: '🟢 Pure veg', cng: 'CNG', lpg: 'LPG', diesel: 'Diesel', e20: 'E20', ev_type2: 'EV Type 2', ev_ccs: 'EV CCS', ev_chademo: 'EV CHAdeMO', '24h': '24 hours', toilets: 'Toilets', air: 'Tyre air' };
+export const hitFlags = (h: { info: string }) => (h.info.split('|')[4] ?? '').split(',').filter(Boolean);
 /** Words people type for a category (English + common Indian usage). */
 const SYN: Record<string, string[]> = {
   fuel: ['fuel', 'petrol', 'diesel', 'pump', 'bunk', 'gas station', 'filling'], ev: ['ev', 'charging', 'charger'], atm: ['atm', 'cash'], bank: ['bank'],
@@ -22,7 +25,7 @@ const SYN: Record<string, string[]> = {
   toilets: ['toilet', 'restroom', 'washroom'], parking: ['parking'], bus: ['bus stand', 'bus station'], water: ['water'], mechanic: ['mechanic', 'repair', 'service', 'garage', 'workshop'],
   tyres: ['tyre', 'tire', 'puncture'], moto_shop: ['bike shop', 'motorcycle', 'spare'], hotel: ['hotel', 'lodge', 'stay', 'room'], guest_house: ['guest house', 'homestay'],
   hostel: ['hostel'], camp: ['camp', 'camping'], viewpoint: ['viewpoint', 'view point'], attraction: ['attraction', 'tourist'], rail: ['railway', 'train station'],
-  worship: ['temple', 'mosque', 'church', 'gurudwara'], supermarket: ['supermarket', 'grocery'], waterfall: ['waterfall', 'falls'], beach: ['beach'], peak: ['peak', 'hill top'],
+  worship: ['temple', 'mosque', 'church', 'gurudwara'], supermarket: ['supermarket', 'grocery'], waterfall: ['waterfall', 'falls'], beach: ['beach'], peak: ['peak', 'hill top'], postcode: ['pin', 'pincode', 'pin code', 'postcode', 'postal code', 'zip'],
 };
 const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ऀ-෿]+/g, ' ').trim();
 

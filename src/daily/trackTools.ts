@@ -14,6 +14,18 @@ export async function trackPoints(rideId: string): Promise<RidePoint[]> {
   return chunks.flatMap((c) => c.pts);
 }
 
+/** Bike sensor graphs (heart rate, cadence, rpm, temperatures, throttle, battery) recorded with a track. */
+export async function trackSensors(rideId: string): Promise<{ label: string; color: string; data: { s: number; v: number }[] }[]> {
+  const chunks = await db.rideChunks.where('rideId').equals(rideId).sortBy('id');
+  const all = chunks.flatMap((c) => c.sens ?? []);
+  if (all.length < 2) return [];
+  const t0 = all[0][0], step = Math.max(1, Math.floor(all.length / 300));
+  const defs = [['Heart rate (bpm)', '#e53935'], ['Cadence (rpm)', '#8e24aa'], ['Engine (rpm)', '#fb8c00'], ['Coolant (°C)', '#00897b'], ['Air (°C)', '#3949ab'], ['Throttle (%)', '#6d4c41'], ['Battery (V)', '#43a047']] as const;
+  return defs.map(([label, color], k) => ({ label, color, data: all.filter((_, i) => i % step === 0 && Number.isFinite(all[i][k + 1])).map((x) => ({ s: (x[0] - t0) / 1000, v: x[k + 1] })) }))
+    .filter((g) => g.data.length > 2)
+    .map((g) => { const vs = g.data.map((d) => d.v); return { ...g, label: `${g.label} · avg ${(vs.reduce((a, b) => a + b, 0) / vs.length).toFixed(0)}, max ${Math.max(...vs).toFixed(0)}` }; });
+}
+
 export function analyse(pts: RidePoint[], maxAcc = 50): TrackStats {
   const good = pts.filter((p) => p[3] <= maxAcc);
   let distM = 0, movingS = 0, maxMps = 0, up = 0, down = 0, lastAlt: number | null = null, nextSplit = 1000, splitT = good[0]?.[0] ?? 0;

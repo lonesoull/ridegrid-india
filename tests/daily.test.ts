@@ -148,3 +148,11 @@ describe('coordinate formats', () => {
     for (const f of ['dms', 'utm', 'olc'] as const) { const back = parseCoords(formatCoords(p, f))!; expect(Math.abs(back[0] - p[0])).toBeLessThan(5e-4); expect(Math.abs(back[1] - p[1])).toBeLessThan(5e-4); }
   });
 });
+
+import { hitFlags } from '../src/daily/poiIndex';
+describe('PIN codes and rider filters', () => {
+  const ix = new PoiIndex();
+  ix.add('77.59\t12.97\tpostcode\t560001\t|||Bengaluru\n77.6\t12.98\trestaurant\tAnnapoorna\t|||Bengaluru|pureveg,24h\n77.61\t12.99\tfuel\tHP\t|||Bengaluru|cng,ev_type2');
+  it('finds a PIN code', () => { expect(ix.search('560001')[0].cat).toBe('postcode'); expect(PoiIndex.categoryFor('pin code')).toBe('postcode'); });
+  it('reads flags', () => { expect(hitFlags(ix.search('', { cat: 'fuel' })[0])).toEqual(['cng', 'ev_type2']); });
+});

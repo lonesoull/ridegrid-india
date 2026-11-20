@@ -6,7 +6,7 @@ import { download, safeName } from '../io/exporters';
 import { mapCtl } from '../ui/App';
 import { act, toast, ui } from '../ui/state';
 import { recorder } from './recorder';
-import { analyse, colouredTrack, gpxOf, importGpxTrack, saveLineAsTrack, showTrack, trackPoints, joinTracks, splitTrack, snapTrack, type TrackStats, type ColourBy } from './trackTools';
+import { analyse, colouredTrack, gpxOf, importGpxTrack, saveLineAsTrack, showTrack, trackPoints, trackSensors, joinTracks, splitTrack, snapTrack, type TrackStats, type ColourBy } from './trackTools';
 import type { RidePoint } from '../core/db';
 import { device } from '../route/device';
 
@@ -97,7 +97,8 @@ export function TracksTab() {
 
 function TrackDetail({ r, onChange }: { r: Ride; onChange: () => void }) {
   const [st, setSt] = useState<TrackStats | null>(null);
-  useEffect(() => { void trackPoints(r.id).then((p) => setSt(analyse(p))); }, [r.id]);
+  const [sens, setSens] = useState<Awaited<ReturnType<typeof trackSensors>>>([]);
+  useEffect(() => { void trackPoints(r.id).then((p) => setSt(analyse(p))); void trackSensors(r.id).then(setSens); }, [r.id]);
   if (!st) return <p className="muted">Loading…</p>;
   const show = async () => {
     if (!mapCtl || st.pts.length < 2) return;
@@ -119,6 +120,7 @@ function TrackDetail({ r, onChange }: { r: Ride; onChange: () => void }) {
       </div>
       <Graph data={st.speed} label="Speed (km/h)" color="#1e88e5" />
       {st.alt.length > 2 && <Graph data={st.alt} label={`Altitude ${Math.round(st.minAlt)}–${Math.round(st.maxAlt)} m`} color="#8d6e63" />}
+      {sens.map((g) => <Graph key={g.label} data={g.data} label={g.label} color={g.color} />)}
       {st.splits.length > 0 && <details><summary className="muted">Splits per km{best ? ` (fastest: km ${best.km}, ${mmss(best.s)})` : ''}</summary>
         <div className="splits">{st.splits.map((x) => <span key={x.km}>km {x.km}: <b>{mmss(x.s)}</b> ({(3600 / x.s).toFixed(0)} km/h)</span>)}</div></details>}
       <div className="btns sm">

@@ -3,7 +3,9 @@ import { engine } from '../core/engine';
 import { haversine, type LngLat } from '../core/geo';
 import { watchGps, type GpsFix } from '../nav/gps';
 import { nav } from '../nav/navigator';
-import { getSetting, putSetting } from '../core/db';
+import { getSetting, putSetting, type SensorSample } from '../core/db';
+import { sensors } from './sensors';
+import { obd } from './obd';
 
 /**
  * Daily track recording (OsmAnd "Trip recording"): records GPS tracks without navigating, in the
@@ -17,6 +19,7 @@ export const recorder = {
   s: { ...DEFAULT_REC },
   ride: null as Ride | null,
   buf: [] as RidePoint[],
+  sens: [] as SensorSample[],
   last: null as { p: LngLat; t: number } | null,
   stopGps: null as null | (() => void),
   listeners: new Set<() => void>(),
@@ -62,6 +65,11 @@ export const recorder = {
     this.last = { p, t: f.time };
     this.buf.push([f.time, f.lng, f.lat, Math.round(f.acc), mps, f.alt ?? NaN] as RidePoint);
     this.points++;
+    // bike sensors / OBD readings go into the track too (graphs in Tracks)
+    const o = obd.on ? obd.values : {};
+    const n = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? NaN : Math.round(v * 10) / 10);
+    const smp: SensorSample = [f.time, n(sensors.hr), n(sensors.cadence), n(o.rpm), n(o.coolant), n(sensors.tempC ?? o.intake), n(o.throttle), n(o.volts)];
+    if (smp.slice(1).some(Number.isFinite)) this.sens.push(smp);
     if (this.ride) this.ride.points++;
     if (this.buf.length >= 30) void this.flush(false);
     this.emit();
@@ -69,7 +77,7 @@ export const recorder = {
   async flush(final: boolean) {
     const r = this.ride;
     if (!r) return;
-    if (this.buf.length) { const pts = this.buf; this.buf = []; await db.rideChunks.add({ rideId: r.id, pts }); }
+    if (this.buf.length) { const pts = this.buf, sens = this.sens; this.buf = []; this.sens = []; await db.rideChunks.add({ rideId: r.id, pts, ...(sens.length ? { sens } : {}) }); }
     r.endedAt = Date.now();
     if (final && r.points < 2) { await db.rides.delete(r.id); await db.rideChunks.where('rideId').equals(r.id).delete(); this.ride = null; return; }
     await db.rides.put(r);

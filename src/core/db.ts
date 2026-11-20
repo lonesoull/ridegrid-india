@@ -28,7 +28,9 @@ export interface Ride { id: string; tripId: string; startedAt: number; endedAt?:
   folder?: string; source?: 'nav' | 'recorder' | 'import' | 'plan'; color?: string }
 /** Ride GPS points in chunks: [timeMs, lng, lat, accuracyM, speedMps] */
 export type RidePoint = [number, number, number, number, number] | [number, number, number, number, number, number]; // + altitude (m) for Daily recordings
-export interface RideChunk { id?: number; rideId: string; pts: RidePoint[] }
+/** Bike sensor sample saved with a track: [time, heart rate, cadence, engine rpm, coolant °C, air °C, throttle %, battery V] (NaN = no value). */
+export type SensorSample = [number, number, number, number, number, number, number, number];
+export interface RideChunk { id?: number; rideId: string; pts: RidePoint[]; sens?: SensorSample[] }
 export type StopType = 'start' | 'finish' | 'document' | 'daystart' | 'dayend' | 'overnight' | 'police' | 'witness' | 'fuel' | 'service' | 'food' | 'evidence' | 'media' | 'other' | 'break';
 /** Who signed / gave a witness statement (they write the statement themselves; the app only records who and where). */
 export interface Witness { name: string; role?: string; org?: string; phone?: string; gazetted?: boolean; independent?: boolean }

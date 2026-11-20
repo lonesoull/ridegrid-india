@@ -46,7 +46,7 @@ const alertOf = (t) => t.highway === 'speed_camera' ? 'camera' : t.traffic_calmi
   : t.highway === 'stop' ? 'stop' : t.hazard ? 'hazard' : null;
 
 const keys = 'amenity shop craft tourism historic leisure railway aeroway place natural waterway'.split(' ');
-execSync(`osmium tags-filter ${pbf} ${keys.map((k) => `nwr/${k}`).join(' ')} nwr/addr:housenumber w/highway n/highway=speed_camera,traffic_signals,crossing,stop n/traffic_calming n/barrier=toll_booth n/hazard -o /tmp/poi.osm.pbf --overwrite`, { stdio: 'inherit' });
+execSync(`osmium tags-filter ${pbf} ${keys.map((k) => `nwr/${k}`).join(' ')} nwr/addr:housenumber nwr/addr:postcode n/postal_code w/highway n/highway=speed_camera,traffic_signals,crossing,stop n/traffic_calming n/barrier=toll_booth n/hazard -o /tmp/poi.osm.pbf --overwrite`, { stdio: 'inherit' });
 execSync(`osmium export /tmp/poi.osm.pbf -f geojsonseq -o /tmp/poi.geojsonseq --overwrite`, { stdio: 'inherit' });
 
 const clean = (s) => String(s ?? '').replace(/[\t\n\r]+/g, ' ').trim();
@@ -61,6 +61,22 @@ const rep = (g) => {
   for (const [x, y] of pts) { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); }
   return [(a + c) / 2, (b + d) / 2];
 };
+/** Rider filters: veg food, CNG / LPG / diesel, EV sockets, 24 h. */
+const flagsOf = (t) => {
+  const f = [];
+  if (t['diet:vegetarian'] === 'only' || t['diet:vegan'] === 'only') f.push('pureveg'); else if (t['diet:vegetarian'] === 'yes') f.push('veg');
+  if (t['diet:non-vegetarian'] === 'no' && !f.length) f.push('pureveg');
+  if (t['fuel:cng'] === 'yes') f.push('cng');
+  if (t['fuel:lpg'] === 'yes') f.push('lpg');
+  if (t['fuel:diesel'] === 'yes') f.push('diesel');
+  if (t['fuel:e20'] === 'yes' || t['fuel:ethanol'] === 'yes') f.push('e20');
+  for (const k of Object.keys(t)) if (k.startsWith('socket:') && !k.slice(7).includes(':') && t[k] !== 'no' && t[k] !== '0') f.push('ev_' + k.slice(7));
+  if (t.opening_hours === '24/7') f.push('24h');
+  if (t.toilets === 'yes' || t['toilets:access'] === 'customers') f.push('toilets');
+  if (t.compressed_air === 'yes') f.push('air');
+  return f.join(',');
+};
+const pins = new Map(); // PIN code → [sum lon, sum lat, n, city]
 const poi = [], alerts = [], streets = new Set();
 const counts = {};
 const rl = readline.createInterface({ input: createReadStream('/tmp/poi.geojsonseq') });
@@ -75,6 +91,8 @@ for await (const line of rl) {
     if (a) { alerts.push(`${r6(p[0])}\t${r6(p[1])}\t${a}${t.maxspeed ? '\t' + clean(t.maxspeed) : ''}`); counts['alert:' + a] = (counts['alert:' + a] ?? 0) + 1; }
   }
   // house-number addresses (OsmAnd address search): "12 MG Road, Bengaluru"
+  const pc = clean(t['addr:postcode'] || t.postal_code).replace(/\s+/g, '');
+  if (/^[1-9][0-9]{5}$/.test(pc)) { const e = pins.get(pc) ?? [0, 0, 0, '']; e[0] += p[0]; e[1] += p[1]; e[2]++; e[3] ||= clean(t['addr:city'] || t['addr:district'] || (t.place && t.name) || ''); pins.set(pc, e); }
   if (t['addr:housenumber'] && (t['addr:street'] || t['addr:place']) && !catOf(t)) {
     const nm = `${clean(t['addr:housenumber'])} ${clean(t['addr:street'] || t['addr:place'])}`;
     const k = `address|${nm}|${Math.round(p[0] * 2000)}|${Math.round(p[1] * 2000)}`;
@@ -91,10 +109,12 @@ for await (const line of rl) {
   const k = `${cat}|${name}|${Math.round(p[0] * g)}|${Math.round(p[1] * g)}`;
   if (streets.has(k)) continue;
   streets.add(k);
-  const info = [clean(t.opening_hours), clean(t.phone || t['contact:phone']), clean(t.brand), clean(t['addr:city'] || t['addr:district'] || t['is_in'])].join('|').replace(/\|+$/, '');
+  const info = [clean(t.opening_hours), clean(t.phone || t['contact:phone']), clean(t.brand || t.operator), clean(t['addr:city'] || t['addr:district'] || t['is_in']), flagsOf(t), pc].join('|').replace(/\|+$/, '');
   poi.push(`${r6(p[0])}\t${r6(p[1])}\t${cat}\t${name}\t${info}`);
   counts[cat] = (counts[cat] ?? 0) + 1;
 }
+for (const [pc, [x, y, n, city]] of pins) poi.push(`${r6(x / n)}\t${r6(y / n)}\tpostcode\t${pc}\t|||${city}`);
+counts.postcode = pins.size;
 await writeFile(`${OUT}/${zone}.poi.tsv`, poi.join('\n'));
 await writeFile(`${OUT}/${zone}.alerts.tsv`, alerts.join('\n'));
 const stats = { zone, generated: new Date().toISOString(), poi: poi.length, alerts: alerts.length, counts, seconds: Math.round((Date.now() - t0) / 1000) };

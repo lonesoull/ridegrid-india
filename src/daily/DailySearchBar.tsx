@@ -10,7 +10,7 @@ import { mapCtl } from '../ui/App';
 import { searchCentre, knownLocation, warmLocation } from '../ui/SearchBar';
 import { offlineSearch, history, remember, clearHistory, type HistItem } from './offlineSearch';
 import { parseCoords } from './coords';
-import { CAT_LABEL, type Hit } from './poiIndex';
+import { CAT_LABEL, FLAG_LABEL, hitFlags, type Hit } from './poiIndex';
 import { openState } from './openingHours';
 import { googleReady, exploreNearby, searchAlongRoute, type GPlace } from './gfeatures';
 
@@ -25,7 +25,7 @@ const toPlace = (h: Hit, i: number): Place => {
   const st = hours ? openState(hours) : null;
   return {
     id: `off:${i}:${h.p[0]},${h.p[1]}`, name: h.name, provider: 'osm', p: h.p, distM: h.distM,
-    address: [h.label, st ? (st.open ? '🟢 ' : '🔴 ') + st.text : hours && `🕒 ${hours}`, phone && `☎ ${phone}`, city].filter(Boolean).join(' · '),
+    address: [h.label, st ? (st.open ? '🟢 ' : '🔴 ') + st.text : hours && `🕒 ${hours}`, phone && `☎ ${phone}`, city, hitFlags(h).map((f) => FLAG_LABEL[f] ?? f.replace('ev_', 'EV ')).join(' ')].filter(Boolean).join(' · '),
   };
 };
 
@@ -53,6 +53,8 @@ export function DailySearchBar() {
   const [err, setErr] = useState('');
   const [along, setAlong] = useState(false);
   const [openNow, setOpenNow] = useState(false);
+  const [flags, setFlags] = useState<string[]>([]);
+  const lastCat = useRef<string | undefined>(undefined);
   const [near, setNear] = useState<{ cat: string; label: string; hits: Hit[] }[]>([]);
   const [hist, setHist] = useState<HistItem[]>(history());
   const [popular, setPopular] = useState<Place[] | null>(null);
@@ -67,6 +69,7 @@ export function DailySearchBar() {
 
   const run = (text: string, cat?: string, immediate = false) => {
     ctl.current?.abort();
+    lastCat.current = cat;
     if (!cat && text.trim().length < 2) { ui.set({ places: [] }); setErr(''); return; }
     const c = new AbortController();
     ctl.current = c;
@@ -88,13 +91,15 @@ export function DailySearchBar() {
             return;
           } catch { /* fall back to offline */ }
         }
-        let hits = await offlineSearch.search(cat ? '' : text, { near: centre, cat, limit: openNow ? 200 : 25, along: rp ? { pts: rp.pts, maxM: 2000, fromS: rp.fromS } : undefined });
+        let hits = await offlineSearch.search(cat ? '' : text, { near: centre, cat, limit: openNow || flags.length ? 300 : 25, along: rp ? { pts: rp.pts, maxM: 2000, fromS: rp.fromS } : undefined });
         // "Open now": keep places whose hours say open (24/7 included); unknown hours are dropped
-        if (openNow) hits = hits.filter((h) => { const oh = h.info.split('|')[0]; return oh && openState(oh)?.open; }).slice(0, 25);
+        if (openNow) hits = hits.filter((h) => { const oh = h.info.split('|')[0]; return oh && openState(oh)?.open; });
+        if (flags.length) hits = hits.filter((h) => { const f = hitFlags(h); return flags.every((x) => f.includes(x) || (x === 'veg' && f.includes('pureveg')) || (x === 'ev_any' && f.some((y) => y.startsWith('ev_')))); });
+        if (openNow || flags.length) hits = hits.slice(0, 25);
         meta.current.clear();
         hits.forEach((h, i) => { const p = toPlace(h, i); if (rp && h.alongM !== undefined) p.address = `${fmtDist(h.alongM - (rp.fromS ?? 0))} ahead · ${fmtDist(h.offM)} off route · ${p.address}`; meta.current.set(p.id, h); out.push(p); });
         // online results when there is internet (and not restricted to the route)
-        if (!along && !openNow && navigator.onLine && !xy) {
+        if (!along && !openNow && !flags.length && navigator.onLine && !xy) {
           try {
             const online = await searchPlaces(cat ? (CAT_LABEL[cat] ?? cat) : text, centre, c.signal);
             for (const o of online) if (!out.some((x) => x.name.toLowerCase() === o.name.toLowerCase() && (!x.p || !o.p || Math.abs(x.p[0] - o.p[0]) < 0.002))) out.push(o);
@@ -107,6 +112,8 @@ export function DailySearchBar() {
     }, immediate ? 0 : 300);
   };
   useEffect(() => () => ctl.current?.abort(), []);
+  // filters changed: search again
+  useEffect(() => { if (q || lastCat.current) run(lastCat.current ? '' : q, lastCat.current, true); }, [openNow, flags.join()]);
 
   const pick = (p: Place) => {
     if (p.p) remember({ name: p.name, address: p.address, p: p.p });
@@ -129,6 +136,8 @@ export function DailySearchBar() {
           <div className="chips">
             {engine.legs.size > 0 && <button className={`chip ${along ? 'on' : ''}`} onClick={() => { setAlong(!along); }}>🛣 Along my route</button>}
             <button className={`chip ${openNow ? 'on' : ''}`} onClick={() => setOpenNow(!openNow)}>🟢 Open now</button>
+            {([['veg', '🥗 Veg food'], ['pureveg', 'Pure veg'], ['cng', 'CNG'], ['ev_any', '⚡ EV socket'], ['24h', '24 hours']] as const).map(([k, l]) => (
+              <button key={k} className={`chip ${flags.includes(k) ? 'on' : ''}`} onClick={() => setFlags(flags.includes(k) ? flags.filter((x) => x !== k) : [...flags, k])}>{l}</button>))}
             {CHIPS.map((c) => <button key={c} className="chip" onClick={() => { setQ(CAT_LABEL[c]); run('', c, true); }}>{CAT_LABEL[c]}</button>)}
           </div>
           {busy && <div className="muted">Searching…</div>}
