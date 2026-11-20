@@ -21,6 +21,7 @@ jobs:
       matrix:
         zone: [southern-zone, western-zone, northern-zone, central-zone, eastern-zone, north-eastern-zone]
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -28,7 +29,8 @@ jobs:
       - name: Download Planetiler and the zone extract
         run: |
           curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors -o planetiler.jar https://github.com/onthegomap/planetiler/releases/download/v0.8.4/planetiler.jar
-          curl -fsSL --retry 6 --retry-delay 30 --retry-all-errors -o zone.osm.pbf https://download.geofabrik.de/asia/india/${{ matrix.zone }}-latest.osm.pbf
+          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          bash tools/zone-pbf.sh ${{ matrix.zone }} zone.osm.pbf
           ls -la
       - name: Build ${{ matrix.zone }}.pmtiles
         run: |

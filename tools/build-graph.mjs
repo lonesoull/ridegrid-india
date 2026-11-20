@@ -28,7 +28,7 @@ const KMH = { trunk: 70, trunk_link: 50, primary: 60, primary_link: 45, secondar
 
 // ---- 1. download + filter with osmium, then dump as text (OPL)
 const pbf = process.env.PBF ?? `/tmp/${zone}.osm.pbf`;   // PBF=... uses a local file (tests)
-if (!process.env.PBF) execSync(`curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors -o ${pbf} https://download.geofabrik.de/asia/india/${zone}-latest.osm.pbf`, { stdio: 'inherit' });
+if (!process.env.PBF) execSync(`bash tools/zone-pbf.sh ${zone} ${pbf}`, { stdio: 'inherit' });
 log('downloaded', execSync(`du -h ${pbf}`).toString().trim());
 execSync(`osmium tags-filter ${pbf} w/highway=${CLASSES.join(',')} -o /tmp/roads.osm.pbf --overwrite`, { stdio: 'inherit' });
 execSync(`osmium cat /tmp/roads.osm.pbf -f opl -o /tmp/roads.opl --overwrite`, { stdio: 'inherit' });

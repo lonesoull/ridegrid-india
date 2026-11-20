@@ -11,7 +11,7 @@ const zone = process.argv[2] ?? 'southern-zone';
 const OUT = 'poi-out';
 await mkdir(OUT, { recursive: true });
 const pbf = process.env.PBF ?? `/tmp/${zone}.osm.pbf`;
-if (!process.env.PBF) execSync(`curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors -o ${pbf} https://download.geofabrik.de/asia/india/${zone}-latest.osm.pbf`, { stdio: 'inherit' });
+if (!process.env.PBF) execSync(`bash tools/zone-pbf.sh ${zone} ${pbf}`, { stdio: 'inherit' });
 const t0 = Date.now();
 
 // category = first matching rule; the app groups and labels them
