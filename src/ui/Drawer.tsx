@@ -26,6 +26,7 @@ import { DailyMapTab } from '../daily/DailyMapTab';
 import { PlacesTab } from '../daily/PlacesTab';
 import { TracksTab } from '../daily/TracksTab';
 import { DailyControl } from '../daily/DailyControl';
+import { GoogleUsage } from './GoogleUsage';
 import { TeamTab } from './TeamTab';
 
 export function Drawer() {
@@ -375,6 +376,7 @@ function ToolsTab() {
       <AndroidAppPanel />
 
       <GoogleSettingsPanel />
+      <GoogleUsage />
 
       {mode.current === 'expedition' && <section>
         <h3>Scale stress test</h3>

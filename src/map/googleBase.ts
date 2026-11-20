@@ -4,6 +4,7 @@ import { loadMapsJs, onAuthFailure, authFailed } from './googleJs';
 import type { MapController } from './MapController';
 import { mode } from '../core/mode';
 import { dailyMap, buildDailyStyle } from '../daily/mapLayers';
+import { gquota } from '../core/gquota';
 
 /**
  * Chooses the basemap: Google's map (Maps JavaScript API, with live traffic that Google refreshes itself)
@@ -14,8 +15,12 @@ let unsubAuth: (() => void) | null = null;
 export async function applyBase(map: MapController, _force = false) {
   const night = ui.get().night;
   const g = google.settings;
-  // Daily ride mode has its own map engine (offline vector maps, styles, overlays) unless "Google" is picked
-  if (mode.current === 'daily' && dailyMap.settings.style !== 'google') {
+  // Google Maps is the base in both modes whenever it can be (key, online). Daily draws all its layers on top;
+  // without Google (no key / offline / Google refused) Daily uses its own offline-capable map engine.
+  const daily = mode.current === 'daily';
+  // (cap reached → our map; the counter is only spent when a new Google map is created)
+  const wanted = !!g.key && g.on && navigator.onLine !== false && !authFailed && (map.hasGoogleMap || gquota.can('mapLoad'));
+  if (daily && !wanted) {
     google.tilesOk = false;
     try {
       const style = await buildDailyStyle(night);
@@ -23,22 +28,27 @@ export async function applyBase(map: MapController, _force = false) {
       return;
     } catch (e: any) { toast(`Map style failed (${e?.message || e}) — using the standard map`, 'error'); map.setOsmBase(night); return; }
   }
-  const wanted = !!g.key && g.on && navigator.onLine !== false;
   if (!wanted) { google.tilesOk = false; map.setOsmBase(night); return; }
   try {
-    await loadMapsJs(g.key);
+    await loadMapsJs(g.key, daily ? dailyMap.settings.labelLang : 'en');
     if (authFailed) throw new Error('Google rejected this key for the Maps JavaScript API (Tools → Google Maps mode → “Test key” shows the fix)');
+    map.onGoogleMapLoad ??= () => { try { gquota.take('mapLoad'); } catch { /* counted at the cap */ } };
     unsubAuth ??= onAuthFailure(() => {
       google.tilesOk = false;
-      map.setOsmBase(ui.get().night);
+      void applyBase(map, true);
       toast('Google rejected the key for the Maps JavaScript API — using the OpenStreetMap map. Tools → Google Maps mode → “Test key” shows the fix.', 'error');
       ui.set({ gtick: ui.get().gtick + 1 });
     });
-    map.setGoogleJsBase({ night, traffic: g.traffic, mapId: g.mapId });
+    if (daily) {
+      const d = dailyMap.settings;
+      const style = await buildDailyStyle(night, true);
+      map.setGoogleJsBase({ night, traffic: g.traffic, mapId: g.mapId, mapType: d.gType, transit: d.gTransit, bike: d.gBike }, { id: `${JSON.stringify(d)}|${night}`, style });
+    } else map.setGoogleJsBase({ night, traffic: g.traffic, mapId: g.mapId, mapType: 'roadmap', transit: false, bike: false });
     google.tilesOk = true;
   } catch (e: any) {
     google.tilesOk = false;
     toast(`${e?.message || e} — using the OpenStreetMap map instead.`, 'error');
+    if (daily) { try { map.setStyleBase(`${JSON.stringify(dailyMap.settings)}|${night}`, await buildDailyStyle(night)); return; } catch { /* below */ } }
     map.setOsmBase(night);
   }
 }

@@ -27,9 +27,14 @@ export interface DailyMapSettings {
   /** weather map layers (OsmAnd weather plugin) */
   wxTemp: boolean; wxWind: boolean; wxCloud: boolean; wxPressure: boolean;
   voyage: boolean;
+  /** Google base map (online): map type, Google's transit / cycling layers, label language */
+  gType: 'roadmap' | 'satellite' | 'hybrid' | 'terrain'; gTransit: boolean; gBike: boolean; labelLang: string;
+  /** OpenStreetMap tracks, paths and unpaved roads drawn over Google (Google hides most of them) */
+  trails: boolean;
 }
 export const DEFAULT_DAILY_MAP: DailyMapSettings = { style: 'day', hillshade: false, contours: false, terrain3d: false, rain: false, satellite: false, wiki: false, photos: false, autoNight: true, autoDayNight: false, grid: false, regions: false, rings: false, orientation: 'heading',
-  altitudeColours: false, exaggeration: 1.3, overlay: null, overlayOpacity: 0.6, underlay: null, customSources: [], wxTemp: false, wxWind: false, wxCloud: false, wxPressure: false, voyage: false };
+  altitudeColours: false, exaggeration: 1.3, overlay: null, overlayOpacity: 0.6, underlay: null, customSources: [], wxTemp: false, wxWind: false, wxCloud: false, wxPressure: false, voyage: false,
+  gType: 'roadmap', gTransit: false, gBike: false, labelLang: 'en', trails: true };
 
 export const dailyMap = {
   settings: { ...DEFAULT_DAILY_MAP },
@@ -61,16 +66,23 @@ function demSource() {
 }
 
 /** Full style for the chosen Daily base map, with overlays inserted below the app's own layers. */
-export async function buildDailyStyle(night: boolean): Promise<StyleSpecification> {
+/**
+ * onGoogle = the Google map is the base: build only our layers on a see-through style, and leave out
+ * whatever Google does itself (satellite, hill shading, 3D, street photos; contours on Google terrain).
+ */
+export async function buildDailyStyle(night: boolean, onGoogle = false): Promise<StyleSpecification> {
   const s = dailyMap.settings;
   const base: DailyStyle = s.style === 'google' ? 'day' : night && s.autoNight && (s.style === 'day' || s.style === 'bright' || s.style === 'light') ? 'night' : s.style;
-  const style = await dailyStyle(base);
-  const topo = base === 'topo';
+  const style: StyleSpecification = onGoogle
+    ? { version: 8, glyphs: 'rgasset://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', sources: {}, layers: [] }
+    : await dailyStyle(base);
+  if (onGoogle) { const { installMapProtocols } = await import('./offlineMap'); installMapProtocols(); }
+  const topo = !onGoogle && base === 'topo';
   // first label layer: overlays go under the labels
   const firstLabel = style.layers.findIndex((l) => l.type === 'symbol');
   const at = firstLabel < 0 ? style.layers.length : firstLabel;
   const extra: StyleSpecification['layers'] = [];
-  if (s.satellite) {
+  if (s.satellite && !onGoogle) {
     style.sources.sat = { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' };
     extra.push({ id: 'd-sat', type: 'raster', source: 'sat', paint: { 'raster-opacity': 0.9 } });
   }
@@ -79,19 +91,21 @@ export async function buildDailyStyle(night: boolean): Promise<StyleSpecificatio
     style.sources.overlay = { type: 'raster', tiles: [`rgraster://${ov.url.replace(/^https:\/\//, '')}`], tileSize: 256, maxzoom: ov.maxzoom, attribution: (ov as any).attribution ?? ov.name };
     extra.push({ id: 'd-overlay', type: 'raster', source: 'overlay', paint: { 'raster-opacity': s.overlayOpacity } });
   }
-  if (un) {
+  if (un && !onGoogle) {
     style.sources.underlay = { type: 'raster', tiles: [`rgraster://${un.url.replace(/^https:\/\//, '')}`], tileSize: 256, maxzoom: un.maxzoom, attribution: (un as any).attribution ?? un.name };
     // under everything; the vector map's land / background become see-through
     for (const l of style.layers) if (l.type === 'background' || (l.type === 'fill' && /land|park|wood|grass|residential|landuse/.test(l.id))) (l as any).paint = { ...(l as any).paint, [l.type === 'background' ? 'background-opacity' : 'fill-opacity']: 0.15 };
     style.layers.splice(1, 0, { id: 'd-underlay', type: 'raster', source: 'underlay' });
   }
-  if (s.hillshade || s.contours || s.terrain3d || topo || s.altitudeColours) {
+  const gTerrain = onGoogle && s.gType === 'terrain';
+  const wantHill = (s.hillshade || topo) && !onGoogle, wantContours = (s.contours || topo) && !gTerrain, want3d = s.terrain3d && !onGoogle;
+  if (wantHill || wantContours || want3d || s.altitudeColours) {
     const d = demSource();
     style.sources.dem = { type: 'raster-dem', tiles: [d.sharedDemProtocolUrl], encoding: 'terrarium', tileSize: 256, maxzoom: 13, attribution: 'Terrain: Mapzen / AWS Terrain Tiles' };
     if (s.altitudeColours) extra.push({ id: 'd-altitude', type: 'color-relief' as any, source: 'dem', paint: { 'color-relief-opacity': 0.45,
       'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#5aa36b', 200, '#9fcf7a', 500, '#e9e39a', 1000, '#d9b26a', 2000, '#b07a4a', 3500, '#9a8f8a', 5000, '#ffffff'] } } as any);
-    if (s.hillshade || topo) extra.push({ id: 'd-hillshade', type: 'hillshade', source: 'dem', paint: { 'hillshade-exaggeration': 0.45, 'hillshade-shadow-color': night ? '#000' : '#5a4a3a' } });
-    if (s.contours || topo) {
+    if (wantHill) extra.push({ id: 'd-hillshade', type: 'hillshade', source: 'dem', paint: { 'hillshade-exaggeration': 0.45, 'hillshade-shadow-color': night ? '#000' : '#5a4a3a' } });
+    if (wantContours) {
       style.sources.contours = {
         type: 'vector', maxzoom: 15,
         tiles: [d.contourProtocolUrl({ thresholds: { 11: [100, 500], 12: [50, 250], 13: [20, 100], 14: [10, 50] }, elevationKey: 'ele', levelKey: 'level', contourLayer: 'contours' })],
@@ -101,7 +115,7 @@ export async function buildDailyStyle(night: boolean): Promise<StyleSpecificatio
         layout: { 'symbol-placement': 'line', 'text-field': ['concat', ['to-string', ['get', 'ele']], ' m'], 'text-size': 10, 'text-font': ['Noto Sans Regular'] },
         paint: { 'text-color': night ? '#e6d2b0' : '#7a4f1d', 'text-halo-color': night ? '#000' : '#fff', 'text-halo-width': 1 } });
     }
-    if (s.terrain3d) style.terrain = { source: 'dem', exaggeration: s.exaggeration };
+    if (want3d) style.terrain = { source: 'dem', exaggeration: s.exaggeration };
   }
   if (s.rain) {
     const host = await rainHost();
@@ -110,11 +124,18 @@ export async function buildDailyStyle(night: boolean): Promise<StyleSpecificatio
       extra.push({ id: 'd-rain', type: 'raster', source: 'rain', paint: { 'raster-opacity': 0.6 } });
     }
   }
-  if (s.photos) {
+  if (onGoogle && s.trails) {
+    // OSM tracks / paths / unpaved roads (same vector tiles as the offline map), drawn over Google
+    style.sources.osm = { type: 'vector', tiles: ['rgmap://{z}/{x}/{y}'], minzoom: 0, maxzoom: 14, attribution: '© OpenStreetMap contributors' };
+    extra.push({ id: 'd-trails', type: 'line', source: 'osm', 'source-layer': 'transportation', minzoom: 11,
+      filter: ['any', ['in', ['get', 'class'], ['literal', ['track', 'path']]], ['in', ['get', 'surface'], ['literal', ['unpaved', 'gravel', 'dirt', 'ground', 'sand']]]],
+      paint: { 'line-color': night ? '#e0a96d' : '#9c5b1c', 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1, 16, 3], 'line-dasharray': [2, 1.5], 'line-opacity': 0.9 } });
+  }
+  if (s.photos && !onGoogle) {
     style.sources.panoramax = { type: 'vector', tiles: ['https://api.panoramax.xyz/api/map/{z}/{x}/{y}.mvt'], minzoom: 0, maxzoom: 15, attribution: 'Street photos © Panoramax contributors' };
     extra.push({ id: 'd-photo-seq', type: 'line', source: 'panoramax', 'source-layer': 'sequences', paint: { 'line-color': '#0a8f5a', 'line-width': 2, 'line-opacity': 0.8 } });
   }
-  style.layers.splice(at, 0, ...extra);
+  if (onGoogle) style.layers.unshift(...extra); else style.layers.splice(at, 0, ...extra);
   return style;
 }
 

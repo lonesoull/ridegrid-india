@@ -31,18 +31,36 @@ export function DailyMapTab() {
     return () => { dailyMap.listeners.delete(f); offlineMaps.listeners.delete(f); };
   }, []);
   const set = (p: Partial<DailyMapSettings>) => act(null, async () => { await dailyMap.save(p); if (mapCtl) await applyBase(mapCtl, true); });
-  const styles: (DailyStyle | 'google')[] = ['day', 'touring', 'topo', 'offroad', 'desert', 'bright', 'light', 'night', 'fiord', 'google'];
+  const styles: DailyStyle[] = ['day', 'touring', 'topo', 'offroad', 'desert', 'bright', 'light', 'night', 'fiord'];
+  const gOk = !!google.settings.key && google.settings.on;
   const c = mapCtl?.map.getCenter();
   const sun = c ? sunTimes(new Date(), c.lat, c.lng) : null;
   const [stars, setStars] = useState(false);
   return (
     <div className="stack">
       <section>
-        <h3>Map style</h3>
+        <h3>Google map {gOk ? <span className="pill">base map</span> : null}</h3>
+        {gOk ? <>
+          <div className="stylegrid">
+            {([['roadmap', 'Road map'], ['hybrid', 'Satellite + labels'], ['satellite', 'Satellite'], ['terrain', 'Terrain (hills & contours)']] as const).map(([k, l]) => (
+              <button key={k} className={s.gType === k ? 'on' : ''} onClick={() => set({ gType: k })}>{l}</button>))}
+          </div>
+          <Toggle on={s.gTransit} label="Google public transport lines" onChange={(v) => set({ gTransit: v })} />
+          <Toggle on={s.gBike} label="Google cycling lanes" onChange={(v) => set({ gBike: v })} />
+          <Toggle on={s.trails} label="Off-road tracks, paths & unpaved roads (OpenStreetMap, Google hides most)" onChange={(v) => set({ trails: v })} />
+          <label className="field">Map label language
+            <select value={s.labelLang} onChange={(e) => void set({ labelLang: e.target.value }).then(() => toast('Restart the app to change Google map labels'))}>
+              {[['en', 'English'], ['hi', 'हिन्दी'], ['ta', 'தமிழ்'], ['te', 'తెలుగు'], ['kn', 'ಕನ್ನಡ'], ['ml', 'മലയാളം'], ['mr', 'मराठी'], ['bn', 'বাংলা'], ['gu', 'ગુજરાતી'], ['pa', 'ਪੰਜਾਬੀ']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select></label>
+          <p className="muted">Live traffic: the traffic button on the map. 3D & tilt: Tools → Google Maps mode → Map ID. Everything of RideGrid is drawn on top of Google.</p>
+        </> : <p className="warn">Add your Google key in Tools → Google Maps mode to use Google Maps as the base map.</p>}
+      </section>
+
+      <section>
+        <h3>Offline map style <span className="muted">(used when there is no signal)</span></h3>
         <div className="stylegrid">
           {styles.map((k) => (
-            <button key={k} className={s.style === k ? 'on' : ''} disabled={k === 'google' && !google.settings.key}
-              onClick={() => set({ style: k })}>{k === 'google' ? 'Google (live traffic)' : STYLE_LABEL[k]}</button>
+            <button key={k} className={s.style === k ? 'on' : ''} onClick={() => set({ style: k })}>{STYLE_LABEL[k]}</button>
           ))}
         </div>
         <label className="check"><input type="checkbox" checked={s.autoNight} onChange={(e) => set({ autoNight: e.target.checked })} /><span>Switch to the night map with the app's night mode</span></label>
@@ -56,6 +74,7 @@ export function DailyMapTab() {
 
       <section>
         <h3>Layers</h3>
+        {gOk && <p className="muted">With the Google map: hill shading, satellite and 3D come from Google (map type above, Map ID); these switches apply offline.</p>}
         <Toggle on={s.hillshade} label="Hillshade (hills & valleys)" onChange={(v) => set({ hillshade: v })} />
         <Toggle on={s.contours} label="Contour lines (height every 10–100 m)" onChange={(v) => set({ contours: v })} />
         <Toggle on={s.terrain3d} label="3D terrain (tilt the map to see it)" onChange={(v) => set({ terrain3d: v })} />
@@ -65,7 +84,7 @@ export function DailyMapTab() {
         <Toggle on={s.satellite} label="Satellite imagery" onChange={(v) => set({ satellite: v })} />
         <Toggle on={s.rain} label="Live rain radar (updates every 10 min)" onChange={(v) => set({ rain: v })} />
         <Toggle on={s.wiki} label="Wikipedia places (tap for the article)" onChange={(v) => set({ wiki: v })} />
-        <Toggle on={s.photos} label="Street-level photos (Panoramax coverage)" onChange={(v) => set({ photos: v })} />
+        {!gOk && <Toggle on={s.photos} label="Street-level photos (Panoramax coverage)" onChange={(v) => set({ photos: v })} />}
         <Toggle on={s.voyage} label="Wikivoyage travel guides (green dots)" onChange={(v) => set({ voyage: v })} />
         <div className="muted">Weather on the map:</div>
         <div className="grid2">

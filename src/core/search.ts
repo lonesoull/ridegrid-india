@@ -1,5 +1,6 @@
 import { google } from './google';
 import { haversine, type LngLat } from './geo';
+import { gquota } from './gquota';
 
 /**
  * Place search. Google Places (New) when Google mode is on (its results may only be shown on Google's map,
@@ -40,6 +41,7 @@ async function photon(q: string, near: LngLat | null, signal?: AbortSignal): Pro
 }
 
 async function googleAutocomplete(q: string, near: LngLat | null, signal?: AbortSignal): Promise<Place[]> {
+  gquota.take('autocomplete');
   if (!session) newSession();
   const body: any = { input: q, includedRegionCodes: ['in'], languageCode: 'en', sessionToken: session };
   if (near) { body.origin = { latitude: near[1], longitude: near[0] }; body.locationBias = { circle: { center: { latitude: near[1], longitude: near[0] }, radius: 50000 } }; }
@@ -57,6 +59,7 @@ async function googleAutocomplete(q: string, near: LngLat | null, signal?: Abort
 /** Coordinates for a place (Google needs a details call; ends the billing session). */
 export async function resolvePlace(pl: Place): Promise<Place> {
   if (pl.p) return pl;
+  gquota.take('placeBasic');
   const id = pl.id.slice(2);
   const r = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}?sessionToken=${session}`, {
     headers: { 'X-Goog-Api-Key': google.settings.key, 'X-Goog-FieldMask': 'location,displayName,formattedAddress' },

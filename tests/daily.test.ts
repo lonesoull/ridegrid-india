@@ -127,3 +127,16 @@ describe('sky positions', () => {
     expect(Math.abs(s.dec)).toBeLessThan(1);
   });
 });
+
+import { gquota, QuotaError } from '../src/core/gquota';
+describe('Google usage caps', () => {
+  it('counts and stops at the cap', () => {
+    const store: Record<string, string> = {};
+    (globalThis as any).localStorage = { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; } };
+    gquota.setCap('photo', 2);
+    gquota.take('photo'); gquota.take('photo');
+    expect(gquota.can('photo')).toBe(false);
+    expect(() => gquota.take('photo')).toThrow(QuotaError);
+    expect(gquota.cap('routes2w')).toBe(2333); // a third of 7,000 per device
+  });
+});

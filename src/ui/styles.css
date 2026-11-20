@@ -376,3 +376,8 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .skybar button.on { outline: 2px solid #4dabf7; }
 .skytime { display: flex; align-items: center; gap: 6px; font-size: 12px; flex: 1; min-width: 140px; }
 .skypick { position: absolute; bottom: 20px; left: 12px; right: 12px; padding: 10px 12px; border-radius: 12px; }
+.usage { width: 100%; border-collapse: collapse; font-size: 12px; }
+.usage td, .usage th { padding: 4px; border-bottom: 1px solid rgba(127,127,127,.2); text-align: left; vertical-align: middle; }
+.usage input { width: 70px; padding: 2px 4px; min-height: 0; }
+.ubar { width: 60px; height: 6px; background: rgba(127,127,127,.25); border-radius: 3px; overflow: hidden; }
+.ubar i { display: block; height: 100%; }

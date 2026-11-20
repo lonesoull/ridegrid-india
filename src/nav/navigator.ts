@@ -29,7 +29,7 @@ export interface NavSettings {
   riderName: string; bikeReg: string; bikeModel: string; // printed on evidence photos, logbook and packs // expedition: witness signatures expected each riding day (1 or 2)
   evidenceMin: number; // expedition: remind to take an evidence photo/video this often while riding (0 = off)
 }
-export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30, fasterSec: 60, evidenceMin: 60, witnessesPerDay: 1, riderName: '', bikeReg: '', bikeModel: '' };
+export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30, fasterSec: 180, evidenceMin: 60, witnessesPerDay: 1, riderName: '', bikeReg: '', bikeModel: '' };
 export const SIM_SPEEDS = [1, 10, 50, 500] as const;
 
 const MAX_ACC_M = 50;          // ignore GPS fixes worse than this for "covered" distance
@@ -89,7 +89,11 @@ export class Navigator {
   subscribe(f: Listener) { this.listeners.add(f); return () => { this.listeners.delete(f); }; }
   private emit() { this.version++; this.listeners.forEach((f) => f()); }
 
-  async loadSettings() { this.settings = { ...DEFAULT_NAV, ...(await getSetting('nav', DEFAULT_NAV)) }; }
+  async loadSettings() {
+    this.settings = { ...DEFAULT_NAV, ...(await getSetting('nav', DEFAULT_NAV)) };
+    // Google two-wheeler checks are Enterprise-priced: move the old 1-minute default to 3 minutes once
+    if (this.settings.fasterSec === 60 && !(await getSetting('faster3min', false))) { await putSetting('faster3min', true); await this.setSettings({ fasterSec: 180 }); }
+  }
   async setSettings(p: Partial<NavSettings>) { this.settings = { ...this.settings, ...p }; await putSetting('nav', this.settings); this.emit(); }
 
   get stopCount() { return engine.stops.length; }

@@ -60,7 +60,7 @@ export function RideTab() {
         </label>
         {!isExpedition() && <label className="field">Look for a faster route with live traffic (needs Google mode)
           <select value={s.fasterSec} onChange={(e) => set({ fasterSec: +e.target.value })}>
-            <option value={60}>Every 1 minute</option><option value={120}>Every 2 minutes</option><option value={300}>Every 5 minutes</option><option value={0}>Off</option>
+            <option value={60}>Every 1 minute (uses Google's free amount fast)</option><option value={120}>Every 2 minutes</option><option value={180}>Every 3 minutes (recommended)</option><option value={300}>Every 5 minutes</option><option value={0}>Off</option>
           </select>
         </label>}
         {isExpedition() && <label className="field">Expedition gap: keep at least <b>{s.gapM} m</b> from every other planned road (crossings, sub-roads, flyovers, parallel roads)

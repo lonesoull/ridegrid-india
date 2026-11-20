@@ -1,6 +1,7 @@
 import polyline from '@mapbox/polyline';
 import type { LngLat } from '../core/geo';
 import { google } from '../core/google';
+import { gquota } from '../core/gquota';
 
 /**
  * Public transport routes (OsmAnd public-transport routing): bus, metro, suburban train, rail.
@@ -14,6 +15,7 @@ const tm = (s?: string) => (s ? new Date(s).toLocaleTimeString('en-IN', { hour: 
 const secs = (d?: string) => (d ? parseFloat(d) : 0);
 
 async function viaGoogle(from: LngLat, to: LngLat, when?: Date): Promise<TransitRoute[]> {
+  gquota.take('routesTransit');
   const ll = (p: LngLat) => ({ location: { latLng: { latitude: p[1], longitude: p[0] } } });
   const r = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
     method: 'POST',

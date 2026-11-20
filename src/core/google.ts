@@ -2,6 +2,7 @@ import polyline from '@mapbox/polyline';
 import { getSetting, putSetting } from './db';
 import { lineLength, type LngLat } from './geo';
 import type { Turn, TurnCode } from './turns';
+import { gquota } from './gquota';
 
 /**
  * Google Maps Platform integration ("Google mode").
@@ -14,7 +15,12 @@ export const DEFAULT_GOOGLE: GoogleSettings = { key: '', on: false, traffic: tru
 
 export const google = {
   settings: DEFAULT_GOOGLE,
-  async load() { this.settings = { ...DEFAULT_GOOGLE, ...(await getSetting('google', DEFAULT_GOOGLE)) }; return this.settings; },
+  async load() {
+    this.settings = { ...DEFAULT_GOOGLE, ...(await getSetting('google', DEFAULT_GOOGLE)) };
+    // Google Maps is the base map in both modes: switch it on once for riders who already added a key
+    if (this.settings.key && !(await getSetting('googleBaseOn', false))) { await putSetting('googleBaseOn', true); await this.save({ on: true }); }
+    return this.settings;
+  },
   async save(p: Partial<GoogleSettings>) {
     this.settings = { ...this.settings, ...p };
     await putSetting('google', this.settings);
@@ -88,6 +94,7 @@ const MANEUVER: Record<string, TurnCode | null> = {
 export interface GRoute { coords: LngLat[]; distM: number; durS: number; turns: Turn[] }
 
 export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?: AbortSignal, via: LngLat[] = []): Promise<GRoute> {
+  gquota.take('routes2w'); // two-wheeler routing is Google's Enterprise level (7,000 free / month, India)
   const ll = (p: LngLat) => ({ location: { latLng: { latitude: p[1], longitude: p[0] } } });
   const j = await gfetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
     method: 'POST', signal,

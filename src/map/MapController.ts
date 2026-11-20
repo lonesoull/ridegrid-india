@@ -1,7 +1,7 @@
 import { Map as MLMap, setWorkerUrl, type GeoJSONSource, type MapMouseEvent, type MapTouchEvent, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { GoogleUnderlay } from './googleJs';
+import { GoogleUnderlay, type GoogleBaseOpts } from './googleJs';
 import { nav } from '../nav/navigator';
 import { engine, type Leg, type LegDiff } from '../core/engine';
 import { bounds, type LngLat } from '../core/geo';
@@ -101,19 +101,24 @@ export class MapController {
   /** Google mode: transparent MapLibre over a Google Maps JavaScript map (flat, rotates with heading). */
   private underlay: GoogleUnderlay | null = null;
   private underlayKey = '';
-  setGoogleJsBase(opts: { night: boolean; traffic: boolean; mapId: string }) {
+  get hasGoogleMap() { return !!this.underlay; }
+  /** Called once for each new Google map (one billed map load). */
+  onGoogleMapLoad: (() => void) | null = null;
+  setGoogleJsBase(opts: GoogleBaseOpts, overlay?: { id: string; style: StyleSpecification }) {
     const key = `${opts.night}|${opts.mapId}`;
     if (!this.underlay || this.underlayKey !== key) {
       this.underlay?.destroy();
       this.underlay = new GoogleUnderlay(this.map, opts, (t) => this.onGoogleRendering(t), (asked, got, gz) => this.onTiltLimited(asked, got, gz));
       this.underlayKey = key;
-    } else this.underlay.setTraffic(opts.traffic);
+      this.onGoogleMapLoad?.();
+    } else { this.underlay.setTraffic(opts.traffic); this.underlay.setLayers(opts); }
     // match Google's camera exactly: 25° vertical field of view, tilt up to Google's 67.5°
     this.map.setVerticalFieldOfView(25);
     this.map.setMaxPitch(this.underlay.renderingType === 'RASTER' ? 0 : 67.5);
     this.map.getContainer().classList.add('over-google');
-    const style: StyleSpecification = { version: 8, glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', sources: {}, layers: [] };
-    this.applyBase('google-js', style, 'google');
+    // our layers on top of Google: Daily passes its overlays (contours, weather, trails…); expedition an empty style
+    const style: StyleSpecification = overlay?.style ?? { version: 8, glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', sources: {}, layers: [] };
+    this.applyBase(overlay ? `google-js:${overlay.id}` : 'google-js', style, 'google');
   }
   /** Basic (raster) Google map can't rotate or tilt — keep ours north-up and flat so they stay aligned. */
   private onGoogleRendering(t: 'VECTOR' | 'RASTER') {
