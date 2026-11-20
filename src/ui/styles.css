@@ -392,3 +392,9 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .gphotos figure { margin: 0; flex: none; } .gphotos img { height: 120px; border-radius: 8px; display: block; }
 .gphotos figcaption { font-size: 10px; opacity: .7; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wxicon { width: 26px; height: 26px; vertical-align: middle; margin-right: 4px; } .wxicon.sm { width: 22px; height: 22px; margin: 0; }
+.handoff { display: inline-flex; align-items: center; gap: 6px; }
+.autoswitch { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+.autoswitch input { display: none; }
+.autoswitch i { width: 30px; height: 18px; border-radius: 9px; background: rgba(127,127,127,.4); position: relative; transition: background .2s; }
+.autoswitch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .2s; }
+.autoswitch input:checked + i { background: #2f9e44; } .autoswitch input:checked + i::after { left: 14px; }

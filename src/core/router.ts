@@ -8,6 +8,8 @@ export const routing: {
   avoidExpressways: boolean; covers?: (p: LngLat) => boolean; isDaily?: () => boolean;
   /** Daily mode: route options (tolls, ferries, unpaved, shortest…) and roads the rider chose to avoid */
   dailyOpts?: () => DailyRouteOpts | null; avoidSegs?: () => number[] | undefined;
+  /** Daily + online + Google key/allowance + options Google can honour → Google plans the legs */
+  preferGoogle?: () => boolean;
 } = { avoidExpressways: true };
 export interface DailyRouteOpts { avoidToll: boolean; avoidFerry: boolean; avoidUnpaved: boolean; avoidMotorway: boolean; shortest: boolean }
 /** Keep off two-wheeler-banned expressways? (expedition trips only — daily trips may use them) */
@@ -283,11 +285,14 @@ export class RoutingQueue {
         if (!this.autoRoute || (w.provider.id !== 'device' && typeof navigator !== 'undefined' && navigator.onLine === false)) { w.state = 'idle'; this.refresh(); return; }
         const wait = Math.max(w.backoffMs, w.provider.minIntervalMs - (Date.now() - w.lastAt));
         if (wait > 0) { w.state = w.backoffMs ? 'backoff' : 'routing'; this.refresh(); await this.sleep(w, wait); continue; }
+        // Daily with Google: only the Google worker routes; otherwise the Google worker stays idle
+        const g = routing.preferGoogle?.() ?? false;
+        if ((w.provider.id === 'google') !== g) { w.state = 'idle'; this.refresh(); return; }
         // legs inside downloaded regions go to the on-device router, the rest to internet servers
         const local = w.provider.id === 'device';
         const covered = (l: { from: LngLat; to: LngLat }) => !!routing.covers && routing.covers(l.from) && routing.covers(l.to);
         const hasLocal = this.workers.some((x) => x.provider.id === 'device');
-        let run = this.eng.nextPendingRun(w.maxLegs, this.inflight, local ? covered : hasLocal ? (l) => !covered(l) : undefined);
+        let run = this.eng.nextPendingRun(w.maxLegs, this.inflight, local ? covered : hasLocal && !g ? (l) => !covered(l) : undefined);
         if (!run.length) { w.state = 'idle'; this.refresh(); return; }
         if (!local && run.some((l) => this.avoid.has(l.key))) run = [run.find((l) => this.avoid.has(l.key))!];
         const si = run.findIndex((l) => this.solo.has(l.key));

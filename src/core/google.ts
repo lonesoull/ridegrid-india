@@ -93,6 +93,20 @@ const MANEUVER: Record<string, TurnCode | null> = {
 
 export interface GRoute { coords: LngLat[]; distM: number; durS: number; turns: Turn[] }
 
+/** Google Routes steps → one leg's coordinates and turns. */
+export function stepsToLeg(steps: any[]): { coords: LngLat[]; turns: Turn[] } {
+  const coords: LngLat[] = [], turns: Turn[] = [];
+  for (const st of steps ?? []) {
+    const pts = polyline.decode(st.polyline?.encodedPolyline ?? '', 5).map(([lat, lng]) => [lng, lat] as LngLat);
+    let startIdx = coords.length;
+    pts.forEach((p, i) => { const last = coords[coords.length - 1]; if (last && last[0] === p[0] && last[1] === p[1]) { if (i === 0) startIdx = coords.length - 1; return; } coords.push(p); });
+    const ni = st.navigationInstruction;
+    const c = ni ? MANEUVER[ni.maneuver] : null;
+    if (c) turns.push({ i: Math.max(0, startIdx), c, txt: ni.instructions?.split('\n')[0] });
+  }
+  return { coords, turns };
+}
+
 export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?: AbortSignal, via: LngLat[] = []): Promise<GRoute> {
   gquota.take('routes2w'); // two-wheeler routing is Google's Enterprise level (7,000 free / month, India)
   const ll = (p: LngLat) => ({ location: { latLng: { latitude: p[1], longitude: p[0] } } });

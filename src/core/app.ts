@@ -1,5 +1,6 @@
 import { engine } from './engine';
 import { deviceProvider, device } from '../route/device';
+import { googleProvider, googleRouting } from '../daily/googleRouting';
 import { getSetting, putSetting } from './db';
 import { RoutingQueue, osrmProvider, valhallaProvider, OSRM_PUBLIC, OSRM_FOSSGIS, routing, type Provider } from './router';
 
@@ -15,7 +16,8 @@ export function makeProviders(s: RouterSettings): Provider[] {
   const primary = makeProvider(s);
   const local: Provider[] = deviceProvider ? [deviceProvider] : [];
   const isPublicOsrm = s.kind === 'osrm' && (!s.url || s.url.includes('project-osrm.org'));
-  return [...local, ...(isPublicOsrm && s.parallel !== false ? [primary, osrmProvider(OSRM_FOSSGIS)] : [primary])];
+  // Google (Daily only, when preferred) is a worker of its own; the queue keeps it idle otherwise
+  return [...local, ...(isPublicOsrm && s.parallel !== false ? [primary, osrmProvider(OSRM_FOSSGIS)] : [primary]), googleProvider];
 }
 
 export const app = {
@@ -25,6 +27,7 @@ export const app = {
     this.router = { ...DEFAULT_ROUTER, ...(await getSetting('router', DEFAULT_ROUTER)) };
     routing.avoidExpressways = this.router.avoidExpressways !== false;
     routing.isDaily = () => engine.trip?.kind === 'daily';
+    routing.preferGoogle = () => googleRouting.preferred();
     // older downloaded road maps left expressways out: daily trips then use them only when offline
     routing.covers = (p) => device.coversSync(p) && !(routing.isDaily!() && !device.withExpressways && typeof navigator !== 'undefined' && navigator.onLine);
     this.queue.setProviders(makeProviders(this.router));

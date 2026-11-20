@@ -10,7 +10,7 @@ import { act, toast, ui } from '../ui/state';
 import { dailyNav, type DailyNavSettings, type VoiceLang } from './dailyNav';
 import { VOICE_LABEL } from './voice';
 import { elevations } from './mapLayers';
-import { googleReady, googleElevations } from './gfeatures';
+import { googleReady, googleElevations, roadTimes } from './gfeatures';
 import { weatherAt, weatherText } from './weather';
 import { offlineMaps } from './offlineMap';
 import { say } from '../nav/audio';
@@ -127,7 +127,17 @@ async function onlineRoadAt(p: LngLat): Promise<{ name: string; coords: LngLat[]
 // ---------------------------------------------------------------- sort stops (nearest neighbour + 2-opt)
 async function sortStops(keepLast: boolean) {
   const S = engine.stops.slice();
-  const d = (a: Stop, b: Stop) => haversine([a.lng, a.lat], [b.lng, b.lat]);
+  // Google real two-wheeler road times with traffic when possible; straight-line distance otherwise
+  let d = (a: Stop, b: Stop) => haversine([a.lng, a.lat], [b.lng, b.lat]);
+  let by = 'straight-line distance';
+  if (googleReady() && S.length <= 25) {
+    try {
+      const m = await roadTimes(S.map((x) => [x.lng, x.lat] as LngLat));
+      const ix = new Map(S.map((x, i) => [x.id, i]));
+      d = (a, b) => m[ix.get(a.id)!][ix.get(b.id)!];
+      by = 'Google road time with traffic';
+    } catch { /* cap reached / offline → straight line */ }
+  }
   const first = S[0], last = keepLast ? S[S.length - 1] : null;
   const rest = S.slice(1, keepLast ? -1 : undefined);
   const order: Stop[] = [first];
@@ -150,7 +160,7 @@ async function sortStops(keepLast: boolean) {
   }
   const saved = S.reduce((m, s, i) => (i ? m + d(S[i - 1], s) : 0), 0) - order.reduce((m, s, i) => (i ? m + d(order[i - 1], s) : 0), 0);
   await engine.replaceAll(order);
-  toast(saved > 50 ? `Stops re-ordered — about ${fmtKm(saved)} shorter (straight-line). Undo restores the old order.` : 'Already in a good order');
+  toast(saved > (by.startsWith('Google') ? 30 : 50) ? `Stops re-ordered by ${by}${by.startsWith('Google') ? ` — about ${Math.round(saved / 60)} min quicker` : ` — about ${fmtKm(saved)} shorter`}. Undo restores the old order.` : 'Already in a good order');
 }
 
 // ---------------------------------------------------------------- follow a GPX track

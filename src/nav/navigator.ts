@@ -26,10 +26,11 @@ export interface NavSettings {
   gapM: number;        // expedition: minimum distance to keep from any other planned road
   fasterSec: number;   // daily: how often to look for a faster route with live traffic (0 = off)
   witnessesPerDay: number;
-  riderName: string; bikeReg: string; bikeModel: string; // printed on evidence photos, logbook and packs // expedition: witness signatures expected each riding day (1 or 2)
+  riderName: string; bikeReg: string; bikeModel: string; // printed on evidence photos, logbook and packs
+  handoffAuto: boolean; // Google Maps app hand-off: open the next 10 stops automatically (else a button) // expedition: witness signatures expected each riding day (1 or 2)
   evidenceMin: number; // expedition: remind to take an evidence photo/video this often while riding (0 = off)
 }
-export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30, fasterSec: 180, evidenceMin: 60, witnessesPerDay: 1, riderName: '', bikeReg: '', bikeModel: '' };
+export const DEFAULT_NAV: NavSettings = { offRouteM: 50, arrivalM: 30, beep: true, voice: true, logSim: false, simKmh: 50, reroute: true, breakMin: 5, gapM: 30, fasterSec: 180, evidenceMin: 60, witnessesPerDay: 1, riderName: '', bikeReg: '', bikeModel: '', handoffAuto: false };
 export const SIM_SPEEDS = [1, 10, 50, 500] as const;
 
 const MAX_ACC_M = 50;          // ignore GPS fixes worse than this for "covered" distance

@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 import { compliance } from '../nav/compliance';
 import { reminder, saveEvidence } from '../nav/evidence';
 import { DailyNavExtras } from '../daily/DailyNavExtras';
+import { handoff } from '../nav/handoff';
 import { myLocation } from '../nav/directions';
 
 const fmtDist = (m: number) => (m < 1000 ? `${m < 100 ? Math.round(m / 10) * 10 : Math.round(m / 50) * 50} m` : fmtKm(m));
@@ -128,7 +129,7 @@ export function NavPanel() {
           {!sim && <button className="logbtn" onClick={() => ui.set({ logStop: true })}>Log stop</button>}
           {!sim && isExpedition() && <EvidenceButton />}
           {team.settings && <SosHold />}
-          {st && <button title="Open this 10-leg stage in Google Maps (backup)" onClick={() => window.open(st.url, '_blank', 'noopener')}><Icon name="gmaps" size={18} /> G-Maps</button>}
+          {st && <HandoffButtons />}
           <button className="danger" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: 'append' }))}><Icon name="stop" /> Exit</button>
         </div>
         <div className="navfoot muted">
@@ -180,5 +181,20 @@ function EvidenceButton() {
         📷 {reminder.due ? 'Evidence due' : 'Evidence'}
       </button>
     </>
+  );
+}
+
+/** Google Maps app hand-off: next 10 stops / waypoints, with an Auto switch. */
+function HandoffButtons() {
+  const [, tick] = useState(0);
+  useEffect(() => { const f = () => tick((x) => x + 1); handoff.listeners.add(f); return () => { handoff.listeners.delete(f); }; }, []);
+  const auto = nav.settings.handoffAuto;
+  return (
+    <span className="handoff">
+      <button className={handoff.due ? 'primary pulse' : ''} title="Open the next 10 stops in your phone's Google Maps app" onClick={() => handoff.open()}>
+        <Icon name="gmaps" size={18} /> {handoff.due ? 'Next 10 in Google Maps' : handoff.sentTo >= 0 ? 'Google Maps (again)' : 'Google Maps · next 10'}
+      </button>
+      <label className="autoswitch" title="Open the next 10 automatically when you pass the last one"><input type="checkbox" checked={auto} onChange={(e) => void nav.setSettings({ handoffAuto: e.target.checked })} /><i />Auto</label>
+    </span>
   );
 }

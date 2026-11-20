@@ -43,7 +43,9 @@ export const dailyNav = {
   /** Cache namespace for Daily routes: changes when route options or avoided roads change. */
   tag() {
     const r = this.s.route;
-    return `d${+r.avoidToll}${+r.avoidFerry}${+r.avoidUnpaved}${+r.avoidMotorway}${+r.shortest}${this.s.avoided.length ? ':' + this.s.avoided.map((a) => a.id).sort().join(',') : ''}|`;
+    // Google-planned legs are cached apart: they may only be shown on the Google map
+    const g = routing.preferGoogle?.() ? 'g' : '';
+    return `d${g}${+r.avoidToll}${+r.avoidFerry}${+r.avoidUnpaved}${+r.avoidMotorway}${+r.shortest}${this.s.avoided.length ? ':' + this.s.avoided.map((a) => a.id).sort().join(',') : ''}|`;
   },
   async save(p: Partial<DailyNavSettings>) {
     const before = this.tag();

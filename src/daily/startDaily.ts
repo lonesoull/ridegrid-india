@@ -1,5 +1,6 @@
 import type { MapController } from '../map/MapController';
 import { nav } from '../nav/navigator';
+import { engine } from '../core/engine';
 import { mode } from '../core/mode';
 import { dailyNav } from './dailyNav';
 import { updateRoadInfo, roadInfo } from './roadAlerts';
@@ -31,6 +32,9 @@ export function startDaily(ctl: MapController) {
     if (t && t.dist < 60 && buzzed !== t.s) { buzzed = t.s; access.buzz(t.c.includes('left') ? [300] : [100, 80, 100]); }
   });
   installTrackLayer(ctl);
+  // Google-planned legs may only be shown on the Google map: when the signal goes / comes back, re-plan
+  const replan = () => { if (mode.current === 'daily' && engine.trip) setTimeout(() => void engine.loadTrip(engine.trip!.id), 1500); };
+  window.addEventListener('offline', replan); window.addEventListener('online', replan);
   // once a day: tell the rider when newer offline maps / search data are published
   setTimeout(() => void checkUpdates(), 15000);
   // parked-bike reminder

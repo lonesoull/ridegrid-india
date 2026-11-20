@@ -158,3 +158,20 @@ export function openInGoogleMaps(p: LngLat, placeId?: string, name?: string) {
   const u = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name ?? `${p[1]},${p[0]}`)}${placeId ? `&query_place_id=${placeId}` : `&query=${p[1]},${p[0]}`}`;
   window.open(placeId ? u : `https://www.google.com/maps/search/?api=1&query=${p[1]},${p[0]}`, '_blank', 'noopener');
 }
+
+/** Two-wheeler travel times between all stops (Google Route Matrix, live traffic); seconds[i][j]. */
+export async function roadTimes(pts: LngLat[]): Promise<number[][]> {
+  const n = pts.length;
+  if (n > 25) throw new Error('Too many stops for road-time sorting (max 25)');
+  gquota.take('matrix', n * n);
+  const wp = (p: LngLat) => ({ waypoint: { location: { latLng: { latitude: p[1], longitude: p[0] } } } });
+  const r = await fetch('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key(), 'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,condition' },
+    body: JSON.stringify({ origins: pts.map(wp), destinations: pts.map(wp), travelMode: 'TWO_WHEELER', routingPreference: 'TRAFFIC_AWARE' }) });
+  const j = await r.json();
+  if (!r.ok || !Array.isArray(j)) throw new Error(j?.error?.message ?? 'Google road times failed');
+  const m = Array.from({ length: n }, () => Array(n).fill(Infinity));
+  for (const e of j) if (e.condition === 'ROUTE_EXISTS') m[e.originIndex ?? 0][e.destinationIndex ?? 0] = parseFloat(e.duration ?? '0');
+  for (let i = 0; i < n; i++) m[i][i] = 0;
+  return m;
+}

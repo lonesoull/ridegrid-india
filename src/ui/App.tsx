@@ -30,6 +30,7 @@ import { LogStopDialog } from './LogStopDialog';
 import { StressRouteButton } from './StressRouteButton';
 import { NavPanel } from './NavPanel';
 import { nav } from '../nav/navigator';
+import { startHandoffWatch } from '../nav/handoff';
 import { ModePicker } from './ModePicker';
 import { dailyMap } from '../daily/mapLayers';
 import { dailyNav } from '../daily/dailyNav';
@@ -77,7 +78,7 @@ export function App() {
       startMapExtras(mapCtl!);
       startWeatherLayers(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
-      startTelemetry(); startTeamEvents(); startCompliance();
+      startTelemetry(); startTeamEvents(); startCompliance(); startHandoffWatch();
       void device.boot().then(() => app.queue.kick());
       // two-wheeler-banned roads on the map: expedition trips only
       let bannedFor: string | null = null;
