@@ -13,6 +13,7 @@ import type { LngLat } from '../core/geo';
 import { liveShare } from './liveShare';
 import { obd } from './obd';
 import { resetSetup } from './SetupWizard';
+import { drive } from './drive';
 import { extras, BTN_LABEL, type BtnAction, type Extras } from './extras';
 import type { CoordFormat } from './coords';
 
@@ -80,6 +81,7 @@ export function DailyControl() {
           </label>
         </div>
         {!team.settings && <p className="muted">Link your devices in the Team tab to send places and settings between them.</p>}
+        <DriveBackup />
       </section>
 
       <RideExtras />
@@ -236,5 +238,28 @@ function OsmEdit({ here }: { here: () => LngLat }) {
           })}>Edit</button></div>
       )) : <p className="muted">No mapped places within 150 m — use “Add a place”.</p>)}
     </div>
+  );
+}
+
+function DriveBackup() {
+  const [, tick] = useState(0);
+  const [cid, setCid] = useState(drive.clientId);
+  const r = () => tick((n) => n + 1);
+  return (
+    <details>
+      <summary>Google Drive backup {drive.last ? <span className="muted">· last {new Date(drive.last).toLocaleString('en-IN')}</span> : null}</summary>
+      {drive.blockedHere && <p className="warn">Google blocks its sign-in inside apps. Open RideGrid in Chrome (same link) for Drive backup; in the app use Export above.</p>}
+      <ol className="hint">
+        <li>console.cloud.google.com → your RideGrid project → APIs &amp; Services → enable “Google Drive API”.</li>
+        <li>Credentials → Create credentials → OAuth client ID → Web application. Authorised JavaScript origin: <code>{location.origin}</code>.</li>
+        <li>OAuth consent screen → add yourself as a test user. Copy the Client ID here.</li>
+      </ol>
+      <label className="field">OAuth Client ID<input value={cid} onChange={(e) => setCid(e.target.value)} onBlur={() => { drive.clientId = cid; }} /></label>
+      <div className="btns sm">
+        <button className="primary" onClick={() => act('Backing up to Google Drive…', async () => { drive.clientId = cid; await drive.backup(); toast('Backed up to Google Drive'); r(); })}>☁ Back up now</button>
+        <button onClick={() => act('Restoring…', async () => { drive.clientId = cid; if (!confirm('Replace places & settings here with the Drive backup?')) return; await drive.restore(); toast('Restored from Google Drive'); })}>Restore</button>
+      </div>
+      <label className="check"><input type="checkbox" checked={drive.auto} onChange={(e) => { drive.auto = e.target.checked; r(); }} /><span>Back up automatically once a day</span></label>
+    </details>
   );
 }
