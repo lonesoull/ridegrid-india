@@ -44,6 +44,7 @@ import { offlineSearch } from '../daily/offlineSearch';
 import { startDailyOverlays } from '../daily/overlays';
 import { startDaily } from '../daily/startDaily';
 import { startMapExtras } from '../daily/mapExtras';
+import { startWeatherLayers } from '../daily/weatherLayers';
 import { handleLaunch, listenAppLinks } from '../daily/launch';
 import { mode, MODE_LABEL } from '../core/mode';
 
@@ -71,6 +72,7 @@ export function App() {
       startDailyOverlays(mapCtl!);
       startDaily(mapCtl!);
       startMapExtras(mapCtl!);
+      startWeatherLayers(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance();
       void device.boot().then(() => app.queue.kick());

@@ -16,8 +16,17 @@ export interface DailyMapSettings {
   /** switch day/night map by sunrise & sunset */ autoDayNight: boolean;
   grid: boolean; regions: boolean; rings: boolean;
   orientation: 'heading' | 'north' | 'compass';
+  /** colour the land by altitude (OsmAnd terrain colour scheme) */ altitudeColours: boolean;
+  /** 3D terrain exaggeration */ exaggeration: number;
+  /** extra raster maps (OsmAnd online/raster maps plugin): overlay above / underlay below the vector map */
+  overlay: string | null; overlayOpacity: number; underlay: string | null;
+  customSources: { id: string; name: string; url: string; maxzoom: number }[];
+  /** weather map layers (OsmAnd weather plugin) */
+  wxTemp: boolean; wxWind: boolean; wxCloud: boolean; wxPressure: boolean;
+  voyage: boolean;
 }
-export const DEFAULT_DAILY_MAP: DailyMapSettings = { style: 'day', hillshade: false, contours: false, terrain3d: false, rain: false, satellite: false, wiki: false, photos: false, autoNight: true, autoDayNight: false, grid: false, regions: false, rings: false, orientation: 'heading' };
+export const DEFAULT_DAILY_MAP: DailyMapSettings = { style: 'day', hillshade: false, contours: false, terrain3d: false, rain: false, satellite: false, wiki: false, photos: false, autoNight: true, autoDayNight: false, grid: false, regions: false, rings: false, orientation: 'heading',
+  altitudeColours: false, exaggeration: 1.3, overlay: null, overlayOpacity: 0.6, underlay: null, customSources: [], wxTemp: false, wxWind: false, wxCloud: false, wxPressure: false, voyage: false };
 
 export const dailyMap = {
   settings: { ...DEFAULT_DAILY_MAP },
@@ -25,6 +34,17 @@ export const dailyMap = {
   async load() { this.settings = { ...DEFAULT_DAILY_MAP, ...(await getSetting('dailyMap', DEFAULT_DAILY_MAP)) }; },
   async save(p: Partial<DailyMapSettings>) { this.settings = { ...this.settings, ...p }; await putSetting('dailyMap', this.settings); this.listeners.forEach((f) => f()); },
 };
+
+/** Built-in raster maps (all free, attribution shown). */
+export const RASTER_PRESETS: { id: string; name: string; url: string; maxzoom: number; attribution: string }[] = [
+  { id: 'opentopo', name: 'OpenTopoMap (contours & hills)', url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png', maxzoom: 17, attribution: '© OpenTopoMap (CC-BY-SA)' },
+  { id: 'cyclosm', name: 'CyclOSM (tracks & surfaces)', url: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', maxzoom: 18, attribution: '© CyclOSM, OpenStreetMap' },
+  { id: 'osm', name: 'OpenStreetMap standard', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxzoom: 19, attribution: '© OpenStreetMap contributors' },
+  { id: 'esri-sat', name: 'Satellite (Esri)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxzoom: 19, attribution: 'Imagery © Esri' },
+  { id: 'esri-topo', name: 'Topographic (Esri)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxzoom: 19, attribution: '© Esri' },
+  { id: 'opnv', name: 'Public transport (ÖPNV)', url: 'https://tileserver.memomaps.de/tilegen/{z}/{x}/{y}.png', maxzoom: 17, attribution: '© memomaps.de, OpenStreetMap' },
+];
+export const rasterSource = (id: string | null) => (id ? RASTER_PRESETS.find((r) => r.id === id) ?? dailyMap.settings.customSources.find((r) => r.id === id) : undefined);
 
 const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 let dem: InstanceType<typeof mlcontour.DemSource> | null = null;
@@ -50,9 +70,22 @@ export async function buildDailyStyle(night: boolean): Promise<StyleSpecificatio
     style.sources.sat = { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' };
     extra.push({ id: 'd-sat', type: 'raster', source: 'sat', paint: { 'raster-opacity': 0.9 } });
   }
-  if (s.hillshade || s.contours || s.terrain3d || topo) {
+  const ov = rasterSource(s.overlay), un = rasterSource(s.underlay);
+  if (ov) {
+    style.sources.overlay = { type: 'raster', tiles: [`rgraster://${ov.url.replace(/^https:\/\//, '')}`], tileSize: 256, maxzoom: ov.maxzoom, attribution: (ov as any).attribution ?? ov.name };
+    extra.push({ id: 'd-overlay', type: 'raster', source: 'overlay', paint: { 'raster-opacity': s.overlayOpacity } });
+  }
+  if (un) {
+    style.sources.underlay = { type: 'raster', tiles: [`rgraster://${un.url.replace(/^https:\/\//, '')}`], tileSize: 256, maxzoom: un.maxzoom, attribution: (un as any).attribution ?? un.name };
+    // under everything; the vector map's land / background become see-through
+    for (const l of style.layers) if (l.type === 'background' || (l.type === 'fill' && /land|park|wood|grass|residential|landuse/.test(l.id))) (l as any).paint = { ...(l as any).paint, [l.type === 'background' ? 'background-opacity' : 'fill-opacity']: 0.15 };
+    style.layers.splice(1, 0, { id: 'd-underlay', type: 'raster', source: 'underlay' });
+  }
+  if (s.hillshade || s.contours || s.terrain3d || topo || s.altitudeColours) {
     const d = demSource();
     style.sources.dem = { type: 'raster-dem', tiles: [d.sharedDemProtocolUrl], encoding: 'terrarium', tileSize: 256, maxzoom: 13, attribution: 'Terrain: Mapzen / AWS Terrain Tiles' };
+    if (s.altitudeColours) extra.push({ id: 'd-altitude', type: 'color-relief' as any, source: 'dem', paint: { 'color-relief-opacity': 0.45,
+      'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#5aa36b', 200, '#9fcf7a', 500, '#e9e39a', 1000, '#d9b26a', 2000, '#b07a4a', 3500, '#9a8f8a', 5000, '#ffffff'] } } as any);
     if (s.hillshade || topo) extra.push({ id: 'd-hillshade', type: 'hillshade', source: 'dem', paint: { 'hillshade-exaggeration': 0.45, 'hillshade-shadow-color': night ? '#000' : '#5a4a3a' } });
     if (s.contours || topo) {
       style.sources.contours = {
@@ -64,7 +97,7 @@ export async function buildDailyStyle(night: boolean): Promise<StyleSpecificatio
         layout: { 'symbol-placement': 'line', 'text-field': ['concat', ['to-string', ['get', 'ele']], ' m'], 'text-size': 10, 'text-font': ['Noto Sans Regular'] },
         paint: { 'text-color': night ? '#e6d2b0' : '#7a4f1d', 'text-halo-color': night ? '#000' : '#fff', 'text-halo-width': 1 } });
     }
-    if (s.terrain3d) style.terrain = { source: 'dem', exaggeration: 1.3 };
+    if (s.terrain3d) style.terrain = { source: 'dem', exaggeration: s.exaggeration };
   }
   if (s.rain) {
     const host = await rainHost();
@@ -91,11 +124,11 @@ async function rainHost() {
 }
 
 /** Wikipedia articles near a point (OsmAnd's Wikipedia layer), as GeoJSON. */
-export async function wikiNear(map: MLMap): Promise<GeoJSON.FeatureCollection> {
+export async function wikiNear(map: MLMap, site = 'en.wikipedia.org'): Promise<GeoJSON.FeatureCollection> {
   const c = map.getCenter();
-  const url = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${c.lat.toFixed(5)}|${c.lng.toFixed(5)}&gsradius=10000&gslimit=100&format=json&origin=*`;
+  const url = `https://${site}/w/api.php?action=query&list=geosearch&gscoord=${c.lat.toFixed(5)}|${c.lng.toFixed(5)}&gsradius=10000&gslimit=100&format=json&origin=*`;
   const j = await fetch(url).then((r) => r.json()).catch(() => null);
-  return { type: 'FeatureCollection', features: (j?.query?.geosearch ?? []).map((g: any) => ({ type: 'Feature', properties: { title: g.title, id: g.pageid }, geometry: { type: 'Point', coordinates: [g.lon, g.lat] } })) };
+  return { type: 'FeatureCollection', features: (j?.query?.geosearch ?? []).map((g: any) => ({ type: 'Feature', properties: { title: g.title, id: g.pageid, site }, geometry: { type: 'Point', coordinates: [g.lon, g.lat] } })) };
 }
 
 /** Ground elevation (m) at points, from the terrain tiles (zoom 11, ~60 m pixels). */

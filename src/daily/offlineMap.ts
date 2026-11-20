@@ -20,6 +20,7 @@ export const ONLINE_STYLE = {
   fiord: 'https://tiles.openfreemap.org/styles/fiord',
 };
 const ASSET_CACHE = 'ridegrid-map-assets-v1';
+export const RASTER_CACHE = 'ridegrid-raster-tiles-v1';
 
 // ---------------------------------------------------------------- region files (OPFS)
 export interface MapZone { zone: string; bytes: number; generated?: string; at: number }
@@ -182,6 +183,18 @@ export function installMapProtocols() {
     const r = await fetch(tpl.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)));
     return { data: r.ok ? new Uint8Array(await r.arrayBuffer()) : new Uint8Array() };
   });
+  // extra raster maps: cache-first, so areas saved for offline (or viewed before) work without internet
+  maplibregl.addProtocol('rgraster', async (params: RequestParameters) => {
+    const url = params.url.replace(/^rgraster:\/\//, 'https://');
+    const cache = await caches.open(RASTER_CACHE);
+    const hit = await cache.match(url);
+    if (hit) return { data: await hit.arrayBuffer() };
+    if (!navigator.onLine) return { data: new ArrayBuffer(0) };
+    const r = await fetch(url);
+    if (!r.ok) return { data: new ArrayBuffer(0) };
+    void cache.put(url, r.clone());
+    return { data: await r.arrayBuffer() };
+  });
   // fonts and sprites: cache-first so labels and icons survive offline
   maplibregl.addProtocol('rgasset', async (params: RequestParameters) => {
     const url = params.url.replace(/^rgasset:\/\//, 'https://');
@@ -236,4 +249,25 @@ function restyle(style: StyleSpecification, s: DailyStyle) {
   } else if (s === 'topo') {
     set((id) => /wood|forest/.test(id), 'fill-color', '#b9d9a6');
   }
+}
+
+/** Save a raster map for an area (OsmAnd "Download tiles"): every tile of bbox at zooms zmin..zmax. */
+export async function saveRasterArea(urlTpl: string, bbox: [number, number, number, number], zmin: number, zmax: number, onProgress?: (done: number, total: number) => void) {
+  const tiles: [number, number, number][] = [];
+  const lon2x = (lon: number, z: number) => Math.floor(((lon + 180) / 360) * 2 ** z);
+  const lat2y = (lat: number, z: number) => Math.floor(((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * 2 ** z);
+  for (let z = zmin; z <= zmax; z++) for (let x = lon2x(bbox[0], z); x <= lon2x(bbox[2], z); x++) for (let y = lat2y(bbox[3], z); y <= lat2y(bbox[1], z); y++) tiles.push([z, x, y]);
+  if (tiles.length > 6000) throw new Error(`That is ${tiles.length} tiles — zoom in or lower the max zoom (limit 6000)`);
+  const cache = await caches.open(RASTER_CACHE);
+  let done = 0;
+  const work = async () => {
+    for (;;) {
+      const t = tiles.pop(); if (!t) return;
+      const u = urlTpl.replace('{z}', String(t[0])).replace('{x}', String(t[1])).replace('{y}', String(t[2]));
+      if (!(await cache.match(u))) { const r = await fetch(u).catch(() => null); if (r?.ok) await cache.put(u, r); await new Promise((res) => setTimeout(res, 120)); }
+      onProgress?.(++done, done + tiles.length);
+    }
+  };
+  await Promise.all([work(), work(), work()]);
+  return done;
 }

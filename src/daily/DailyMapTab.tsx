@@ -10,6 +10,8 @@ import { sunTimes } from './sun';
 import { offlineSearch, type PoiZone } from './offlineSearch';
 import { canNativeFetch } from './nativeFetch';
 import { ScreenConfig } from './ScreenConfig';
+import { RASTER_PRESETS, rasterSource } from './mapLayers';
+import { saveRasterArea } from './offlineMap';
 import { weatherAt, weatherText, type Weather } from './weather';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
@@ -54,15 +56,28 @@ export function DailyMapTab() {
         <Toggle on={s.hillshade} label="Hillshade (hills & valleys)" onChange={(v) => set({ hillshade: v })} />
         <Toggle on={s.contours} label="Contour lines (height every 10–100 m)" onChange={(v) => set({ contours: v })} />
         <Toggle on={s.terrain3d} label="3D terrain (tilt the map to see it)" onChange={(v) => set({ terrain3d: v })} />
+        {s.terrain3d && <label className="field">3D height ×{s.exaggeration.toFixed(1)}
+          <input type="range" min={1} max={3} step={0.1} value={s.exaggeration} onChange={(e) => set({ exaggeration: +e.target.value })} /></label>}
+        <Toggle on={s.altitudeColours} label="Colour the land by altitude" onChange={(v) => set({ altitudeColours: v })} />
         <Toggle on={s.satellite} label="Satellite imagery" onChange={(v) => set({ satellite: v })} />
         <Toggle on={s.rain} label="Live rain radar (updates every 10 min)" onChange={(v) => set({ rain: v })} />
         <Toggle on={s.wiki} label="Wikipedia places (tap for the article)" onChange={(v) => set({ wiki: v })} />
         <Toggle on={s.photos} label="Street-level photos (Panoramax coverage)" onChange={(v) => set({ photos: v })} />
+        <Toggle on={s.voyage} label="Wikivoyage travel guides (green dots)" onChange={(v) => set({ voyage: v })} />
+        <div className="muted">Weather on the map:</div>
+        <div className="grid2">
+          <Toggle on={s.wxTemp} label="🌡 Temperature" onChange={(v) => set({ wxTemp: v })} />
+          <Toggle on={s.wxWind} label="💨 Wind" onChange={(v) => set({ wxWind: v })} />
+          <Toggle on={s.wxCloud} label="☁ Clouds" onChange={(v) => set({ wxCloud: v })} />
+          <Toggle on={s.wxPressure} label="🧭 Pressure" onChange={(v) => set({ wxPressure: v })} />
+        </div>
         <Toggle on={s.grid} label="Coordinate grid" onChange={(v) => set({ grid: v })} />
         <Toggle on={s.regions} label="Outlines of downloaded regions" onChange={(v) => set({ regions: v })} />
         <Toggle on={s.rings} label="Distance rings around me" onChange={(v) => set({ rings: v })} />
         <p className="muted">Terrain, satellite, radar, Wikipedia and photos need internet the first time; what you've viewed stays in the browser cache.</p>
       </section>
+
+      <RasterMaps />
 
       <ScreenConfig />
 
@@ -155,6 +170,47 @@ function WeatherCard() {
         <div key={h.t}><span className="muted">{new Date(h.t).toLocaleTimeString('en-IN', { hour: 'numeric' })}</span><span>{weatherText(h.code).split(' ')[0]}</span><b>{Math.round(h.temp)}°</b><span className="muted">{h.rainPct}%</span></div>
       ))}</div>
       <p className="muted small-note">Forecast: Open-Meteo</p>
+    </section>
+  );
+}
+
+/** Extra raster maps (OsmAnd raster maps plugin): overlay / underlay, transparency, own sources, save an area. */
+function RasterMaps() {
+  const s = dailyMap.settings;
+  const [prog, setProg] = useState('');
+  const set = (p: Partial<DailyMapSettings>) => act(null, async () => { await dailyMap.save(p); if (mapCtl) await applyBase(mapCtl, true); });
+  const all = [...RASTER_PRESETS, ...s.customSources];
+  const pick = (v: string) => (v ? v : null);
+  return (
+    <section>
+      <h3>Extra maps</h3>
+      <label className="field">Overlay (on top)
+        <select value={s.overlay ?? ''} onChange={(e) => set({ overlay: pick(e.target.value) })}>
+          <option value="">None</option>{all.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select></label>
+      {s.overlay && <label className="field">Overlay transparency {Math.round((1 - s.overlayOpacity) * 100)}%
+        <input type="range" min={0.1} max={1} step={0.05} value={s.overlayOpacity} onChange={(e) => set({ overlayOpacity: +e.target.value })} /></label>}
+      <label className="field">Underlay (below the map)
+        <select value={s.underlay ?? ''} onChange={(e) => set({ underlay: pick(e.target.value) })}>
+          <option value="">None</option>{all.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select></label>
+      <div className="btns sm">
+        <button onClick={() => { const name = prompt('Map name'); if (!name) return; const url = prompt('Tile URL with {z} {x} {y} (https only)', 'https://'); if (!url || !/^https:\/\/.*\{z\}.*\{x\}.*\{y\}/.test(url)) { toast('Need an https URL containing {z}, {x} and {y}', 'error'); return; }
+          void set({ customSources: [...s.customSources, { id: 'c' + Date.now().toString(36), name, url, maxzoom: 19 }] }); }}>+ Add my own map source</button>
+        {s.customSources.length > 0 && <button onClick={() => set({ customSources: [], overlay: rasterSource(s.overlay) && s.overlay?.startsWith('c') ? null : s.overlay, underlay: s.underlay?.startsWith('c') ? null : s.underlay })}>Remove my sources</button>}
+      </div>
+      {s.customSources.map((c) => (
+        <div key={c.id} className="item"><span>{c.name}</span>
+          <button className="sm" disabled={!!prog} onClick={() => act(null, async () => {
+            const b = mapCtl!.map.getBounds(), z = Math.round(mapCtl!.map.getZoom());
+            const max = Math.min(c.maxzoom, +(prompt(`Save this view offline from zoom ${z} up to zoom…`, String(Math.min(c.maxzoom, z + 3))) ?? 0));
+            if (!max) return;
+            const n = await saveRasterArea(c.url, [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], z, max, (d, t) => setProg(`${d} / ${t} tiles`));
+            setProg(''); toast(`${n} tiles saved for offline use`);
+          }).catch(() => setProg(''))}>Save this view offline</button></div>
+      ))}
+      {prog && <p className="muted">{prog}</p>}
+      <p className="muted">Built-in maps load online and stay cached once viewed (their servers don't allow bulk downloads). Your own sources can be saved for an area.</p>
     </section>
   );
 }

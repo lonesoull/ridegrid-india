@@ -14,13 +14,15 @@ export function startDailyOverlays(ctl: MapController) {
     timer = window.setTimeout(async () => {
       const src = m.getSource('d-wiki') as GeoJSONSource | undefined;
       if (!src || m.getZoom() < 10) { src?.setData({ type: 'FeatureCollection', features: [] }); return; }
-      src.setData(await wikiNear(m));
+      const a = dailyMap.settings.wiki ? await wikiNear(m) : { type: 'FeatureCollection' as const, features: [] };
+      const b = dailyMap.settings.voyage ? await wikiNear(m, 'en.wikivoyage.org') : { type: 'FeatureCollection' as const, features: [] };
+      src.setData({ type: 'FeatureCollection', features: [...a.features, ...b.features] });
     }, 600);
   };
   ctl.styleHooks.add((m) => {
-    if (mode.current !== 'daily' || !dailyMap.settings.wiki || m.getSource('d-wiki')) return;
+    if (mode.current !== 'daily' || !(dailyMap.settings.wiki || dailyMap.settings.voyage) || m.getSource('d-wiki')) return;
     m.addSource('d-wiki', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    m.addLayer({ id: 'd-wiki-dot', type: 'circle', source: 'd-wiki', paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': '#333', 'circle-stroke-width': 2 } });
+    m.addLayer({ id: 'd-wiki-dot', type: 'circle', source: 'd-wiki', paint: { 'circle-radius': 6, 'circle-color': ['match', ['get', 'site'], 'en.wikivoyage.org', '#2b8a3e', '#fff'], 'circle-stroke-color': '#333', 'circle-stroke-width': 2 } });
     m.addLayer({ id: 'd-wiki-label', type: 'symbol', source: 'd-wiki', minzoom: 12,
       layout: { 'text-field': ['get', 'title'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': ['Noto Sans Regular'], 'text-optional': true },
       paint: { 'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.2 } });
@@ -59,17 +61,18 @@ export function startDailyOverlays(ctl: MapController) {
     const pop = new Popup({ maxWidth: '280px' }).setLngLat(x.p).setDOMContent(el).addTo(ctl.map);
   });
   const m = ctl.map;
-  m.on('moveend', () => { if (mode.current === 'daily' && dailyMap.settings.wiki) refresh(m); });
+  m.on('moveend', () => { if (mode.current === 'daily' && (dailyMap.settings.wiki || dailyMap.settings.voyage)) refresh(m); });
   m.on('click', 'd-wiki-dot', async (e) => {
     const f = e.features?.[0];
     if (!f) return;
-    const title = String(f.properties?.title);
-    const j = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`).then((r) => r.json()).catch(() => null);
+    const title = String(f.properties?.title), site = String(f.properties?.site ?? 'en.wikipedia.org');
+    const j = await fetch(`https://${site}/api/rest_v1/page/summary/${encodeURIComponent(title)}`).then((r) => r.json()).catch(() => null);
     const el = document.createElement('div');
     el.className = 'wikipop';
     const h = document.createElement('b'); h.textContent = title; el.append(h);
     if (j?.extract) { const p = document.createElement('p'); p.textContent = j.extract.slice(0, 400); el.append(p); }
-    const a = document.createElement('a'); a.href = `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open in Wikipedia'; el.append(a);
+    const a = document.createElement('a'); a.href = `https://${site}/wiki/${encodeURIComponent(title)}`; a.target = '_blank'; a.rel = 'noopener'; a.textContent = site.includes('voyage') ? 'Open travel guide (Wikivoyage)' : 'Open in Wikipedia'; el.append(a);
+    if (!site.includes('voyage')) { const v = document.createElement('a'); v.href = `https://en.wikivoyage.org/wiki/${encodeURIComponent(title)}`; v.target = '_blank'; v.rel = 'noopener'; v.textContent = ' · Travel guide'; el.append(v); }
     new Popup({ maxWidth: '280px' }).setLngLat(e.lngLat).setDOMContent(el).addTo(m);
   });
 }
