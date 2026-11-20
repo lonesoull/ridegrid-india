@@ -10,11 +10,13 @@ import { mapCtl } from '../ui/App';
 import { act, toast } from '../ui/state';
 import { nav } from '../nav/navigator';
 import type { LngLat } from '../core/geo';
+import { liveShare } from './liveShare';
+import { obd } from './obd';
 
 /** Daily "Settings & devices": bike profiles, Bluetooth sensors, sync/backup, accessibility, OpenStreetMap. */
 export function DailyControl() {
   const [, tick] = useState(0);
-  useEffect(() => { const f = () => tick((x) => x + 1); bikes.listeners.add(f); sensors.listeners.add(f); return () => { bikes.listeners.delete(f); sensors.listeners.delete(f); }; }, []);
+  useEffect(() => { const f = () => tick((x) => x + 1); bikes.listeners.add(f); sensors.listeners.add(f); obd.listeners.add(f); return () => { bikes.listeners.delete(f); sensors.listeners.delete(f); obd.listeners.delete(f); }; }, []);
   const b = bikes.active;
   const num = (k: keyof typeof b, label: string, unit: string) => (
     <label className="field">{label} ({unit})<input type="number" inputMode="decimal" defaultValue={b[k] as number} key={b.id + k} onBlur={(e) => void bikes.update({ [k]: +e.target.value } as any).then(resetBikeStatus)} /></label>
@@ -23,6 +25,8 @@ export function DailyControl() {
   const [notes, setNotes] = useState<{ id: number; text: string; url: string }[] | null>(null);
   return (
     <>
+      <LiveShare />
+
       <section>
         <h3>My bikes</h3>
         <select value={bikes.activeId} onChange={(e) => act('Switching bike…', () => bikes.switchTo(e.target.value)).then(() => tick((x) => x + 1))}>
@@ -54,6 +58,12 @@ export function DailyControl() {
         </div>
         {sensors.devices.map((d) => <div key={d.id} className="item"><span>{d.name} · {d.kind}{d.battery !== undefined ? ` · 🔋${d.battery}%` : ''}</span><button className="sm" onClick={() => void sensors.forget(d.id)}>Disconnect</button></div>)}
         <p className="muted">Standard Bluetooth LE sensors. Show their values with the sensor widgets (Map → Configure screen).</p>
+        <div className="btns">
+          {obd.on ? <button onClick={() => act(null, () => obd.disconnect())}>Disconnect OBD ({obd.name})</button>
+            : <button onClick={() => act('Connecting to the OBD adapter…', () => obd.connect())}>🔧 Connect OBD-II adapter (Bluetooth LE)</button>}
+        </div>
+        {obd.on && <p className="muted">{Object.entries(obd.values).map(([k, v]) => `${k} ${typeof v === 'number' ? Math.round(v * 10) / 10 : v}`).join(' · ') || 'Reading…'}</p>}
+        <p className="muted small-note">OBD needs a Bluetooth LE (BLE) ELM327 adapter in the bike's OBD port (BS6 bikes); classic-Bluetooth adapters can't be used by apps like this.</p>
       </section>
 
       <section>
@@ -89,5 +99,36 @@ export function DailyControl() {
         {notes && (notes.length ? notes.map((n) => <div key={n.id} className="item"><span>{n.text.slice(0, 100)}</span><a href={n.url} target="_blank" rel="noopener noreferrer">open</a></div>) : <p className="muted">No open notes nearby.</p>)}
       </section>
     </>
+  );
+}
+
+/** Live location link for family / friends (OsmAnd live monitoring). */
+function LiveShare() {
+  const [, tick] = useState(0);
+  useEffect(() => { const f = () => tick((x) => x + 1); liveShare.listeners.add(f); return () => { liveShare.listeners.delete(f); }; }, []);
+  const [hours, setHours] = useState(8);
+  const share = async (link: string) => {
+    const text = `Follow my ride live: ${link}`;
+    if ((navigator as any).share) { try { await (navigator as any).share({ title: 'My live location', text, url: link }); return; } catch { /* cancelled */ } }
+    try { await navigator.clipboard.writeText(link); toast('Link copied'); } catch { prompt('Copy this link', link); }
+  };
+  return (
+    <section>
+      <h3>Share live location</h3>
+      {liveShare.on ? <>
+        <p>🟢 <b>Sharing</b>{liveShare.until ? ` until ${new Date(liveShare.until).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''} · {liveShare.sent} updates sent</p>
+        <div className="btns">
+          <button className="primary" onClick={() => void share(liveShare.link())}>Send the link (WhatsApp, SMS…)</button>
+          <button className="danger" onClick={() => act(null, () => liveShare.stop())}>Stop sharing</button>
+        </div>
+      </> : <>
+        <p className="muted">Family or friends open a link and watch you ride on a map — no app or account needed. Updates every 10 s, end-to-end encrypted; the key is only in the link.</p>
+        <label className="field">Share for
+          <select value={hours} onChange={(e) => setHours(+e.target.value)}>
+            <option value={1}>1 hour</option><option value={4}>4 hours</option><option value={8}>8 hours</option><option value={24}>24 hours</option><option value={0}>Until I stop</option>
+          </select></label>
+        <button className="primary" onClick={() => act('Starting…', async () => { const name = (team.settings?.name || bikes.active.name || 'Rider'); const link = await liveShare.start(hours, name); await share(link); })}>Start sharing</button>
+      </>}
+    </section>
   );
 }

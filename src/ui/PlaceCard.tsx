@@ -5,6 +5,7 @@ import { fmtKm, haversine, type LngLat } from '../core/geo';
 import { isExpedition, T } from '../core/terms';
 import { nav } from '../nav/navigator';
 import { directionsToPoint, fixProblem, myFix, rideMinutes, type Directions } from '../nav/directions';
+import { TransitPanel } from '../daily/TransitPanel';
 import { buildRouteLine, matchToRoute, type RouteLine } from '../nav/routeLine';
 import { SegIndex } from '../nav/spatial';
 import { safeRoute, type SafeRoute } from '../nav/detour';
@@ -119,6 +120,7 @@ export function PlaceCard() {
           <div className="btns sm">
             <button onClick={() => act(null, async () => { const i = await addStop(); toast(`Added as ${T().one} #${i + 1}`); })}>＋ Add as {T().one}</button>
             <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${p[1]},${p[0]}&travelmode=two-wheeler`, '_blank', 'noopener')}><Icon name="gmaps" size={18} /> Google Maps</button>
+            <TransitPanel from={async () => nav.pos ?? (await myFix()).p} to={p} />
           </div>
         </>}
       </>}

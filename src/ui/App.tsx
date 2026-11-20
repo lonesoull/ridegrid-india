@@ -39,6 +39,7 @@ import { recorder } from '../daily/recorder';
 import { bikes } from '../daily/profiles';
 import { access } from '../daily/access';
 import { DailyLayer } from '../daily/DailyLayer';
+import { WatchView } from '../daily/WatchView';
 import { offlineMaps } from '../daily/offlineMap';
 import { offlineSearch } from '../daily/offlineSearch';
 import { offlineTerrain } from '../daily/offlineTerrain';
@@ -130,6 +131,9 @@ export function App() {
     if (ready && mapCtl) void applyBase(mapCtl);
   }, [night, ready]);
 
+  // live-location viewer link (#watch=CODE): only the map and the rider
+  const watch = /^#watch=([A-Z0-9]{25})$/.exec(location.hash)?.[1];
+  if (watch) return (<div className="app"><div ref={el} className="map" />{mapCtl && <WatchView code={watch} />}<WatchBoot /></div>);
   return (
     <div className="app">
       <div ref={el} className="map" />
@@ -259,3 +263,6 @@ function FpsMeterGate() {
   const on = useUI((s) => s.fps);
   return on ? <FpsMeter /> : null;
 }
+
+/** Re-render once the map exists (viewer page). */
+function WatchBoot() { const [, t] = useState(0); useEffect(() => { const i = setInterval(() => { if (mapCtl) { t(1); clearInterval(i); } }, 200); return () => clearInterval(i); }, []); return null; }

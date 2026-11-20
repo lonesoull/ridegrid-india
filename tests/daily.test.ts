@@ -101,3 +101,14 @@ describe('offline lanes', () => {
     expect(lanesForTurn('through|through', 'left')).toBeUndefined();
   });
 });
+
+import { parsePid } from '../src/daily/obd';
+describe('OBD replies', () => {
+  it('decodes common PIDs', () => {
+    expect(parsePid('41 0C 1A F8')).toEqual({ rpm: 1726 });
+    expect(parsePid('410D3C')).toEqual({});           // no spaces → unparsed safely
+    expect(parsePid('41 0D 3C')).toEqual({ kmh: 60 });
+    expect(parsePid('41 05 5A')).toEqual({ coolant: 50 });
+    expect(parsePid('NO DATA')).toEqual({});
+  });
+});

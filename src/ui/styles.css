@@ -363,3 +363,10 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .trackrow > input { margin-top: 12px; }
 .trackrow > .result { flex: 1; }
 .trackrow > .trackdetail { flex-basis: 100%; }
+.watchpanel { position: absolute; left: 12px; right: 12px; bottom: 16px; padding: 12px 14px; border-radius: 14px; z-index: 5; display: flex; flex-direction: column; gap: 4px; max-width: 480px; }
+.watchdot { font-size: 30px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+.transit { flex-basis: 100%; }
+.transit .btns button.on { outline: 2px solid var(--accent); }
+.tsteps { margin: 6px 0; padding-left: 18px; font-size: 13px; }
+.tsteps li { margin: 4px 0; }
+.tline { color: #fff; padding: 0 6px; border-radius: 4px; }

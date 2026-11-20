@@ -11,6 +11,7 @@ import { markers } from './markers';
 import { recorder } from './recorder';
 import { sensors } from './sensors';
 import { moonPhase } from './mapExtras';
+import { obd } from './obd';
 import { bikes, bikeStatus } from './profiles';
 
 let bike = { km: NaN, serviceLeft: NaN };
@@ -33,10 +34,10 @@ export function DailyWidgets() {
   const [, tick] = useState(0);
   useEffect(() => {
     const f = () => tick((x) => x + 1);
-    widgets.listeners.add(f); markers.listeners.add(f); recorder.listeners.add(f); sensors.listeners.add(f); bikes.listeners.add(f);
+    widgets.listeners.add(f); markers.listeners.add(f); recorder.listeners.add(f); sensors.listeners.add(f); bikes.listeners.add(f); obd.listeners.add(f);
     const i = setInterval(f, 5000);
     mapCtl?.map.on('moveend', f);
-    return () => { widgets.listeners.delete(f); markers.listeners.delete(f); recorder.listeners.delete(f); sensors.listeners.delete(f); bikes.listeners.delete(f); clearInterval(i); mapCtl?.map.off('moveend', f); };
+    return () => { widgets.listeners.delete(f); markers.listeners.delete(f); recorder.listeners.delete(f); sensors.listeners.delete(f); bikes.listeners.delete(f); obd.listeners.delete(f); clearInterval(i); mapCtl?.map.off('moveend', f); };
   }, []);
   const w = widgets.s;
   return (
@@ -113,6 +114,12 @@ function value(id: WidgetId): React.ReactNode | null {
     case 'temp': return sensors.tempC !== null ? big(`${sensors.tempC.toFixed(1)}°`, 'temp') : null;
     case 'fuelRange': return Number.isFinite(bike.km) ? big(`${Math.round(bike.km)} km`, bike.km < 40 ? '⛽ refuel soon!' : '⛽ range') : null;
     case 'service': return Number.isFinite(bike.serviceLeft) ? big(bike.serviceLeft > 0 ? `${Math.round(bike.serviceLeft)} km` : 'due', '🔧 service') : null;
+    case 'obdRpm': return obd.values.rpm !== undefined ? big(Math.round(obd.values.rpm), 'rpm') : null;
+    case 'obdCoolant': return obd.values.coolant !== undefined ? big(`${obd.values.coolant}°`, obd.values.coolant > 105 ? '🔥 engine hot!' : 'engine') : null;
+    case 'obdVolts': return obd.values.volts !== undefined ? big(obd.values.volts.toFixed(1), obd.values.volts < 12 ? '🔋 low volts' : 'volts') : null;
+    case 'obdThrottle': return obd.values.throttle !== undefined ? big(`${obd.values.throttle}%`, 'throttle') : null;
+    case 'obdLoad': return obd.values.load !== undefined ? big(`${obd.values.load}%`, 'load') : null;
+    case 'obdFuel': return obd.values.fuel !== undefined ? big(`${obd.values.fuel}%`, 'fuel') : null;
     case 'moon': { const mp = moonPhase(); return big(mp.name.split(' ')[0], `${mp.illum}% lit`); }
     case 'recording': return recorder.on ? big(`● ${dist(recorder.distM)}`, `REC ${hm((Date.now() - recorder.startedAt) / 1000)}`) : null;
   }
