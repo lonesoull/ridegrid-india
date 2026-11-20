@@ -9,12 +9,14 @@ import { say } from '../nav/audio';
 import { toast } from '../ui/state';
 import { access } from './access';
 import { announceAhead } from './aheadVoice';
+import { pushToCar } from './carBridge';
 
 /** Daily-mode runtime hooks: road alerts / speed sign while riding, auto-zoom by speed. */
 export function startDaily(ctl: MapController) {
   let last = '';
   let buzzed = -1;
   nav.subscribe(() => {
+    if (mode.current === 'daily') pushToCar();
     if (mode.current !== 'daily' || nav.mode === 'off' || !nav.pos) {
       if (roadInfo.ahead || roadInfo.limit || roadInfo.road) { roadInfo.ahead = null; roadInfo.limit = null; roadInfo.road = ''; roadInfo.emit(); }
       return;
