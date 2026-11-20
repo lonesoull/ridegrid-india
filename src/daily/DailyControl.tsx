@@ -3,7 +3,7 @@ import { bikes, resetBikeStatus } from './profiles';
 import { sensors } from './sensors';
 import { access } from './access';
 import { makeBundle, applyBundle } from './syncBackup';
-import { createOsmNote, osmNotesNear, osmEditUrl } from './osm';
+import { createOsmNote, osmNotesNear, osmEditUrl, osmAuth, osmAddPlace, osmPlacesNear, osmEditPlace, OSM_KINDS, type OsmPlace } from './osm';
 import { team } from '../team/team';
 import { download } from '../io/exporters';
 import { mapCtl } from '../ui/App';
@@ -107,6 +107,7 @@ export function DailyControl() {
           <button onClick={() => window.open(osmEditUrl(here()), '_blank', 'noopener')}>✏ Edit in OpenStreetMap</button>
         </div>
         {notes && (notes.length ? notes.map((n) => <div key={n.id} className="item"><span>{n.text.slice(0, 100)}</span><a href={n.url} target="_blank" rel="noopener noreferrer">open</a></div>) : <p className="muted">No open notes nearby.</p>)}
+        <OsmEdit here={here} />
       </section>
     </>
   );
@@ -187,5 +188,53 @@ function RideExtras() {
         })}
       </details>
     </section>
+  );
+}
+
+/** Edit OpenStreetMap from the app (OsmAnd "OSM editing"): log in once, then add or correct places where you are. */
+function OsmEdit({ here }: { here: () => LngLat }) {
+  const [, tick] = useState(0);
+  const [near, setNear] = useState<OsmPlace[] | null>(null);
+  const [cid, setCid] = useState(osmAuth.clientId);
+  const r = () => tick((n) => n + 1);
+  if (!osmAuth.loggedIn) return (
+    <details>
+      <summary>Edit the map from here (OpenStreetMap login)</summary>
+      <ol className="hint">
+        <li>Log in at openstreetmap.org → My account → OAuth 2 applications → Register new application.</li>
+        <li>Name: RideGrid. Redirect URI: <code>{osmAuth.redirectUri()}</code>. Untick “Confidential”. Tick: read preferences, modify the map, modify notes.</li>
+        <li>Copy the Client ID here and press Log in.</li>
+      </ol>
+      <label className="field">Client ID<input value={cid} onChange={(e) => setCid(e.target.value)} onBlur={() => { osmAuth.clientId = cid; }} /></label>
+      <button className="primary" onClick={() => act(null, async () => { osmAuth.clientId = cid; await osmAuth.login(); })}>Log in to OpenStreetMap</button>
+    </details>
+  );
+  return (
+    <div className="osmedit">
+      <p className="muted">Logged in as <b>{osmAuth.user}</b> · <button className="link" onClick={() => { osmAuth.logout(); r(); }}>log out</button></p>
+      <div className="btns sm">
+        <button onClick={() => act('Saving to OpenStreetMap…', async () => {
+          const kinds = Object.keys(OSM_KINDS);
+          const k = prompt(`What is here? Type a number:\n${kinds.map((x, i) => `${i + 1}. ${x}`).join('\n')}`); const kind = kinds[+(k ?? 0) - 1];
+          if (!kind) return;
+          const name = prompt('Name (blank if none)') ?? '';
+          const hours = prompt('Opening hours, e.g. 24/7 or Mo-Su 06:00-22:00 (blank if unknown)') ?? '';
+          const id = await osmAddPlace(here(), { ...OSM_KINDS[kind], name, opening_hours: hours });
+          toast(`Added to OpenStreetMap (node ${id}). Thanks!`);
+        })}>＋ Add a place where I am</button>
+        <button onClick={() => act('Loading…', async () => setNear(await osmPlacesNear(here())))}>✎ Correct a place near me</button>
+      </div>
+      {near && (near.length ? near.map((pl) => (
+        <div key={pl.id} className="item"><span>{pl.tags.name ?? pl.tags.amenity ?? pl.tags.shop}</span>
+          <button className="sm" onClick={() => act('Saving…', async () => {
+            const name = prompt('Name', pl.tags.name ?? ''); if (name === null) return;
+            const hours = prompt('Opening hours', pl.tags.opening_hours ?? ''); if (hours === null) return;
+            const phone = prompt('Phone', pl.tags.phone ?? ''); if (phone === null) return;
+            const closed = confirm('Has this place closed down for good? (OK = closed, Cancel = still open)');
+            await osmEditPlace(pl, closed ? (pl.tags.shop ? { 'disused:shop': pl.tags.shop, shop: '', opening_hours: '' } : { 'disused:amenity': pl.tags.amenity ?? '', amenity: '', opening_hours: '' }) : { name, opening_hours: hours, phone });
+            toast('Saved to OpenStreetMap. Thanks!'); setNear(null);
+          })}>Edit</button></div>
+      )) : <p className="muted">No mapped places within 150 m — use “Add a place”.</p>)}
+    </div>
   );
 }
