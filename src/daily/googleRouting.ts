@@ -17,7 +17,7 @@ export const googleRouting = {
     if (engine.trip?.kind !== 'daily' || !google.settings.key || !google.settings.on || !navigator.onLine || Date.now() < pauseUntil) return false;
     const d: DailyRouteOpts | null = routing.dailyOpts?.() ?? null;
     if (d && (d.avoidUnpaved || d.shortest)) return false;
-    if (routing.avoidSegs?.()?.length) return false;
+    if (routing.avoidSegs?.()?.length || routing.avoidBorders?.()) return false; // Google has no avoid-borders option
     return gquota.can('routes2w');
   },
   pause(ms: number) { pauseUntil = Date.now() + ms; },

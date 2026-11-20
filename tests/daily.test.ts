@@ -140,3 +140,11 @@ describe('Google usage caps', () => {
     expect(gquota.cap('routes2w')).toBe(2333); // a third of 7,000 per device
   });
 });
+
+import { formatCoords } from '../src/daily/coords';
+describe('coordinate formats', () => {
+  it('round-trips through the parser', () => {
+    const p: [number, number] = [77.5946, 12.9716];
+    for (const f of ['dms', 'utm', 'olc'] as const) { const back = parseCoords(formatCoords(p, f))!; expect(Math.abs(back[0] - p[0])).toBeLessThan(5e-4); expect(Math.abs(back[1] - p[1])).toBeLessThan(5e-4); }
+  });
+});

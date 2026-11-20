@@ -136,6 +136,7 @@ export async function buildDailyStyle(night: boolean, onGoogle = false): Promise
     extra.push({ id: 'd-photo-seq', type: 'line', source: 'panoramax', 'source-layer': 'sequences', paint: { 'line-color': '#0a8f5a', 'line-width': 2, 'line-opacity': 0.8 } });
   }
   if (onGoogle) style.layers.unshift(...extra); else style.layers.splice(at, 0, ...extra);
+  scaleText(style, textScale());
   return style;
 }
 
@@ -170,4 +171,20 @@ export async function elevations(pts: [number, number][]): Promise<number[]> {
     const px = Math.min(t.width - 1, Math.floor((x - tx) * t.width)), py = Math.min(t.height - 1, Math.floor((yr - ty) * t.height));
     return t.data[py * t.width + px];
   }));
+}
+
+/** Rider's label size for RideGrid's own map text (Google's labels follow the phone's settings). */
+function textScale(): number { try { return JSON.parse(localStorage.getItem('ridegrid.daily.textScale') ?? '1') || 1; } catch { return 1; } }
+function scaleSize(v: any, k: number): any {
+  if (typeof v === 'number') return +(v * k).toFixed(2);
+  if (Array.isArray(v) && (v[0] === 'interpolate' || v[0] === 'interpolate-hcl')) return v.map((x, i) => (i > 3 && i % 2 === 1 ? scaleSize(x, k) : x));
+  if (Array.isArray(v) && v[0] === 'step') return v.map((x, i) => (i === 2 || (i > 2 && i % 2 === 0) ? scaleSize(x, k) : x));
+  if (Array.isArray(v)) return ['*', k, v];
+  if (v && typeof v === 'object' && Array.isArray(v.stops)) return { ...v, stops: v.stops.map(([z, x]: [number, number]) => [z, x * k]) };
+  return v;
+}
+function scaleText(style: StyleSpecification, k: number) {
+  if (Math.abs(k - 1) < 0.01) return;
+  for (const l of style.layers as any[]) if (l.layout?.['text-size'] !== undefined) l.layout['text-size'] = scaleSize(l.layout['text-size'], k);
+    else if (l.type === 'symbol' && l.layout?.['text-field']) l.layout = { ...l.layout, 'text-size': 16 * k };
 }

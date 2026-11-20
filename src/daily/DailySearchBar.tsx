@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { recentDestinations } from './extras';
 import { searchPlaces, type Place } from '../core/search';
 import { fmtKm, type LngLat } from '../core/geo';
 import { nav } from '../nav/navigator';
@@ -145,6 +146,12 @@ export function DailySearchBar() {
               <button key={h.name + h.at} className="link result" onClick={() => pick({ id: `h:${h.at}`, name: h.name, address: h.address, p: h.p, provider: 'osm' })}>
                 🕘 <b>{h.name}</b><div className="muted">{h.address}</div>
               </button>
+            ))}
+          </>}
+          {!q && recentDestinations().length > 0 && <>
+            <div className="dsec">Recent destinations</div>
+            {recentDestinations().slice(0, 6).map((d) => (
+              <button key={d.at} className="link result" onClick={() => pick({ id: `rd:${d.at}`, name: d.name, address: `${d.p[1].toFixed(5)}, ${d.p[0].toFixed(5)}`, p: d.p, provider: 'osm' })}>🏁 <b>{d.name}</b></button>
             ))}
           </>}
           {!q && googleReady() && <>

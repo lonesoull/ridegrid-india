@@ -69,3 +69,37 @@ export function locationFromText(t: string): [number, number] | null {
   for (const re of pats) { const m = re.exec(s); if (m) return [+m[2], +m[1]]; }
   return parseCoords(s.trim());
 }
+
+// ---------------------------------------------------------------- output formats (OsmAnd coordinate formats)
+export type CoordFormat = 'dec' | 'dms' | 'utm' | 'olc';
+export function formatCoords(p: LngLat, f: CoordFormat): string {
+  const [lng, lat] = p;
+  if (f === 'dms') {
+    const d = (v: number, pos: string, neg: string) => { const a = Math.abs(v), D = Math.floor(a), M = Math.floor((a - D) * 60), S = ((a - D) * 60 - M) * 60; return `${D}°${String(M).padStart(2, '0')}'${S.toFixed(1).padStart(4, '0')}"${v >= 0 ? pos : neg}`; };
+    return `${d(lat, 'N', 'S')} ${d(lng, 'E', 'W')}`;
+  }
+  if (f === 'utm') return toUtm(lat, lng);
+  if (f === 'olc') return toPlusCode(lat, lng);
+  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
+function toUtm(lat: number, lon: number): string {
+  const a = 6378137, f = 1 / 298.257223563, k0 = 0.9996, e2 = f * (2 - f), ep2 = e2 / (1 - e2), R = Math.PI / 180;
+  const zone = Math.floor((lon + 180) / 6) + 1, lon0 = (zone - 1) * 6 - 180 + 3;
+  const phi = lat * R, lam = (lon - lon0) * R;
+  const N = a / Math.sqrt(1 - e2 * Math.sin(phi) ** 2), T = Math.tan(phi) ** 2, C = ep2 * Math.cos(phi) ** 2, A = Math.cos(phi) * lam;
+  const M = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * phi - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * phi) + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * phi) - (35 * e2 ** 3 / 3072) * Math.sin(6 * phi));
+  const E = k0 * N * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120) + 500000;
+  let Nn = k0 * (M + N * Math.tan(phi) * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720));
+  if (lat < 0) Nn += 10000000;
+  const band = 'CDEFGHJKLMNPQRSTUVWXX'[Math.floor((lat + 80) / 8)] ?? 'X';
+  return `${zone}${band} ${Math.round(E)} ${Math.round(Nn)}`;
+}
+function toPlusCode(lat: number, lng: number): string {
+  let la = Math.min(89.9999999, lat) + 90, lo = (((lng + 180) % 360) + 360) % 360;
+  let code = '', res = 20;
+  for (let i = 0; i < 5; i++) {
+    const a = Math.floor(la / res), b = Math.floor(lo / res);
+    la -= a * res; lo -= b * res; code += OLC[a] + OLC[b]; if (i < 4) res /= 20;
+  }
+  return `${code.slice(0, 8)}+${code.slice(8)}`;
+}

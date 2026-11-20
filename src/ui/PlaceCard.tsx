@@ -7,6 +7,7 @@ import { nav } from '../nav/navigator';
 import { directionsToPoint, fixProblem, myFix, rideMinutes, type Directions } from '../nav/directions';
 import { TransitPanel } from '../daily/TransitPanel';
 import { GooglePlaceExtras } from '../daily/GooglePlaceExtras';
+import { rememberDestination } from '../daily/extras';
 import { buildRouteLine, matchToRoute, type RouteLine } from '../nav/routeLine';
 import { SegIndex } from '../nav/spatial';
 import { safeRoute, type SafeRoute } from '../nav/detour';
@@ -69,6 +70,7 @@ export function PlaceCard() {
 
   const addStop = async (): Promise<number> => {
     await engine.addStop(p!, engine.stops.length, pl!.name);
+    if (!exp) rememberDestination(pl!.name, p!);
     return engine.stops.length - 1;
   };
 

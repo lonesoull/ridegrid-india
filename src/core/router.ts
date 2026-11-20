@@ -7,7 +7,7 @@ import { osrmTurn, valhallaTurn, type Turn } from './turns';
 export const routing: {
   avoidExpressways: boolean; covers?: (p: LngLat) => boolean; isDaily?: () => boolean;
   /** Daily mode: route options (tolls, ferries, unpaved, shortest…) and roads the rider chose to avoid */
-  dailyOpts?: () => DailyRouteOpts | null; avoidSegs?: () => number[] | undefined;
+  dailyOpts?: () => DailyRouteOpts | null; avoidSegs?: () => number[] | undefined; avoidBorders?: () => boolean;
   /** Daily + online + Google key/allowance + options Google can honour → Google plans the legs */
   preferGoogle?: () => boolean;
 } = { avoidExpressways: true };
@@ -136,7 +136,7 @@ export function valhallaProvider(base = 'https://valhalla1.openstreetmap.de', ex
 export function dailyCosting() {
   const d = routing.dailyOpts?.();
   if (!d) return null;
-  return { use_highways: d.avoidMotorway ? 0 : 0.5, use_tolls: d.avoidToll ? 0 : 0.5, use_ferry: d.avoidFerry ? 0 : 0.5, exclude_unpaved: d.avoidUnpaved, shortest: d.shortest };
+  return { use_highways: d.avoidMotorway ? 0 : 0.5, use_tolls: d.avoidToll ? 0 : 0.5, use_ferry: d.avoidFerry ? 0 : 0.5, exclude_unpaved: d.avoidUnpaved, shortest: d.shortest, ...(routing.avoidBorders?.() ? { country_crossing_penalty: 7200, country_crossing_cost: 1800 } : {}) };
 }
 
 /** Polygons around roads the Daily rider marked "avoid" near a leg (for Valhalla exclude_polygons). */

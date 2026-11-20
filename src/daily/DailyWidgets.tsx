@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { extras } from './extras';
+import { formatCoords } from './coords';
 import { nav } from '../nav/navigator';
 import { useNav } from '../ui/navHooks';
 import { mapCtl } from '../ui/App';
@@ -76,8 +78,8 @@ function value(id: WidgetId): React.ReactNode | null {
       const toSet = s.setAt ? (s.setAt.getTime() - Date.now()) / 1000 : -1;
       return toSet > 0 && toSet < 7200 ? big(s.set, `sunset in ${hm(toSet)}`) : big(`${s.rise}–${s.set}`, 'sun');
     }
-    case 'coords': return nav.pos ? big(`${nav.pos[1].toFixed(5)}, ${nav.pos[0].toFixed(5)}`, 'my position') : null;
-    case 'centre': { const c = mapCtl?.map.getCenter(); return c ? big(`${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`, 'map centre') : null; }
+    case 'coords': return nav.pos ? big(formatCoords(nav.pos, extras.s.coordFormat), 'my position') : null;
+    case 'centre': { const c = mapCtl?.map.getCenter(); return c ? big(formatCoords([c.lng, c.lat], extras.s.coordFormat), 'map centre') : null; }
     case 'tripDist': return riding ? big(dist(stats.distM), 'ridden') : null;
     case 'rideTime': return riding ? big(hm(rideS), 'ride time') : null;
     case 'movingTime': return riding ? big(hm(stats.movingS), 'moving') : null;

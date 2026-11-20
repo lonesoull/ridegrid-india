@@ -10,14 +10,16 @@ import { dailyMap } from './mapLayers';
 import { myLocation } from '../nav/directions';
 import type { LngLat } from '../core/geo';
 import { StarChart } from './StarChart';
+import { whereAmI } from './extras';
+import { handoff } from '../nav/handoff';
 
 /** OsmAnd "Quick actions": user-chosen one-tap buttons on the Daily map. */
-export type QA = 'fav' | 'marker' | 'park' | 'note' | 'photo' | 'audio' | 'rec' | 'voice' | 'night' | 'style' | 'hideplaces' | 'search' | 'nav' | 'zoomin' | 'zoomout' | 'mylocation' | 'lock' | 'stars';
+export type QA = 'fav' | 'marker' | 'park' | 'note' | 'photo' | 'audio' | 'rec' | 'voice' | 'night' | 'style' | 'hideplaces' | 'search' | 'nav' | 'zoomin' | 'zoomout' | 'mylocation' | 'lock' | 'stars' | 'whereami' | 'gnext';
 export const QA_LABEL: Record<QA, string> = { fav: '★ Add favourite here', marker: '⚑ Marker at map centre', park: 'P Park bike here', note: '✎ Text note here', photo: '📷 Photo note here',
   audio: '🎙 Voice note here', rec: '● Start / stop recording', voice: '🔊 Voice on / off', night: '🌙 Day / night', style: '🗺 Next map style', hideplaces: '👁 Show / hide my places',
-  search: '🔍 Search', nav: '🧭 Navigate / stop', zoomin: '＋ Zoom in', zoomout: '－ Zoom out', mylocation: '◎ My location', lock: '🔒 Lock screen (no accidental taps)', stars: '🌌 Star chart' };
+  search: '🔍 Search', nav: '🧭 Navigate / stop', zoomin: '＋ Zoom in', zoomout: '－ Zoom out', mylocation: '◎ My location', lock: '🔒 Lock screen (no accidental taps)', stars: '🌌 Star chart', whereami: '📍 Where am I? (spoken)', gnext: '🗺 Next 10 stops in Google Maps' };
 export const DEFAULT_QA: QA[] = ['lock', 'park', 'marker', 'rec'];
-const ICON: Record<QA, string> = { fav: '★', marker: '⚑', park: 'P', note: '✎', photo: '📷', audio: '🎙', rec: '●', voice: '🔊', night: '🌙', style: '🗺', hideplaces: '👁', search: '🔍', nav: '🧭', zoomin: '＋', zoomout: '－', mylocation: '◎', lock: '🔒', stars: '🌌' };
+const ICON: Record<QA, string> = { fav: '★', marker: '⚑', park: 'P', note: '✎', photo: '📷', audio: '🎙', rec: '●', voice: '🔊', night: '🌙', style: '🗺', hideplaces: '👁', search: '🔍', nav: '🧭', zoomin: '＋', zoomout: '－', mylocation: '◎', lock: '🔒', stars: '🌌', whereami: '📍', gnext: 'G' };
 
 export const quick = {
   list: [...DEFAULT_QA] as QA[], hidePlaces: false,
@@ -60,6 +62,8 @@ export function QuickActions() {
       case 'mylocation': void here().then((p) => mapCtl?.showMe(p)); return;
       case 'lock': setLocked(true); return;
       case 'stars': setStars(true); return;
+      case 'whereami': void whereAmI(); return;
+      case 'gnext': handoff.open(); return;
     }
   };
   async function toggleAudio() {

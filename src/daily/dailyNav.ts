@@ -45,7 +45,7 @@ export const dailyNav = {
     const r = this.s.route;
     // Google-planned legs are cached apart: they may only be shown on the Google map
     const g = routing.preferGoogle?.() ? 'g' : '';
-    return `d${g}${+r.avoidToll}${+r.avoidFerry}${+r.avoidUnpaved}${+r.avoidMotorway}${+r.shortest}${this.s.avoided.length ? ':' + this.s.avoided.map((a) => a.id).sort().join(',') : ''}|`;
+    return `d${g}${routing.avoidBorders?.() ? 'b' : ''}${+r.avoidToll}${+r.avoidFerry}${+r.avoidUnpaved}${+r.avoidMotorway}${+r.shortest}${this.s.avoided.length ? ':' + this.s.avoided.map((a) => a.id).sort().join(',') : ''}|`;
   },
   async save(p: Partial<DailyNavSettings>) {
     const before = this.tag();

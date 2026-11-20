@@ -11,6 +11,7 @@ import { toast } from '../ui/state';
 import { access } from './access';
 import { announceAhead } from './aheadVoice';
 import { pushToCar } from './carBridge';
+import { extras, startExtras, installRouteStyle } from './extras';
 
 /** Daily-mode runtime hooks: road alerts / speed sign while riding, auto-zoom by speed. */
 export function startDaily(ctl: MapController) {
@@ -32,6 +33,7 @@ export function startDaily(ctl: MapController) {
     if (t && t.dist < 60 && buzzed !== t.s) { buzzed = t.s; access.buzz(t.c.includes('left') ? [300] : [100, 80, 100]); }
   });
   installTrackLayer(ctl);
+  void extras.load().then(() => { startExtras(); installRouteStyle(ctl); });
   // Google-planned legs may only be shown on the Google map: when the signal goes / comes back, re-plan
   const replan = () => { if (mode.current === 'daily' && engine.trip) setTimeout(() => void engine.loadTrip(engine.trip!.id), 1500); };
   window.addEventListener('offline', replan); window.addEventListener('online', replan);
