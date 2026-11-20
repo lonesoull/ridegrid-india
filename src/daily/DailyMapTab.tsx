@@ -16,6 +16,7 @@ import { saveRasterArea } from './offlineMap';
 import { offlineTerrain, type DemZone } from './offlineTerrain';
 import { weatherAt, weatherText, type Weather } from './weather';
 import { googleReady, googleWeather, airQuality, pollen, type GWeather } from './gfeatures';
+import { wikiOffline } from './wikiOffline';
 
 const mb = (b?: number) => (b ? `${Math.round(b / 1048576).toLocaleString('en-IN')} MB` : '—');
 
@@ -65,6 +66,11 @@ export function DailyMapTab() {
           ))}
         </div>
         <label className="check"><input type="checkbox" checked={s.autoNight} onChange={(e) => set({ autoNight: e.target.checked })} /><span>Switch to the night map with the app's night mode</span></label>
+        <label className="field">Map detail
+          <select value={s.detail ?? 'normal'} onChange={(e) => set({ detail: e.target.value as 'low' | 'normal' | 'high' })}>
+            <option value="low">Less (cleaner, faster on old phones)</option><option value="normal">Normal</option><option value="high">More (small roads and places earlier)</option>
+          </select>
+        </label>
         <label className="check"><input type="checkbox" checked={s.autoDayNight} onChange={(e) => set({ autoDayNight: e.target.checked })} /><span>Night mode automatically after sunset, day mode after sunrise</span></label>
         <label className="field">Map orientation while riding
           <select value={s.orientation} onChange={(e) => set({ orientation: e.target.value as DailyMapSettings['orientation'] })}>
@@ -87,6 +93,7 @@ export function DailyMapTab() {
         <Toggle on={s.wiki} label="Wikipedia places (tap for the article)" onChange={(v) => set({ wiki: v })} />
         {!gOk && <Toggle on={s.photos} label="Street-level photos (Panoramax coverage)" onChange={(v) => set({ photos: v })} />}
         <Toggle on={s.voyage} label="Wikivoyage travel guides (green dots)" onChange={(v) => set({ voyage: v })} />
+        {(s.wiki || s.voyage) && <OfflineWiki />}
         <div className="muted">Weather on the map:</div>
         <div className="grid2">
           <Toggle on={s.wxTemp} label="🌡 Temperature" onChange={(v) => set({ wxTemp: v })} />
@@ -296,5 +303,33 @@ function OfflineTerrain() {
         );
       })}
     </section>
+  );
+}
+
+/** Save Wikipedia / Wikivoyage of the area on screen for use with no signal. */
+function OfflineWiki() {
+  const [, tick] = useState(0);
+  const [msg, setMsg] = useState('');
+  const save = (site: string) => act(null, async () => {
+    const m = mapCtl?.map; if (!m) return;
+    const b = m.getBounds();
+    const name = prompt('Name this area', 'My area'); if (!name) return;
+    const a = await wikiOffline.save(name, [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], site, setMsg);
+    setMsg(''); toast(`Saved ${a.n} ${site.includes('voyage') ? 'travel guides' : 'articles'} for offline`); tick((x) => x + 1);
+  });
+  return (
+    <details>
+      <summary>Offline Wikipedia {wikiOffline.areas().length ? <span className="muted">· {wikiOffline.areas().length} area(s)</span> : null}</summary>
+      <p className="hint">Saves the places and a short summary of each article for the area on screen (zoom to ~80 km across).</p>
+      <div className="btns sm">
+        <button onClick={() => save('en.wikipedia.org')}>⬇ Save Wikipedia here</button>
+        <button onClick={() => save('en.wikivoyage.org')}>⬇ Save Wikivoyage here</button>
+      </div>
+      {msg && <p className="muted">{msg}</p>}
+      {wikiOffline.areas().map((a) => (
+        <div key={a.id} className="item"><span>{a.name} · {a.site.includes('voyage') ? 'Wikivoyage' : 'Wikipedia'} · {a.n}</span>
+          <button className="sm" onClick={() => void wikiOffline.remove(a.id).then(() => tick((x) => x + 1))}>Delete</button></div>
+      ))}
+    </details>
   );
 }

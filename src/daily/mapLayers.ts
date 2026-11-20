@@ -31,10 +31,12 @@ export interface DailyMapSettings {
   gType: 'roadmap' | 'satellite' | 'hybrid' | 'terrain'; gTransit: boolean; gBike: boolean; labelLang: string;
   /** OpenStreetMap tracks, paths and unpaved roads drawn over Google (Google hides most of them) */
   trails: boolean;
+  /** offline map: fewer / more labels and small roads (OsmAnd "map details") */
+  detail: 'low' | 'normal' | 'high';
 }
 export const DEFAULT_DAILY_MAP: DailyMapSettings = { style: 'day', hillshade: false, contours: false, terrain3d: false, rain: false, satellite: false, wiki: false, photos: false, autoNight: true, autoDayNight: false, grid: false, regions: false, rings: false, orientation: 'heading',
   altitudeColours: false, exaggeration: 1.3, overlay: null, overlayOpacity: 0.6, underlay: null, customSources: [], wxTemp: false, wxWind: false, wxCloud: false, wxPressure: false, voyage: false,
-  gType: 'roadmap', gTransit: false, gBike: false, labelLang: 'en', trails: true };
+  gType: 'roadmap', gTransit: false, gBike: false, labelLang: 'en', trails: true, detail: 'normal' };
 
 export const dailyMap = {
   settings: { ...DEFAULT_DAILY_MAP },
@@ -136,6 +138,7 @@ export async function buildDailyStyle(night: boolean, onGoogle = false): Promise
     extra.push({ id: 'd-photo-seq', type: 'line', source: 'panoramax', 'source-layer': 'sequences', paint: { 'line-color': '#0a8f5a', 'line-width': 2, 'line-opacity': 0.8 } });
   }
   if (onGoogle) style.layers.unshift(...extra); else style.layers.splice(at, 0, ...extra);
+  if (!onGoogle) applyDetail(style, s.detail ?? 'normal');
   scaleText(style, textScale());
   return style;
 }
@@ -153,7 +156,14 @@ async function rainHost() {
 export async function wikiNear(map: MLMap, site = 'en.wikipedia.org'): Promise<GeoJSON.FeatureCollection> {
   const c = map.getCenter();
   const url = `https://${site}/w/api.php?action=query&list=geosearch&gscoord=${c.lat.toFixed(5)}|${c.lng.toFixed(5)}&gsradius=10000&gslimit=100&format=json&origin=*`;
-  const j = await fetch(url).then((r) => r.json()).catch(() => null);
+  const j = navigator.onLine ? await fetch(url).then((r) => r.json()).catch(() => null) : null;
+  if (!j?.query?.geosearch) {
+    // no signal: articles saved for this area
+    const { wikiOffline } = await import('./wikiOffline');
+    const b = map.getBounds();
+    const off = await wikiOffline.near([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], site);
+    return { type: 'FeatureCollection', features: off.map((g) => ({ type: 'Feature', properties: { title: g.t, id: g.id, site }, geometry: { type: 'Point', coordinates: [g.x, g.y] } })) };
+  }
   return { type: 'FeatureCollection', features: (j?.query?.geosearch ?? []).map((g: any) => ({ type: 'Feature', properties: { title: g.title, id: g.pageid, site }, geometry: { type: 'Point', coordinates: [g.lon, g.lat] } })) };
 }
 
@@ -187,4 +197,16 @@ function scaleText(style: StyleSpecification, k: number) {
   if (Math.abs(k - 1) < 0.01) return;
   for (const l of style.layers as any[]) if (l.layout?.['text-size'] !== undefined) l.layout['text-size'] = scaleSize(l.layout['text-size'], k);
     else if (l.type === 'symbol' && l.layout?.['text-field']) l.layout = { ...l.layout, 'text-size': 16 * k };
+}
+
+/** Offline-map detail: "low" shows labels and minor roads one zoom later, "high" one zoom earlier. Our own layers (d-*, rg-*) are left alone. */
+function applyDetail(style: StyleSpecification, d: 'low' | 'normal' | 'high') {
+  if (d === 'normal') return;
+  const k = d === 'low' ? 1 : -1;
+  for (const l of style.layers as any[]) {
+    if (/^(d-|rg-)/.test(l.id) || l.type === 'background') continue;
+    const minor = l.type === 'symbol' || /minor|service|path|track|poi|building/.test(l.id);
+    if (!minor) continue;
+    l.minzoom = Math.max(0, (l.minzoom ?? 0) + k);
+  }
 }

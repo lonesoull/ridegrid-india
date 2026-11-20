@@ -66,7 +66,8 @@ export function startDailyOverlays(ctl: MapController) {
     const f = e.features?.[0];
     if (!f) return;
     const title = String(f.properties?.title), site = String(f.properties?.site ?? 'en.wikipedia.org');
-    const j = await fetch(`https://${site}/api/rest_v1/page/summary/${encodeURIComponent(title)}`).then((r) => r.json()).catch(() => null);
+    const j = (navigator.onLine ? await fetch(`https://${site}/api/rest_v1/page/summary/${encodeURIComponent(title)}`).then((r) => r.json()).catch(() => null) : null)
+      ?? { extract: await import('./wikiOffline').then((w) => w.wikiOffline.summary(title, site)) };
     const el = document.createElement('div');
     el.className = 'wikipop';
     const h = document.createElement('b'); h.textContent = title; el.append(h);
