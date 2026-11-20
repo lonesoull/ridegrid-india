@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { extras } from './extras';
+import { extras, deviceStatus } from './extras';
 import { formatCoords } from './coords';
 import { nav } from '../nav/navigator';
 import { useNav } from '../ui/navHooks';
@@ -69,6 +69,7 @@ function value(id: WidgetId): React.ReactNode | null {
     case 'climb': return riding && stats.climbM > 0 ? big(`↗${Math.round(stats.climbM)}`, 'm climb') : null;
     case 'bearing': return riding ? big(`${Math.round(nav.heading)}°`, DIRS[Math.round(nav.heading / 45) % 8]) : null;
     case 'battery': return battery ? big(`${Math.round(battery.level * 100)}%`, battery.charging ? '⚡ battery' : 'battery') : null;
+    case 'sats': { const d = deviceStatus.v; return d && d.satsSeen > 0 ? big(`${d.satsUsed}/${d.satsSeen}`, `satellites · ${d.cn0 >= 30 ? 'strong' : d.cn0 >= 20 ? 'ok' : 'weak'} signal`) : nav.accuracy ? big(`±${Math.round(nav.accuracy)}`, 'm GPS (satellite count in the Android app)') : null; }
     case 'gps': return riding && nav.accuracy ? big(`±${Math.round(nav.accuracy)}`, 'm GPS') : null;
     case 'clock': return big(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), 'time');
     case 'sun': {

@@ -45,6 +45,8 @@ export const extras = {
   },
 };
 const daily = () => mode.current === 'daily';
+/** Latest phone readings (Android app): light, GPS satellites used / seen, signal strength. */
+export const deviceStatus = { v: null as null | { lux: number; satsUsed: number; satsSeen: number; cn0: number } };
 let lastSaid = '';
 
 /** "Where am I?" — road / area, and the distance to the next stop. */
@@ -100,9 +102,10 @@ export function startExtras() {
   // ---- night map from the light sensor (tunnels, heavy cloud)
   let darkSince = 0, brightSince = 0;
   setInterval(async () => {
-    if (!daily() || !extras.s.lightNight) return;
+    if (!daily()) return;
     const st = await rideDevice.status();
-    if (!st || st.lux < 0) return;
+    if (st) deviceStatus.v = st;
+    if (!st || !extras.s.lightNight || st.lux < 0) return;
     const night = ui.get().night;
     if (st.lux < 10) { brightSince = 0; darkSince ||= Date.now(); if (!night && Date.now() - darkSince > 5000) ui.set({ night: true }); }
     else if (st.lux > 60) { darkSince = 0; brightSince ||= Date.now(); if (night && Date.now() - brightSince > 10000) ui.set({ night: false }); }

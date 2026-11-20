@@ -6,7 +6,7 @@ import { haversine, type LngLat } from '../core/geo';
 export type WidgetId =
   | 'speed' | 'avgSpeed' | 'maxSpeed' | 'altitude' | 'climb' | 'bearing' | 'battery' | 'gps' | 'clock' | 'sun'
   | 'coords' | 'centre' | 'tripDist' | 'rideTime' | 'movingTime' | 'toDest' | 'eta' | 'toNext' | 'nextTurn' | 'secondTurn'
-  | 'ruler' | 'elevProfile' | 'markers' | 'recording' | 'heartRate' | 'cadence' | 'sensorSpeed' | 'temp' | 'fuelRange' | 'service' | 'moon' | 'obdRpm' | 'obdCoolant' | 'obdVolts' | 'obdThrottle' | 'obdLoad' | 'obdFuel';
+  | 'ruler' | 'elevProfile' | 'markers' | 'recording' | 'heartRate' | 'cadence' | 'sensorSpeed' | 'temp' | 'fuelRange' | 'service' | 'moon' | 'obdRpm' | 'obdCoolant' | 'obdVolts' | 'obdThrottle' | 'obdLoad' | 'obdFuel' | 'sats';
 export const WIDGET_LABEL: Record<WidgetId, string> = {
   speed: 'Current speed', avgSpeed: 'Average speed', maxSpeed: 'Max speed', altitude: 'Altitude', climb: 'Climb so far', bearing: 'Heading',
   battery: 'Battery', gps: 'GPS accuracy', clock: 'Clock', sun: 'Sunrise / sunset', coords: 'My coordinates', centre: 'Map-centre coordinates',
@@ -14,7 +14,7 @@ export const WIDGET_LABEL: Record<WidgetId, string> = {
   toNext: 'Distance to next stop', nextTurn: 'Next turn', secondTurn: 'Second next turn', ruler: 'Scale ruler', elevProfile: 'Altitude graph',
   markers: 'Distance to markers', recording: 'Track recording',
   heartRate: 'Heart rate (Bluetooth)', cadence: 'Cadence (Bluetooth)', sensorSpeed: 'Wheel speed (Bluetooth)', temp: 'Temperature (Bluetooth)', fuelRange: 'Fuel range', service: 'Next service', moon: 'Moon phase',
-  obdRpm: 'Engine RPM (OBD)', obdCoolant: 'Engine temperature (OBD)', obdVolts: 'Battery voltage (OBD)', obdThrottle: 'Throttle (OBD)', obdLoad: 'Engine load (OBD)', obdFuel: 'Fuel level (OBD)',
+  obdRpm: 'Engine RPM (OBD)', obdCoolant: 'Engine temperature (OBD)', obdVolts: 'Battery voltage (OBD)', obdThrottle: 'Throttle (OBD)', obdLoad: 'Engine load (OBD)', obdFuel: 'Fuel level (OBD)', sats: 'GPS satellites',
 };
 export interface WidgetSettings { left: WidgetId[]; right: WidgetId[] }
 export const DEFAULT_WIDGETS: WidgetSettings = { left: ['clock', 'battery'], right: ['tripDist', 'avgSpeed', 'altitude'] };

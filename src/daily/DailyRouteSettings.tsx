@@ -14,6 +14,7 @@ import { googleReady, googleElevations, roadTimes } from './gfeatures';
 import { weatherAt, weatherText } from './weather';
 import { offlineMaps } from './offlineMap';
 import { say } from '../nav/audio';
+import { AlongRoute } from './AlongRoute';
 
 /** Daily ride "Navigation settings": route options, avoided roads, voice, alerts, sort stops, follow track, route details. */
 export function DailyRouteSettings() {
@@ -24,6 +25,7 @@ export function DailyRouteSettings() {
   const r = s.route;
   return (
     <>
+      <AlongRoute />
       <section>
         <h3>Route options</h3>
         {([['avoidMotorway', 'Avoid expressways / motorways'], ['avoidToll', 'Avoid toll roads'], ['avoidFerry', 'Avoid ferries'], ['avoidUnpaved', 'Avoid unpaved roads'], ['shortest', 'Shortest route (instead of fastest)']] as const).map(([k, l]) => (

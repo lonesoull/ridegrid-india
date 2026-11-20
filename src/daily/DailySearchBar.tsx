@@ -30,7 +30,7 @@ const toPlace = (h: Hit, i: number): Place => {
 };
 
 /** Route ahead as sampled points (for "along my route"). */
-function routePoints(): { pts: LngLat[]; fromS?: number } | null {
+export function routePoints(): { pts: LngLat[]; fromS?: number } | null {
   if (!engine.legs.size) return null;
   const L = buildRouteLine();
   if (L.n < 2) return null;

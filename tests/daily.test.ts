@@ -156,3 +156,21 @@ describe('PIN codes and rider filters', () => {
   it('finds a PIN code', () => { expect(ix.search('560001')[0].cat).toBe('postcode'); expect(PoiIndex.categoryFor('pin code')).toBe('postcode'); });
   it('reads flags', () => { expect(hitFlags(ix.search('', { cat: 'fuel' })[0])).toEqual(['cng', 'ev_type2']); });
 });
+
+import { parseFavourites, favouritesGpx, coordsFromGoogleUrl } from '../src/daily/favImport';
+describe('favourites import', () => {
+  it('reads OsmAnd GPX with groups and round-trips', () => {
+    const g = favouritesGpx([{ name: 'Home & co', p: [77.5, 12.9], group: 'Mine' }]);
+    expect(parseFavourites(g).items).toEqual([{ name: 'Home & co', p: [77.5, 12.9], group: 'Mine', note: undefined }]);
+  });
+  it('reads Google Takeout Saved Places JSON', () => {
+    const j = JSON.stringify({ type: 'FeatureCollection', features: [{ geometry: { type: 'Point', coordinates: [0, 0] }, properties: { google_maps_url: 'http://maps.google.com/?q=12.97,77.59', location: { name: 'Cubbon Park', address: 'Bengaluru' } } }] });
+    const r = parseFavourites(j);
+    expect(r.items[0]).toMatchObject({ name: 'Cubbon Park', p: [77.59, 12.97] });
+  });
+  it('reads a Takeout CSV list', () => {
+    const r = parseFavourites('Title,Note,URL\n"Dhaba, NH44",,https://www.google.com/maps/place/X/@28.61,77.2,17z\nNo coords,,https://www.google.com/maps/place/Y/data=!4m2\n', 'Want to go.csv');
+    expect(r.items).toHaveLength(1); expect(r.items[0]).toMatchObject({ name: 'Dhaba, NH44', p: [77.2, 28.61], group: 'Want to go' }); expect(r.skipped).toBe(1);
+    expect(coordsFromGoogleUrl('x!3d10.5!4d76.2')).toEqual([76.2, 10.5]);
+  });
+});

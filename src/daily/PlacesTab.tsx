@@ -6,6 +6,8 @@ import { myLocation } from '../nav/directions';
 import { mapCtl } from '../ui/App';
 import { act, toast, ui } from '../ui/state';
 import { haversine, fmtKm, type LngLat } from '../core/geo';
+import { parseFavourites, favouritesGpx } from './favImport';
+import { download } from '../io/exporters';
 
 /** Daily "My places" (OsmAnd favourites, markers, parking, notes). */
 export function PlacesTab() {
@@ -23,6 +25,29 @@ export function PlacesTab() {
           <button className="primary" onClick={() => act(null, async () => { const n = prompt('Name (e.g. Home, Office, Mechanic)'); if (!n) return; const g = prompt('Group', groups[0] ?? 'Favourites') || 'Favourites'; await markers.put({ kind: 'fav', name: n, p: await here(), group: g }); toast('Saved'); })}>★ Save my location</button>
           <button onClick={() => act(null, async () => { const n = prompt('Name'); if (!n) return; const c = mapCtl!.map.getCenter(); await markers.put({ kind: 'fav', name: n, p: [c.lng, c.lat], group: groups[0] ?? 'Favourites' }); })}>★ Save map centre</button>
         </div>
+        <div className="btns sm">
+          <label className="button">⬆ Import (OsmAnd GPX, Google Takeout, KML)
+            <input type="file" hidden accept=".gpx,.json,.geojson,.csv,.kml,application/gpx+xml,application/json,text/csv" multiple onChange={(e) => {
+              const files = [...(e.target.files ?? [])]; e.target.value = '';
+              void act('Importing…', async () => {
+                let n = 0, skip = 0;
+                const have = new Set(markers.favourites().map((f) => `${f.name}|${f.p[0].toFixed(5)}|${f.p[1].toFixed(5)}`));
+                for (const file of files) {
+                  const r = parseFavourites(await file.text(), file.name);
+                  skip += r.skipped;
+                  for (const it of r.items) {
+                    const k = `${it.name}|${it.p[0].toFixed(5)}|${it.p[1].toFixed(5)}`;
+                    if (have.has(k)) continue; have.add(k);
+                    await markers.put({ kind: 'fav', name: it.name, p: it.p, group: it.group, note: it.note }); n++;
+                  }
+                }
+                toast(`Imported ${n} place${n === 1 ? '' : 's'}${skip ? ` · ${skip} had no location (Google lists often don't — open those in Google Maps)` : ''}`);
+              });
+            }} />
+          </label>
+          {markers.favourites().length > 0 && <button onClick={() => download('ridegrid-favourites.gpx', new Blob([favouritesGpx(markers.favourites())], { type: 'application/gpx+xml' }))}>⬇ Export GPX (opens in OsmAnd)</button>}
+        </div>
+        <p className="hint">Google: takeout.google.com → “Maps (your places)” gives “Saved Places.json”; “Saved” gives one .csv per list.</p>
         {!markers.favourites().length && <p className="muted">No favourites yet. Places you save show on the map with a star; tap one for directions.</p>}
         {groups.map((g) => (
           <details key={g} open>
