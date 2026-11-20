@@ -9,14 +9,15 @@ import { recorder } from './recorder';
 import { dailyMap } from './mapLayers';
 import { myLocation } from '../nav/directions';
 import type { LngLat } from '../core/geo';
+import { StarChart } from './StarChart';
 
 /** OsmAnd "Quick actions": user-chosen one-tap buttons on the Daily map. */
-export type QA = 'fav' | 'marker' | 'park' | 'note' | 'photo' | 'audio' | 'rec' | 'voice' | 'night' | 'style' | 'hideplaces' | 'search' | 'nav' | 'zoomin' | 'zoomout' | 'mylocation' | 'lock';
+export type QA = 'fav' | 'marker' | 'park' | 'note' | 'photo' | 'audio' | 'rec' | 'voice' | 'night' | 'style' | 'hideplaces' | 'search' | 'nav' | 'zoomin' | 'zoomout' | 'mylocation' | 'lock' | 'stars';
 export const QA_LABEL: Record<QA, string> = { fav: '★ Add favourite here', marker: '⚑ Marker at map centre', park: 'P Park bike here', note: '✎ Text note here', photo: '📷 Photo note here',
   audio: '🎙 Voice note here', rec: '● Start / stop recording', voice: '🔊 Voice on / off', night: '🌙 Day / night', style: '🗺 Next map style', hideplaces: '👁 Show / hide my places',
-  search: '🔍 Search', nav: '🧭 Navigate / stop', zoomin: '＋ Zoom in', zoomout: '－ Zoom out', mylocation: '◎ My location', lock: '🔒 Lock screen (no accidental taps)' };
+  search: '🔍 Search', nav: '🧭 Navigate / stop', zoomin: '＋ Zoom in', zoomout: '－ Zoom out', mylocation: '◎ My location', lock: '🔒 Lock screen (no accidental taps)', stars: '🌌 Star chart' };
 export const DEFAULT_QA: QA[] = ['lock', 'park', 'marker', 'rec'];
-const ICON: Record<QA, string> = { fav: '★', marker: '⚑', park: 'P', note: '✎', photo: '📷', audio: '🎙', rec: '●', voice: '🔊', night: '🌙', style: '🗺', hideplaces: '👁', search: '🔍', nav: '🧭', zoomin: '＋', zoomout: '－', mylocation: '◎', lock: '🔒' };
+const ICON: Record<QA, string> = { fav: '★', marker: '⚑', park: 'P', note: '✎', photo: '📷', audio: '🎙', rec: '●', voice: '🔊', night: '🌙', style: '🗺', hideplaces: '👁', search: '🔍', nav: '🧭', zoomin: '＋', zoomout: '－', mylocation: '◎', lock: '🔒', stars: '🌌' };
 
 export const quick = {
   list: [...DEFAULT_QA] as QA[], hidePlaces: false,
@@ -36,6 +37,7 @@ export function QuickActions() {
   const photo = useRef<HTMLInputElement>(null);
   const [recording, setRecording] = useState<MediaRecorder | null>(null);
   const [locked, setLocked] = useState(false);
+  const [stars, setStars] = useState(false);
   useEffect(() => { void quick.load().then(() => tick((x) => x + 1)); const f = () => tick((x) => x + 1); quick.listeners.add(f); recorder.listeners.add(f); return () => { quick.listeners.delete(f); recorder.listeners.delete(f); }; }, []);
 
   const run = (a: QA) => {
@@ -57,6 +59,7 @@ export function QuickActions() {
       case 'zoomout': mapCtl?.map.zoomOut(); return;
       case 'mylocation': void here().then((p) => mapCtl?.showMe(p)); return;
       case 'lock': setLocked(true); return;
+      case 'stars': setStars(true); return;
     }
   };
   async function toggleAudio() {
@@ -70,6 +73,7 @@ export function QuickActions() {
     } catch { toast('Microphone not available', 'error'); }
   }
   if (locked) return <ScreenLock onUnlock={() => setLocked(false)} />;
+  if (stars) return <StarChart onClose={() => setStars(false)} />;
   if (!quick.list.length) return null;
   return (
     <div className="quickacts">

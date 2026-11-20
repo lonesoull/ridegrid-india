@@ -10,6 +10,7 @@ import { sunTimes } from './sun';
 import { offlineSearch, type PoiZone } from './offlineSearch';
 import { canNativeFetch } from './nativeFetch';
 import { ScreenConfig } from './ScreenConfig';
+import { StarChart } from './StarChart';
 import { RASTER_PRESETS, rasterSource } from './mapLayers';
 import { saveRasterArea } from './offlineMap';
 import { offlineTerrain, type DemZone } from './offlineTerrain';
@@ -33,6 +34,7 @@ export function DailyMapTab() {
   const styles: (DailyStyle | 'google')[] = ['day', 'touring', 'topo', 'offroad', 'desert', 'bright', 'light', 'night', 'fiord', 'google'];
   const c = mapCtl?.map.getCenter();
   const sun = c ? sunTimes(new Date(), c.lat, c.lng) : null;
+  const [stars, setStars] = useState(false);
   return (
     <div className="stack">
       <section>
@@ -84,8 +86,10 @@ export function DailyMapTab() {
 
       <WeatherCard />
 
+      {stars && <StarChart onClose={() => setStars(false)} />}
       {sun && <section>
-        <h3>Sun</h3>
+        <h3>Sun & sky</h3>
+        <button onClick={() => setStars(true)}>🌌 Open the star chart</button>
         <p>🌅 Sunrise <b>{sun.rise}</b> · 🌇 Sunset <b>{sun.set}</b> · daylight {sun.day}</p>
       </section>}
 

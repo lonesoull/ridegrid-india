@@ -112,3 +112,18 @@ describe('OBD replies', () => {
     expect(parsePid('NO DATA')).toEqual({});
   });
 });
+
+import { altAz, lst, bodies } from '../src/daily/sky';
+describe('sky positions', () => {
+  it('Polaris stands at about the observer latitude, due north', () => {
+    const d = new Date('2026-11-20T18:00:00Z');
+    const p = altAz(37.95, 89.26, 13.0, lst(d, 80.27)); // Polaris from Chennai
+    expect(Math.abs(p.alt - 13)).toBeLessThan(1.2);
+    expect(p.az < 3 || p.az > 357).toBe(true);
+  });
+  it('the Sun is near RA 0° at the March equinox and Dec ≈ 0', () => {
+    const s = bodies(new Date('2026-03-20T15:00:00Z')).find((b) => b.name === 'Sun')!;
+    expect(Math.min(s.ra, 360 - s.ra)).toBeLessThan(1.5);
+    expect(Math.abs(s.dec)).toBeLessThan(1);
+  });
+});
