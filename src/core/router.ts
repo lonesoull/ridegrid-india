@@ -288,6 +288,8 @@ export class RoutingQueue {
         // Daily with Google: only the Google worker routes; otherwise the Google worker stays idle
         const g = routing.preferGoogle?.() ?? false;
         if ((w.provider.id === 'google') !== g) { w.state = 'idle'; this.refresh(); return; }
+        // GraphHopper / OpenRouteService: Daily trips only, never Expedition
+        if (w.provider.id.startsWith('daily:') && !routing.isDaily?.()) { w.state = 'idle'; this.refresh(); return; }
         // legs inside downloaded regions go to the on-device router, the rest to internet servers
         const local = w.provider.id === 'device';
         const covered = (l: { from: LngLat; to: LngLat }) => !!routing.covers && routing.covers(l.from) && routing.covers(l.to);

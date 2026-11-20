@@ -1,4 +1,5 @@
 import { engine } from './engine';
+import { extraEngines } from '../daily/engines';
 import { deviceProvider, device } from '../route/device';
 import { googleProvider, googleRouting } from '../daily/googleRouting';
 import { getSetting, putSetting } from './db';
@@ -17,7 +18,7 @@ export function makeProviders(s: RouterSettings): Provider[] {
   const local: Provider[] = deviceProvider ? [deviceProvider] : [];
   const isPublicOsrm = s.kind === 'osrm' && (!s.url || s.url.includes('project-osrm.org'));
   // Google (Daily only, when preferred) is a worker of its own; the queue keeps it idle otherwise
-  return [...local, ...(isPublicOsrm && s.parallel !== false ? [primary, osrmProvider(OSRM_FOSSGIS)] : [primary]), googleProvider];
+  return [...local, ...(isPublicOsrm && s.parallel !== false ? [primary, osrmProvider(OSRM_FOSSGIS)] : [primary]), googleProvider, ...extraEngines()];
 }
 
 export const app = {

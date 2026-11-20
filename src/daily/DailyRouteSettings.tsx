@@ -15,6 +15,8 @@ import { weatherAt, weatherText } from './weather';
 import { offlineMaps } from './offlineMap';
 import { say } from '../nav/audio';
 import { AlongRoute } from './AlongRoute';
+import { engines } from './engines';
+import { app } from '../core/app';
 
 /** Daily ride "Navigation settings": route options, avoided roads, voice, alerts, sort stops, follow track, route details. */
 export function DailyRouteSettings() {
@@ -32,6 +34,7 @@ export function DailyRouteSettings() {
           <label key={k} className="check"><input type="checkbox" checked={r[k]} onChange={(e) => save({ route: { ...r, [k]: e.target.checked } })} /><span>{l}</span></label>
         ))}
         <p className="muted">Changing an option re-plans every leg of this ride. Unpaved avoidance uses the Valhalla engine; offline routing knows expressways but not tolls or surfaces.</p>
+        <ExtraEngines />
       </section>
 
       <AvoidRoads />
@@ -231,5 +234,21 @@ function Profile({ ele }: { ele: number[] }) {
       <polygon points={`0,${H} ${pts} ${W},${H}`} fill="rgba(10,132,255,.18)" />
       <polyline points={pts} fill="none" stroke="#0a84ff" strokeWidth="2" />
     </svg>
+  );
+}
+
+/** GraphHopper / OpenRouteService as extra Daily routers (free keys; Google stays first when it is on). */
+export function ExtraEngines() {
+  const [gh, setGh] = useState(engines.ghKey);
+  const [ors, setOrs] = useState(engines.orsKey);
+  const save = () => act(null, async () => { engines.ghKey = gh; engines.orsKey = ors; await app.setRouter(app.router); toast('Routing engines updated'); });
+  return (
+    <details>
+      <summary>More routing engines (GraphHopper, OpenRouteService)</summary>
+      <p className="hint">Used only for Daily rides, alongside the others, when Google routing is off, paused or out of free routes. Free keys: graphhopper.com (500 requests a day) and openrouteservice.org (2,000 a day). Keys stay on this device.</p>
+      <label className="field">GraphHopper key<input value={gh} onChange={(e) => setGh(e.target.value)} autoComplete="off" /></label>
+      <label className="field">OpenRouteService key<input value={ors} onChange={(e) => setOrs(e.target.value)} autoComplete="off" /></label>
+      <button onClick={save}>Save</button>
+    </details>
   );
 }
