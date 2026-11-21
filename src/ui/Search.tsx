@@ -65,6 +65,13 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
   const [along, setAlong] = useState(false);
   const [filters, setFilters] = useState<string[]>([]);
   const [, setTick] = useState(0);
+  // place card closed (and the search isn't open): clear the search text and its pins, like Google Maps
+  const place = useUI((s) => s.place);
+  const hadPlace = useRef(false);
+  useEffect(() => {
+    if (place) { hadPlace.current = true; return; }
+    if (hadPlace.current && !open) { hadPlace.current = false; setQ(''); setCat(null); setFilters([]); ui.set({ places: [] }); mapCtl?.setPlaces([], null); }
+  }, [place]);
   // with Google on: Google's own search box (exactly Google Maps' suggestions); our box only without Google / signal
   const [googleBox, setGoogleBox] = useState(googleReady());
   useEffect(() => { const f = () => setGoogleBox(googleReady() && !searchStatus.googleError); window.addEventListener('online', f); window.addEventListener('offline', f); return () => { window.removeEventListener('online', f); window.removeEventListener('offline', f); }; }, []);

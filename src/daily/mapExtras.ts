@@ -10,7 +10,6 @@ import { device } from '../route/device';
 import { offlineSearch } from './offlineSearch';
 import { sunTimes } from './sun';
 import type { LngLat } from '../core/geo';
-import { google } from '../core/google';
 import { placeAt, googleReady, addressAt } from './gfeatures';
 import { placeName } from '../nav/logbook';
 
@@ -59,11 +58,8 @@ export function startMapExtras(ctl: MapController) {
       if (a && ui.get().place?.id === id) ui.set({ place: { ...pin, address: `${a} · ${pin.address}` } });
     }).catch(() => {});
   });
-  ctl.tapHooks.push((e) => {
-    if (!daily() || !google.tilesOk || ui.get().tapMode !== 'off') return false;
-    googlePlace(e.lngLat.lng, e.lngLat.lat);
-    return true;
-  });
+  // tapping empty map: Google's own place icons open their card natively; anywhere else just closes what's open
+  void googlePlace;
 
   // ---- automatic day / night by sunrise & sunset
   const dayNight = () => {

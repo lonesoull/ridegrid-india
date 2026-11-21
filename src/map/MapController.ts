@@ -589,6 +589,8 @@ export class MapController {
         return;
       }
       if (ui.get().selectedId) { ui.set({ selectedId: null }); return; }
+      // like Google Maps: a tap on the map closes an open place card (and its route choices / pins)
+      if (ui.get().place) { ui.set({ place: null, places: [] }); this.setApproach(null); this.setAlternatives(null); this.setPlaces([], null); return; }
       const mode = ui.get().tapMode;
       if (mode === 'off') return;
       const raw: LngLat = [e.lngLat.lng, e.lngLat.lat];

@@ -113,6 +113,7 @@ export function App() {
       // know the mode first, then build the map style once (it used to be built three times at start)
       await bootTrips();
       document.documentElement.dataset.mode = mode.current;
+      ui.set({ tapMode: mode.current === 'daily' ? 'off' : 'append' });
       await applyBase(mapCtl!);
       baseNight = ui.get().night;
       window.addEventListener('online', () => mapCtl && applyBase(mapCtl));
@@ -239,6 +240,8 @@ function Controls() {
   useNav();
   const [more, setMore] = useState(false);
   const [layers, setLayers] = useState(false);
+  // the extra buttons fold away again when the map is touched
+  useEffect(() => { const m = mapCtl?.map; if (!m || !more) return; const f = () => setMore(false); m.on('click', f); m.on('dragstart', f); return () => { m.off('click', f); m.off('dragstart', f); }; }, [more]);
   const [turned, setTurned] = useState(false);
   useEffect(() => {
     const m = mapCtl?.map; if (!m) return;
@@ -256,11 +259,11 @@ function Controls() {
       {!place && nav.mode === 'off' && <div className="fabs-bottom">
         {more && (
           <div className="fab-more">
-            {daily && <button className={`fab tap-${tapMode}`} aria-label={TAP_LABEL(tapMode)} onClick={tap}><Icon name={TAP_ICON[tapMode]} /></button>}
-            {daily && <button className="fab" aria-label="Undo" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}><Icon name="undo" /></button>}
-            <button className="fab" aria-label="Redo" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}><Icon name="redo" /></button>
+            {daily && <button className={`fab tap-${tapMode}`} aria-label={TAP_LABEL(tapMode)} onClick={() => { tap(); setMore(false); }}><Icon name={TAP_ICON[tapMode]} /></button>}
+            {daily && <button className="fab" aria-label="Undo" disabled={!engine.canUndo} onClick={() => { void act(null, () => engine.undo()); setMore(false); }}><Icon name="undo" /></button>}
+            <button className="fab" aria-label="Redo" disabled={!engine.canRedo} onClick={() => { void act(null, () => engine.redo()); setMore(false); }}><Icon name="redo" /></button>
             <button className="fab" aria-label="Show whole route" onClick={() => { mapCtl?.fitRoute(); setMore(false); }}><Icon name="fit" /></button>
-            <button className="fab" aria-label="3D tilt" onClick={() => mapCtl?.tilt()}><Icon name="tilt" /></button>
+            <button className="fab" aria-label="3D tilt" onClick={() => { mapCtl?.tilt(); setMore(false); }}><Icon name="tilt" /></button>
           </div>
         )}
         <button className="fab small" aria-label={more ? 'Fewer buttons' : 'More buttons'} aria-expanded={more} onClick={() => setMore(!more)}><Icon name={more ? 'chevdown' : 'chevup'} size={20} /></button>
@@ -283,7 +286,7 @@ function LayersSheet({ onClose }: { onClose: () => void }) {
   const daily = mode.current === 'daily';
   const d = dailyMap.settings;
   const gOn = !!g.key && g.on;
-  const setD = (p: Partial<typeof d>) => act(null, async () => { await dailyMap.save(p); if (mapCtl) await applyBase(mapCtl, true); tick((x) => x + 1); });
+  const setD = (p: Partial<typeof d>) => { onClose(); void act(null, async () => { await dailyMap.save(p); if (mapCtl) await applyBase(mapCtl, true); tick((x) => x + 1); }); };
   const types = [['roadmap', 'Default', 'map'], ['satellite', 'Satellite', 'eye'], ['hybrid', 'Hybrid', 'layers'], ['terrain', 'Terrain', 'activity']] as const;
   return (
     <>
@@ -298,10 +301,10 @@ function LayersSheet({ onClose }: { onClose: () => void }) {
         )}
         <div className="bs-head"><span>Map details</span></div>
         <div className="tiles">
-          {gOn && <button className={`tile ${g.traffic ? 'on' : ''}`} onClick={() => act(null, async () => { await google.save({ traffic: !g.traffic }); if (mapCtl) await applyBase(mapCtl, true); tick((x) => x + 1); })}><span className="tile-ico"><Icon name="traffic" /></span>Traffic</button>}
+          {gOn && <button className={`tile ${g.traffic ? 'on' : ''}`} onClick={() => { onClose(); void act(null, async () => { await google.save({ traffic: !g.traffic }); if (mapCtl) await applyBase(mapCtl, true); tick((x) => x + 1); }); }}><span className="tile-ico"><Icon name="traffic" /></span>Traffic</button>}
           {daily && gOn && <button className={`tile ${d.gTransit ? 'on' : ''}`} onClick={() => setD({ gTransit: !d.gTransit })}><span className="tile-ico"><Icon name="route" /></span>Transit</button>}
           {daily && <button className={`tile ${d.trails ? 'on' : ''}`} onClick={() => setD({ trails: !d.trails })}><span className="tile-ico"><Icon name="flag" /></span>Trails</button>}
-          <button className={`tile ${night ? 'on' : ''}`} onClick={() => ui.set({ night: !night })}><span className="tile-ico"><Icon name="moon" /></span>Night</button>
+          <button className={`tile ${night ? 'on' : ''}`} onClick={() => { ui.set({ night: !night }); onClose(); }}><span className="tile-ico"><Icon name="moon" /></span>Night</button>
         </div>
         {!gOn && <p className="bs-note">Add your Google key in Settings → Google Maps for Google's map, satellite and live traffic.</p>}
         {daily && <button className="textbtn" onClick={() => { onClose(); ui.set({ drawer: true, tab: 'map' }); }}>More map options</button>}

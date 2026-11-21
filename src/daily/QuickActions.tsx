@@ -85,7 +85,7 @@ export function QuickActions() {
     <div className="quickacts">
       <input ref={photo} type="file" accept="image/*,video/*" capture="environment" hidden onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; if (f.length) void act(null, async () => { const p = await here(); await markers.put({ kind: 'note', name: `Photo ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, p, media: f }); toast('Photo note saved on the map'); }); }} />
       {(open || quick.list.length <= 3 ? quick.list : quick.list.slice(0, 2)).map((a) => (
-        <button key={a} className={`fab glass qa ${a === 'rec' && recorder.on ? 'rec-on' : ''} ${a === 'audio' && recording ? 'rec-on' : ''}`} title={QA_LABEL[a]} aria-label={QA_LABEL[a]} onClick={() => void run(a)}><Icon name={ICON[a]} /></button>
+        <button key={a} className={`fab glass qa ${a === 'rec' && recorder.on ? 'rec-on' : ''} ${a === 'audio' && recording ? 'rec-on' : ''}`} title={QA_LABEL[a]} aria-label={QA_LABEL[a]} onClick={() => { void run(a); setOpen(false); }}><Icon name={ICON[a]} /></button>
       ))}
       {quick.list.length > 3 && <button className="fab small" aria-label={open ? 'Fewer' : 'More quick actions'} onClick={() => setOpen(!open)}><Icon name={open ? 'chevdown' : 'chevup'} size={20} /></button>}
     </div>

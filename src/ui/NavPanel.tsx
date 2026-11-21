@@ -103,7 +103,7 @@ export function NavPanel() {
         <CompAlerts />
         {!sim && !nav.pos && !nav.gpsError && <div className="muted">Waiting for GPS fix… (outdoors with open sky is fastest)</div>}
         <div className="navmain">
-          <button className="navround danger" aria-label="Exit navigation" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: 'append' }))}><Icon name="close" /></button>
+          <button className="navround danger" aria-label="Exit navigation" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: isExpedition() ? 'append' : 'off' }))}><Icon name="close" /></button>
           <div className="navsummary">
             <b className="eta">{done ? 'Arrived' : fmtDur(etaS)}</b>
             <span className="muted">{fmtKm(nav.remaining)} · {sim ? 'simulation' : clock(etaS)}{live ? ' · live traffic' : ''}</span>

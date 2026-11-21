@@ -23,7 +23,7 @@ export function ModePicker() {
     document.documentElement.dataset.mode = m;
     access.apply();
     if (mapCtl) await applyBase(mapCtl, true);
-    ui.set({ modePicker: false, drawer: false, tab: 'trip', selectedId: null, place: null, places: [] });
+    ui.set({ modePicker: false, drawer: false, tab: 'home', selectedId: null, place: null, places: [], tapMode: mode.current === 'daily' ? 'off' : 'append' });
     if (changed && engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 300);
   });
   return (

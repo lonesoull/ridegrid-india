@@ -51,7 +51,7 @@ export function PlaceCard() {
   }, [sel?.id]);
 
   if (!sel || nav.mode !== 'off') return null;
-  const close = () => { ui.set({ place: null }); mapCtl?.setApproach(null); mapCtl?.setAlternatives(null); };
+  const close = () => { ui.set({ place: null, places: [] }); mapCtl?.setApproach(null); mapCtl?.setAlternatives(null); mapCtl?.setPlaces([], null); };
   const p = pl?.p;
   // distance from the rider (or from where the search was made) — not from the map centre, which moves to the place
   const here = knownLocation();
