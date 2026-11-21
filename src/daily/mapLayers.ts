@@ -1,4 +1,4 @@
-import * as maplibregl from 'maplibre-gl';
+import { protocolHost } from '../map/protocols';
 import type { Map as MLMap, StyleSpecification } from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
 import { getSetting, putSetting } from '../core/db';
@@ -62,7 +62,7 @@ function demSource() {
   if (!dem) {
     // main-thread fetches, so downloaded offline terrain can answer them (see offlineTerrain.ts)
     dem = new mlcontour.DemSource({ url: DEM_URL, encoding: 'terrarium', maxzoom: offlineTerrainMax(), worker: false });
-    dem.setupMaplibre(maplibregl as any);
+    dem.setupMaplibre(protocolHost as any);
   }
   return dem;
 }
@@ -100,7 +100,7 @@ export async function buildDailyStyle(night: boolean, onGoogle = false): Promise
     style.layers.splice(1, 0, { id: 'd-underlay', type: 'raster', source: 'underlay' });
   }
   const gTerrain = onGoogle && s.gType === 'terrain';
-  const wantHill = (s.hillshade || topo) && !onGoogle, wantContours = (s.contours || topo) && !gTerrain, want3d = s.terrain3d && !onGoogle;
+  const wantHill = (s.hillshade || topo) && !gTerrain, wantContours = (s.contours || topo) && !gTerrain, want3d = s.terrain3d && !onGoogle;
   if (wantHill || wantContours || want3d || s.altitudeColours) {
     const d = demSource();
     style.sources.dem = { type: 'raster-dem', tiles: [d.sharedDemProtocolUrl], encoding: 'terrarium', tileSize: 256, maxzoom: 13, attribution: 'Terrain: Mapzen / AWS Terrain Tiles' };

@@ -516,3 +516,6 @@ section p { margin: 0; }
 .topbar, .searchpill, .statusrow { min-width: 0; max-width: 100%; }
 .statusrow > * { max-width: 100%; min-width: 0; }
 .textbtn { min-height: 40px; }
+/* one map: with Google on screen, RideGrid's own engine is invisible (Google draws all our layers) */
+.map.google-drives .maplibregl-canvas { visibility: hidden; }
+.statuschip { justify-content: flex-start; text-align: left; display: block; }

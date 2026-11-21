@@ -1,4 +1,4 @@
-import * as maplibregl from 'maplibre-gl';
+import { addProtocol } from '../map/protocols';
 import type { StyleSpecification, RequestParameters } from 'maplibre-gl';
 import { PMTiles, type Source, type RangeResponse } from 'pmtiles';
 import { getSetting, putSetting } from '../core/db';
@@ -166,7 +166,7 @@ let installed = false;
 export function installMapProtocols() {
   if (installed) return;
   installed = true;
-  maplibregl.addProtocol('rgmap', async (params: RequestParameters) => {
+  addProtocol('rgmap', async (params: RequestParameters) => {
     const m = /rgmap:\/\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
     if (!m) throw new Error('bad tile url');
     const z = +m[1], x = +m[2], y = +m[3];
@@ -184,7 +184,7 @@ export function installMapProtocols() {
     return { data: r.ok ? new Uint8Array(await r.arrayBuffer()) : new Uint8Array() };
   });
   // extra raster maps: cache-first, so areas saved for offline (or viewed before) work without internet
-  maplibregl.addProtocol('rgraster', async (params: RequestParameters) => {
+  addProtocol('rgraster', async (params: RequestParameters) => {
     const url = params.url.replace(/^rgraster:\/\//, 'https://');
     const cache = await caches.open(RASTER_CACHE);
     const hit = await cache.match(url);
@@ -196,7 +196,7 @@ export function installMapProtocols() {
     return { data: await r.arrayBuffer() };
   });
   // fonts and sprites: cache-first so labels and icons survive offline
-  maplibregl.addProtocol('rgasset', async (params: RequestParameters) => {
+  addProtocol('rgasset', async (params: RequestParameters) => {
     const url = params.url.replace(/^rgasset:\/\//, 'https://');
     const r = await cachedFetch(url);
     if (!r.ok) throw new Error(`asset ${r.status}`);

@@ -69,7 +69,8 @@ export class GoogleUnderlay {
     this.gmap = new google.maps.Map(this.div, {
       center: { lat: c.lat, lng: c.lng }, zoom: ml.getZoom() + 1, heading: ml.getBearing(), tilt: ml.getPitch(),
       mapId: opts.mapId || 'DEMO_MAP_ID',
-      renderingType: google.maps.RenderingType?.VECTOR,
+      // ?rgraster (tests): Google's basic raster map
+      renderingType: location.search.includes('rgraster') ? google.maps.RenderingType?.RASTER : google.maps.RenderingType?.VECTOR,
       colorScheme: opts.night ? 'DARK' : 'LIGHT',
       disableDefaultUI: true, gestureHandling: opts.drive ? 'greedy' : 'none', keyboardShortcuts: false, clickableIcons: !!opts.drive,
       isFractionalZoomEnabled: true,
@@ -79,7 +80,11 @@ export class GoogleUnderlay {
     this.setLayers(opts);
     this.gmap.addListener('renderingtype_changed', () => {
       const t = this.gmap.getRenderingType?.();
-      if (t === 'VECTOR' || t === 'RASTER') { this.renderingType = t; onRendering?.(t); }
+      if (t === 'VECTOR' || t === 'RASTER') {
+        this.renderingType = t; onRendering?.(t);
+        // basic (raster) Google map: whole zoom steps only, so our drawings stay exactly on the roads
+        if (t === 'RASTER') { this.gmap.setOptions({ isFractionalZoomEnabled: false }); this.gmap.setZoom(Math.round(this.gmap.getZoom() ?? 5)); }
+      }
     });
     // Camera match (same as deck.gl's Google overlay): MapLibre tiles are 512 px vs Google's 256 px → zoom + 1;
     // tilt = pitch, heading = bearing; MapLibre's field of view is set to Google's 25° by the caller.
@@ -108,40 +113,85 @@ export class GoogleUnderlay {
   private driveFromGoogle(ml: MLMap, opts: GoogleBaseOpts) {
     this.drive = true;
     ml.getContainer().classList.add('google-drives');
+    // ONE map: Google is the only map on screen and owns the camera. RideGrid's own map engine stays hidden
+    // (it keeps the data, answers taps, and redraws itself at most a few times a second); everything it
+    // would draw is drawn on Google by the bridge, inside Google's own frame.
+    const orig = { jumpTo: ml.jumpTo.bind(ml), stop: ml.stop.bind(ml), render: (ml as any)._render.bind(ml) };
+    const gcam = () => { const c = this.gmap.getCenter(); return { lng: c?.lng() ?? 0, lat: c?.lat() ?? 0, zoom: (this.gmap.getZoom() ?? 1) - 1, bearing: this.gmap.getHeading?.() ?? 0, pitch: this.gmap.getTilt?.() ?? 0 }; };
+    const copy = () => { const g = gcam(); orig.jumpTo({ center: [g.lng, g.lat], zoom: g.zoom, bearing: g.bearing, pitch: g.pitch }, FROM_GOOGLE); };
+    this.copyCamera = copy;
     let raf = 0;
-    // RideGrid's own camera moves (follow while riding, fly to a place…) drive Google meanwhile; copying Google
-    // back during them would cancel them, so the copy pauses until they end
-    let ours = 0;
-    ml.on('movestart', (e: any) => { if (e?.rg !== 'g' && !e?.originalEvent) ours++; });
-    ml.on('moveend', (e: any) => { if (e?.rg !== 'g' && !e?.originalEvent) ours = Math.max(0, ours - 1); });
-    const copy = () => {
-      raf = 0;
-      if (ours) return;
-      const c = this.gmap.getCenter(); if (!c) return;
-      ml.jumpTo({ center: [c.lng(), c.lat()], zoom: (this.gmap.getZoom() ?? 1) - 1, bearing: this.gmap.getHeading?.() ?? 0, pitch: this.gmap.getTilt?.() ?? 0 }, FROM_GOOGLE);
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; copy(); }); };
+    for (const ev of ['center_changed', 'zoom_changed', 'heading_changed', 'tilt_changed']) this.gl.push(this.gmap.addListener(ev, schedule));
+    // hidden engine: redraw at most ~4×/s (enough for taps and data), never every frame
+    let lastR = 0, rt = 0;
+    (ml as any)._render = (ts: number) => {
+      const now = performance.now();
+      if (now - lastR < 250) { if (!rt) rt = window.setTimeout(() => { rt = 0; ml.triggerRepaint(); }, 260 - (now - lastR)); return ml; }
+      lastR = now; return orig.render(ts);
     };
-    const schedule = () => { if (!raf) raf = requestAnimationFrame(copy); };
-    // Best: draw our layer inside Google's own frame (WebGL overlay) — both maps then move together, no sliding.
-    const W = google.maps.WebGLOverlayView;
-    if (W) {
-      const ov = new W();
-      ov.onDraw = ({ transformer }: any) => {
-        if (ours) return; // MapLibre is animating and renders itself
-        const cp = transformer.getCameraParams();
-        ml.jumpTo({ center: [cp.lng, cp.lat], zoom: cp.zoom - 1, bearing: cp.heading, pitch: cp.tilt }, FROM_GOOGLE);
-        ml.redraw();
-      };
-      ov.setMap(this.gmap);
-      this.gl.push({ remove: () => ov.setMap(null) });
-    }
-    // fallback (basic raster Google map has no WebGL overlay): copy the camera on the next frame
-    for (const ev of ['center_changed', 'zoom_changed', 'heading_changed', 'tilt_changed']) this.gl.push(this.gmap.addListener(ev, () => { if (!W || this.renderingType === 'RASTER') schedule(); }));
+    // camera commands from RideGrid (follow while riding, fly to a place, fit route…) move the Google map
+    let anim = 0;
+    const animate = (t: { center?: [number, number]; zoom?: number; bearing?: number; pitch?: number }, ms: number) => {
+      cancelAnimationFrame(anim);
+      const a = gcam();
+      const b = { lng: t.center?.[0] ?? a.lng, lat: t.center?.[1] ?? a.lat, zoom: t.zoom ?? a.zoom, bearing: t.bearing ?? a.bearing, pitch: t.pitch ?? a.pitch };
+      const db = ((b.bearing - a.bearing + 540) % 360) - 180;
+      if (this.renderingType === 'RASTER') b.zoom = Math.round(b.zoom);
+      const set = (k: number) => this.gmap.moveCamera({ center: { lat: a.lat + (b.lat - a.lat) * k, lng: a.lng + (b.lng - a.lng) * k }, zoom: this.renderingType === 'RASTER' ? (k < 1 ? Math.round(a.zoom + 1) : b.zoom + 1) : a.zoom + (b.zoom - a.zoom) * k + 1, heading: a.bearing + db * k, tilt: a.pitch + (b.pitch - a.pitch) * k });
+      if (ms <= 0) { set(1); copy(); return; }
+      const t0 = performance.now();
+      const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); set(1 - (1 - k) ** 3); if (k < 1) anim = requestAnimationFrame(step); else ml.fire('rg-idle' as any); };
+      anim = requestAnimationFrame(step);
+    };
+    const ll = (c: any): [number, number] | undefined => (c == null ? undefined : Array.isArray(c) ? [c[0], c[1]] : [c.lng ?? c.lon, c.lat]);
+    const opt = (o: any = {}) => ({ center: ll(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch });
+    const dur = (o: any, d: number) => (o?.animate === false ? 0 : o?.duration ?? d);
+    const patched: Record<string, any> = {
+      jumpTo: (o: any) => { animate(opt(o), 0); return ml; },
+      easeTo: (o: any) => { animate(opt(o), dur(o, 500)); return ml; },
+      flyTo: (o: any) => { animate(opt(o), dur(o, 1000)); return ml; },
+      panTo: (c: any, o: any) => { animate({ center: ll(c) }, dur(o, 500)); return ml; },
+      zoomTo: (z: number, o: any) => { animate({ zoom: z }, dur(o, 300)); return ml; },
+      zoomIn: (o: any) => { animate({ zoom: gcam().zoom + 1 }, dur(o, 300)); return ml; },
+      zoomOut: (o: any) => { animate({ zoom: gcam().zoom - 1 }, dur(o, 300)); return ml; },
+      rotateTo: (b: number, o: any) => { animate({ bearing: b }, dur(o, 300)); return ml; },
+      resetNorth: (o: any) => { animate({ bearing: 0 }, dur(o, 300)); return ml; },
+      setCenter: (c: any) => { animate({ center: ll(c) }, 0); return ml; },
+      setZoom: (z: number) => { animate({ zoom: z }, 0); return ml; },
+      setBearing: (b: number) => { animate({ bearing: b }, 0); return ml; },
+      setPitch: (p: number) => { animate({ pitch: p }, 0); return ml; },
+      fitBounds: (bounds: any, o: any = {}) => { const c: any = ml.cameraForBounds(bounds, o); if (c) animate({ center: ll(c.center), zoom: Math.min(c.zoom, o.maxZoom ?? 22), bearing: o.bearing ?? c.bearing }, dur(o, 500)); return ml; },
+      stop: () => { cancelAnimationFrame(anim); return orig.stop(); },
+    };
+    const saved: Record<string, any> = {};
+    for (const k of Object.keys(patched)) { saved[k] = (ml as any)[k]; (ml as any)[k] = patched[k]; }
+    this.gl.push({ remove: () => { cancelAnimationFrame(anim); clearTimeout(rt); for (const k of Object.keys(saved)) (ml as any)[k] = saved[k]; (ml as any)._render = orig.render; } });
+    // our layers, drawn on Google (deck.gl loads only in Google mode)
+    void import('./googleBridge').then(({ GoogleBridge }) => {
+      if (!this.drive) return;
+      const br = new GoogleBridge(this.gmap, ml);
+      this.gl.push({ remove: () => br.destroy() });
+    }).catch((e) => console.warn('google bridge', e));
     this.gl.push(this.gmap.addListener('idle', () => { copy(); ml.fire('rg-idle' as any); }));
-    this.gl.push(this.gmap.addListener('dragstart', () => { if (ours) { ml.stop(); ours = 0; } ml.fire('dragstart'); }));
+    this.gl.push(this.gmap.addListener('dragstart', () => { cancelAnimationFrame(anim); ml.fire('dragstart'); }));
     // taps / long-presses: Google's own places open our place card; anything else goes to our layers (stops, favourites…)
     const pass = (type: 'click' | 'contextmenu') => (e: any) => {
-      if (type === 'click' && e.placeId && opts.onPlaceTap) { e.stop?.(); opts.onPlaceTap(e.placeId, [e.latLng.lng(), e.latLng.lat()]); return; }
+      if (type === 'click' && e.placeId && opts.onPlaceTap) {
+        e.stop?.();
+        // our own stops / pins win over Google's place icons underneath them
+        copy();
+        // for a place-icon click Google reports the icon's position; use where the finger actually was
+        const de = e.domEvent as MouseEvent | undefined, box = ml.getCanvasContainer().getBoundingClientRect();
+        const q = de && typeof de.clientX === 'number' ? { x: de.clientX - box.left, y: de.clientY - box.top } : ml.project([e.latLng.lng(), e.latLng.lat()]);
+        const mine = ['rg-stop-pts', 'rg-clusters', 'rg-places', 'd-places-dot', 'd-wiki-dot', 'rg-peers', 'rg-issues'].filter((id) => ml.getLayer(id));
+        const hit = mine.length && ml.queryRenderedFeatures([[q.x - 16, q.y - 16], [q.x + 16, q.y + 16]], { layers: mine }).length;
+        if (!hit) { opts.onPlaceTap(e.placeId, [e.latLng.lng(), e.latLng.lat()]); return; }
+        ml.fire(new MapMouseEvent('click', ml, new MouseEvent('click', { clientX: box.left + q.x, clientY: box.top + q.y })));
+        return;
+      }
       if (!e.latLng) return;
+      copy();
       const pt = ml.project([e.latLng.lng(), e.latLng.lat()]);
       const r = ml.getCanvasContainer().getBoundingClientRect();
       ml.fire(new MapMouseEvent(type, ml, new MouseEvent(type, { clientX: r.left + pt.x, clientY: r.top + pt.y })));
@@ -159,6 +209,7 @@ export class GoogleUnderlay {
       cancel(); sx = e.clientX; sy = e.clientY; pid = e.pointerId;
       timer = window.setTimeout(() => {
         timer = 0; lastHold = Date.now();
+        copy();
         const [x, y] = rel(e);
         navigator.vibrate?.(25);
         if (opts.onHold?.(x, y)) { holding = true; this.gmap.setOptions({ gestureHandling: 'none' }); }
@@ -184,6 +235,7 @@ export class GoogleUnderlay {
     this.gl.push({ remove: () => { el.removeEventListener('pointerdown', down, true); window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true); } });
   }
   drive = false;
+  copyCamera: (() => void) | null = null;
   setTraffic(on: boolean) {
     if (on && !this.traffic) { this.traffic = new google.maps.TrafficLayer({ autoRefresh: true }); this.traffic.setMap(this.gmap); }
     if (!on && this.traffic) { this.traffic.setMap(null); this.traffic = null; }
@@ -198,6 +250,7 @@ export class GoogleUnderlay {
   }
   destroy() {
     this.ml.off('move', this.sync); this.ml.off('resize', this.sync); this.ml.off('moveend', this.settle);
+    this.drive = false; this.copyCamera = null;
     this.gl.forEach((l) => l.remove()); this.gl = [];
     this.ml.getContainer().classList.remove('google-drives');
     this.traffic?.setMap(null); this.transit?.setMap(null); this.bike?.setMap(null);

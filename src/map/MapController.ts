@@ -72,6 +72,9 @@ export class MapController {
       canvasContextAttributes: { antialias: true },
     } as any);
     this.map.on('style.load', () => this.installLayers());
+    // phones can drop a graphics context (low memory, app in background): the engine then forgets its style —
+    // rebuild it as soon as the context comes back, so routes, stops and pins reappear
+    this.map.on('webglcontextrestored', () => { const id = this.baseId, st = this.lastStyle; this.baseId = ''; if (st && id) this.applyBase(id, st, this.base); });
     this.map.on('error', (e: any) => {
       if (String(e?.error?.message || '').match(/Failed to fetch|NetworkError|style/i) && !this.styleReady) {
         this.map.setStyle(fallbackStyle);
@@ -162,8 +165,10 @@ export class MapController {
     this.map.getContainer().classList.remove('over-google');
   }
 
+  private lastStyle: string | StyleSpecification | null = null;
   private applyBase(id: string, style: string | StyleSpecification, kind: 'osm' | 'google') {
-    if (id === this.baseId) return;
+    if (id === this.baseId && this.map.style) return;
+    this.lastStyle = style;
     this.baseId = id; this.base = kind;
     this.styleReady = false;
     this.map.setStyle(style, { diff: false });
