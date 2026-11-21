@@ -1,3 +1,4 @@
+import './core/net';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
 import './ui/styles.css';

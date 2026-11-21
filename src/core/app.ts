@@ -29,8 +29,9 @@ export const app = {
     routing.avoidExpressways = this.router.avoidExpressways !== false;
     routing.isDaily = () => engine.trip?.kind === 'daily';
     routing.preferGoogle = () => googleRouting.preferred();
-    // older downloaded road maps left expressways out: daily trips then use them only when offline
-    routing.covers = (p) => device.coversSync(p) && !(routing.isDaily!() && !device.withExpressways && typeof navigator !== 'undefined' && navigator.onLine);
+    // Daily: online servers (Google first) with internet; the on-device road map only when the internet is down.
+    // Expedition keeps using the on-device road map where downloaded (it knows the banned expressways).
+    routing.covers = (p) => device.coversSync(p) && !(routing.isDaily!() && typeof navigator !== 'undefined' && navigator.onLine);
     this.queue.setProviders(makeProviders(this.router));
   },
   /** Real trips auto-route; the stress-test trip never hits the routing servers. */
