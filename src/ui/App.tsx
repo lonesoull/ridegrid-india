@@ -170,7 +170,7 @@ function Hud() {
   const routing = (pending > 0 || errors > 0 || status === 'offline' || status === 'backoff' || status === 'paused') && !(t?.isStress && status === 'paused');
   return (
     <div className="hud">
-      <SearchTop onSettings={() => ui.set({ drawer: true })} />
+      <SearchTop onSettings={() => ui.set({ drawer: true, tab: 'home' })} />
       <div className="statusrow">
         {!daily && t && (
           <button className="statuschip" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
@@ -218,7 +218,6 @@ function HudGate() {
 function Controls() {
   useEngine();
   const tapMode = useUI((s) => s.tapMode);
-  const night = useUI((s) => s.night);
   const locMode = useUI((s) => s.locMode);
   const daily = mode.current === 'daily';
   const place = useUI((s) => s.place);
@@ -247,7 +246,6 @@ function Controls() {
             <button className="fab" aria-label="Redo" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}><Icon name="redo" /></button>
             <button className="fab" aria-label="Show whole route" onClick={() => { mapCtl?.fitRoute(); setMore(false); }}><Icon name="fit" /></button>
             <button className="fab" aria-label="3D tilt" onClick={() => mapCtl?.tilt()}><Icon name="tilt" /></button>
-            <button className="fab" aria-label={night ? 'Day map' : 'Night map'} onClick={() => ui.set({ night: !night })}><Icon name={night ? 'sun' : 'moon'} /></button>
           </div>
         )}
         <button className="fab small" aria-label={more ? 'Fewer buttons' : 'More buttons'} aria-expanded={more} onClick={() => setMore(!more)}><Icon name={more ? 'chevdown' : 'chevup'} size={20} /></button>

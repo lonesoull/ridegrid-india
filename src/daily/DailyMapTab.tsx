@@ -43,19 +43,13 @@ export function DailyMapTab() {
       <section>
         <h3>Google map {gOk ? <span className="pill">base map</span> : null}</h3>
         {gOk ? <>
-          <div className="stylegrid">
-            {([['roadmap', 'Road map'], ['hybrid', 'Satellite + labels'], ['satellite', 'Satellite'], ['terrain', 'Terrain (hills & contours)']] as const).map(([k, l]) => (
-              <button key={k} className={s.gType === k ? 'on' : ''} onClick={() => set({ gType: k })}>{l}</button>))}
-          </div>
-          <Toggle on={s.gTransit} label="Google public transport lines" onChange={(v) => set({ gTransit: v })} />
           <Toggle on={s.gBike} label="Google cycling lanes" onChange={(v) => set({ gBike: v })} />
-          <Toggle on={s.trails} label="Off-road tracks, paths & unpaved roads (OpenStreetMap, Google hides most)" onChange={(v) => set({ trails: v })} />
           <label className="field">Map label language
             <select value={s.labelLang} onChange={(e) => void set({ labelLang: e.target.value }).then(() => toast('Restart the app to change Google map labels'))}>
               {[['en', 'English'], ['hi', 'हिन्दी'], ['ta', 'தமிழ்'], ['te', 'తెలుగు'], ['kn', 'ಕನ್ನಡ'], ['ml', 'മലയാളം'], ['mr', 'मराठी'], ['bn', 'বাংলা'], ['gu', 'ગુજરાતી'], ['pa', 'ਪੰਜਾਬੀ']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select></label>
-          <p className="muted">Live traffic: the traffic button on the map. 3D & tilt: Tools → Google Maps mode → Map ID. Everything of RideGrid is drawn on top of Google.</p>
-        </> : <p className="warn">Add your Google key in Tools → Google Maps mode to use Google Maps as the base map.</p>}
+          <p className="muted">Map type, traffic, transit and trails: the Layers button on the map. 3D tilt needs your Map ID (Settings → Google Maps).</p>
+        </> : <p className="warn">Add your Google key in Settings → Google Maps to use Google Maps as the base map.</p>}
       </section>
 
       <section>

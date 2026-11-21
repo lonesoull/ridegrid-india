@@ -31,12 +31,12 @@ export async function applyBase(map: MapController, _force = false) {
   if (!wanted) { google.tilesOk = false; map.setOsmBase(night); return; }
   try {
     await loadMapsJs(g.key, daily ? dailyMap.settings.labelLang : 'en');
-    if (authFailed) throw new Error('Google rejected this key for the Maps JavaScript API (Tools → Google Maps mode → “Test key” shows the fix)');
+    if (authFailed) throw new Error('Google rejected this key for the Maps JavaScript API (Settings → Google Maps → “Test key” shows the fix)');
     map.onGoogleMapLoad ??= () => { try { gquota.take('mapLoad'); } catch { /* counted at the cap */ } };
     unsubAuth ??= onAuthFailure(() => {
       google.tilesOk = false;
       void applyBase(map, true);
-      toast('Google rejected the key for the Maps JavaScript API — using the OpenStreetMap map. Tools → Google Maps mode → “Test key” shows the fix.', 'error');
+      toast('Google rejected the key for the Maps JavaScript API — using the OpenStreetMap map. Settings → Google Maps → “Test key” shows the fix.', 'error');
       ui.set({ gtick: ui.get().gtick + 1 });
     });
     if (daily) {

@@ -18,7 +18,8 @@ import { extras, BTN_LABEL, type BtnAction, type Extras } from './extras';
 import type { CoordFormat } from './coords';
 
 /** Daily "Settings & devices": bike profiles, Bluetooth sensors, sync/backup, accessibility, OpenStreetMap. */
-export function DailyControl() {
+export type ControlPart = 'riding' | 'backup' | 'access' | 'osm' | 'share' | 'help';
+export function DailyControl({ part }: { part: ControlPart }) {
   const [, tick] = useState(0);
   useEffect(() => { const f = () => tick((x) => x + 1); bikes.listeners.add(f); sensors.listeners.add(f); obd.listeners.add(f); return () => { bikes.listeners.delete(f); sensors.listeners.delete(f); obd.listeners.delete(f); }; }, []);
   const b = bikes.active;
@@ -29,8 +30,10 @@ export function DailyControl() {
   const [notes, setNotes] = useState<{ id: number; text: string; url: string }[] | null>(null);
   return (
     <>
+      {part === 'share' && <>
       <LiveShare />
-
+      </>}
+      {part === 'riding' && <>
       <section>
         <h3>My bikes</h3>
         <select value={bikes.activeId} onChange={(e) => act('Switching bike…', () => bikes.switchTo(e.target.value)).then(() => tick((x) => x + 1))}>
@@ -52,7 +55,8 @@ export function DailyControl() {
         </div>
         <p className="muted">Add the “Fuel range” and “Next service” widgets in Map → Configure screen.</p>
       </section>
-
+      </>}
+      {part === 'riding' && <>
       <section>
         <h3>Bluetooth sensors</h3>
         <div className="btns">
@@ -69,7 +73,8 @@ export function DailyControl() {
         {obd.on && <p className="muted">{Object.entries(obd.values).map(([k, v]) => `${k} ${typeof v === 'number' ? Math.round(v * 10) / 10 : v}`).join(' · ') || 'Reading…'}</p>}
         <p className="muted small-note">OBD needs a Bluetooth LE (BLE) ELM327 adapter in the bike's OBD port (BS6 bikes); classic-Bluetooth adapters can't be used by apps like this.</p>
       </section>
-
+      </>}
+      {part === 'backup' && <>
       <section>
         <h3>Sync & backup</h3>
         <div className="btns">
@@ -83,23 +88,30 @@ export function DailyControl() {
         {!team.settings && <p className="muted">Link your devices in the Team tab to send places and settings between them.</p>}
         <DriveBackup />
       </section>
-
+      </>}
+      {part === 'riding' && <>
       <RideExtras />
-
+      </>}
+      {part === 'help' && <>
       <section>
         <h3>Setup</h3>
         <button onClick={() => { resetSetup(); window.dispatchEvent(new Event('ridegrid:setup')); }}>Run the setup steps again</button>
       </section>
-
+      </>}
+      {part === 'access' && <>
       <section>
         <h3>Accessibility</h3>
-        <label className="field">Text & button size <b>{Math.round(access.s.scale * 100)}%</b>
+        <label className="field">App text & button size <b>{Math.round(access.s.scale * 100)}%</b>
           <input type="range" min={1} max={1.6} step={0.1} value={access.s.scale} onChange={(e) => void access.save({ scale: +e.target.value }).then(() => tick((x) => x + 1))} />
         </label>
+        <label className="field">Size of RideGrid map labels <b>{Math.round(extras.s.textScale * 100)}%</b>
+        <input type="range" min={0.8} max={1.8} step={0.1} value={extras.s.textScale} onChange={(e) => void extras.save({ textScale: +e.target.value }).then(() => tick((n) => n + 1))} />
+      </label>
         <label className="check"><input type="checkbox" checked={access.s.contrast} onChange={(e) => void access.save({ contrast: e.target.checked }).then(() => tick((x) => x + 1))} /><span>High contrast</span></label>
         <label className="check"><input type="checkbox" checked={access.s.vibrate} onChange={(e) => void access.save({ vibrate: e.target.checked }).then(() => tick((x) => x + 1))} /><span>Vibrate on turns and road alerts</span></label>
       </section>
-
+      </>}
+      {part === 'osm' && <>
       <section>
         <h3>Improve the map (OpenStreetMap)</h3>
         <p className="muted">Missing road, wrong one-way, closed petrol pump? Leave a note for OpenStreetMap mappers (no account needed) or edit the map yourself.</p>
@@ -111,6 +123,7 @@ export function DailyControl() {
         {notes && (notes.length ? notes.map((n) => <div key={n.id} className="item"><span>{n.text.slice(0, 100)}</span><a href={n.url} target="_blank" rel="noopener noreferrer">open</a></div>) : <p className="muted">No open notes nearby.</p>)}
         <OsmEdit here={here} />
       </section>
+      </>}
     </>
   );
 }
@@ -177,9 +190,6 @@ function RideExtras() {
         <input type="range" min={0.6} max={2.5} step={0.1} value={x.routeWidth} onChange={(e) => set({ routeWidth: +e.target.value })} />
       </label>
       {chk('showAvoided', 'Show the roads I chose to avoid on the map (red ⛔ line)')}
-      <label className="field">Size of RideGrid map labels <b>{Math.round(x.textScale * 100)}%</b>
-        <input type="range" min={0.8} max={1.8} step={0.1} value={x.textScale} onChange={(e) => set({ textScale: +e.target.value })} />
-      </label>
       <details>
         <summary>Handlebar remote / Bluetooth buttons</summary>
         <p className="hint">Pair the remote with the phone. Tap “Set”, then press the button on the remote.</p>

@@ -67,7 +67,7 @@ export function AlongRoute() {
       if (!out.length && c !== 'fav' && c !== 'alerts') {
         const hits = await offlineSearch.search('', { cat: c, limit: 60, along: { pts: rp.pts, maxM: maxOff, fromS: rp.fromS } });
         out = hits.map((h) => ({ name: h.name, p: h.p, ahead: (h.alongM ?? 0) - from, off: h.offM ?? 0, src: 'offline' }));
-        if (!offlineSearch.loaded.size) setMsg('Offline: download search data in Map → Offline maps.');
+        if (!offlineSearch.loaded.size) setMsg('Offline: download search data in Settings → Map → Offline maps.');
       }
       out = out.filter((r) => r.ahead >= -200 && r.off <= maxOff).sort((a, b) => a.ahead - b.ahead).slice(0, 60);
       setRows(out);

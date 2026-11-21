@@ -13,7 +13,8 @@ import { fmtKm, type LngLat } from '../core/geo';
 import * as trips from '../core/trips';
 import { importFile, parseCoordinateText, type ImportOptions } from '../io/importers';
 import { download, exportAs, safeName } from '../io/exporters';
-import { ui, useUI, toast, act } from './state';
+import { ui, useUI, toast, act, type UIState } from './state';
+import { Icon } from './Icon';
 import { useAsync, useEngine, useRouterStatus } from './hooks';
 import { mapCtl } from './App';
 import { StressRouteButton } from './StressRouteButton';
@@ -29,42 +30,115 @@ import { DailyControl } from '../daily/DailyControl';
 import { GoogleUsage } from './GoogleUsage';
 import { TeamTab } from './TeamTab';
 
+type Page = UIState['tab'];
+interface Row { id: Page; icon: string; title: string; sub: string }
+/** Settings home, WhatsApp style: grouped rows with an icon, a title and a one-line summary; each opens its own page. */
+function rows(daily: boolean): { title?: string; rows: Row[] }[] {
+  if (!daily) return [
+    { title: 'Expedition', rows: [
+      { id: 'trip', icon: 'flag', title: 'Trip', sub: 'Active trip, saved routes, new trip' },
+      { id: 'stops', icon: 'pin', title: T().Many, sub: 'Route tools, add by coordinates, inspector' },
+      { id: 'ride', icon: 'directions', title: 'Ride', sub: 'Start, alerts, record rules, logs' },
+      { id: 'log', icon: 'book', title: 'Logbook', sub: 'Evidence, witnesses, daily summaries' },
+    ] },
+    { title: 'Settings', rows: [
+      { id: 'google', icon: 'gmaps', title: 'Google Maps', sub: 'Key, Map ID, monthly usage' },
+      { id: 'team', icon: 'users', title: 'Team', sub: 'Linked devices, SOS, send route' },
+      { id: 'files', icon: 'folder', title: 'Import, export & backup', sub: 'GPX / KML / CSV, full backup' },
+      { id: 'advanced', icon: 'sliders', title: 'Advanced', sub: 'Road snapping engine, offline routing, storage' },
+    ] },
+  ];
+  return [
+    { title: 'Your stuff', rows: [
+      { id: 'trip', icon: 'list', title: 'Ride plans', sub: 'Current plan, saved routes, new plan' },
+      { id: 'stops', icon: 'pin', title: 'Stops', sub: 'Add, reorder and inspect stops' },
+      { id: 'places', icon: 'star', title: 'Saved places', sub: 'Favourites, markers, parked bike, notes' },
+      { id: 'tracks', icon: 'activity', title: 'Tracks', sub: 'Recording, my tracks, measure' },
+      { id: 'log', icon: 'book', title: 'Ride diary', sub: 'Stops you logged, photos, notes' },
+    ] },
+    { title: 'Settings', rows: [
+      { id: 'ride', icon: 'directions', title: 'Navigation', sub: 'Route options, voice, alerts, Google Maps hand-off' },
+      { id: 'map', icon: 'map', title: 'Map', sub: 'Layers, offline maps, weather, terrain' },
+      { id: 'google', icon: 'gmaps', title: 'Google Maps', sub: 'Key, Map ID, monthly usage' },
+      { id: 'riding', icon: 'bike', title: 'Bike & devices', sub: 'Bikes, sensors, OBD, handlebar buttons, riding extras' },
+      { id: 'team', icon: 'users', title: 'Team & sharing', sub: 'Linked devices, SOS, live location link' },
+      { id: 'backup', icon: 'cloud', title: 'Backup & files', sub: 'Google Drive, import, export' },
+      { id: 'access', icon: 'eye', title: 'Accessibility', sub: 'Text size, contrast, vibration' },
+      { id: 'osm', icon: 'flag', title: 'Improve the map', sub: 'Report or edit on OpenStreetMap' },
+      { id: 'advanced', icon: 'sliders', title: 'Advanced', sub: 'Routing engines, offline routing, storage' },
+      { id: 'help', icon: 'info', title: 'Help', sub: 'Setup steps, about' },
+    ] },
+  ];
+}
+const TITLE = (daily: boolean, p: Page) => rows(daily).flatMap((g) => g.rows).find((r) => r.id === p)?.title ?? 'Settings';
+
 export function Drawer() {
   const open = useUI((s) => s.drawer);
   const tab = useUI((s) => s.tab);
+  const daily = mode.current === 'daily';
+  const page: Page = tab === 'tools' ? 'home' : tab;
+  // the phone's Back button: sub-page → settings home → map
+  useEffect(() => {
+    if (!open) return;
+    window.history.pushState({ rgSettings: 1 }, '');
+    const onPop = () => { const t = ui.get().tab; if (t !== 'home' && t !== 'tools') { ui.set({ tab: 'home' }); window.history.pushState({ rgSettings: 1 }, ''); } else ui.set({ drawer: false }); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [open]);
+  const close = () => { ui.set({ drawer: false }); if (window.history.state?.rgSettings) window.history.back(); };
+  const back = () => (page === 'home' ? close() : ui.set({ tab: 'home' }));
   return (
     <>
-      <div className={`scrim ${open ? 'on' : ''}`} onClick={() => ui.set({ drawer: false })} />
+      <div className={`scrim ${open ? 'on' : ''}`} onClick={close} />
       <aside className={`drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
-        <div className="drawer-head">
-          <b>RideGrid India</b>
-          <button className={`modebtn ${mode.current}`} onClick={() => ui.set({ modePicker: true })}>{MODE_LABEL[mode.current]} ⇄</button>
-          <button className="x" onClick={() => ui.set({ drawer: false })}>✕</button>
-        </div>
-        <nav className="tabs">
-          {(mode.current === 'daily' ? ['trip', 'stops', 'ride', 'map', 'places', 'tracks', 'log', 'team', 'files', 'tools'] as const : ['trip', 'stops', 'ride', 'log', 'team', 'files', 'tools'] as const).map((t) => (
-            <button key={t} className={tab === t ? 'on' : ''} onClick={() => ui.set({ tab: t })}>
-              {(mode.current === 'daily'
-                ? { trip: 'Rides', stops: 'Stops', ride: 'Navigate', map: 'Map', places: 'Places', tracks: 'Tracks', log: 'Diary', team: 'Team', files: 'Files', tools: 'Tools' } as Record<string, string>
-                : { trip: 'Trip', stops: T().Many, ride: 'Ride', log: 'Logbook', team: 'Team', files: 'Files', tools: 'Tools' } as Record<string, string>)[t]}
-            </button>
-          ))}
-        </nav>
-        <div className="drawer-body">
-          {open && tab === 'trip' && <TripTab />}
-          {open && tab === 'stops' && <StopsTab />}
-          {open && tab === 'ride' && <RideTab />}
-          {open && tab === 'map' && mode.current === 'daily' && <DailyMapTab />}
-          {open && tab === 'places' && mode.current === 'daily' && <PlacesTab />}
-          {open && tab === 'tracks' && mode.current === 'daily' && <TracksTab />}
-          {open && tab === 'log' && <LogbookTab />}
-          {open && tab === 'team' && <TeamTab />}
-          {open && tab === 'files' && <FilesTab />}
-          {open && tab === 'tools' && <ToolsTab />}
+        <header className="pagehead">
+          <button className="iconbtn" aria-label="Back" onClick={back}><Icon name="back" /></button>
+          <h2>{page === 'home' ? 'Settings' : TITLE(daily, page)}</h2>
+          {page !== 'home' && <button className="iconbtn" aria-label="Close" onClick={close}><Icon name="close" /></button>}
+        </header>
+        <div className="drawer-body" key={page}>
+          {open && page === 'home' && (
+            <div className="settings-home">
+              <button className="profile modecard" onClick={() => ui.set({ modePicker: true })}>
+                <span className={`profile-ico ${mode.current}`}><Icon name={daily ? 'bike' : 'flag'} size={28} /></span>
+                <span className="restext"><span className="profile-title">{MODE_LABEL[mode.current]}</span><span className="ressub">{engine.trip?.name ?? ''} · tap to switch mode</span></span>
+                <Icon name="swap" className="muted-ico" />
+              </button>
+              {rows(daily).map((g) => (
+                <div key={g.title} className="setgroup">
+                  {g.title && <div className="setgroup-title">{g.title}</div>}
+                  {g.rows.map((r) => (
+                    <button key={r.id} className="setrow" onClick={() => ui.set({ tab: r.id })}>
+                      <span className="setrow-ico"><Icon name={r.icon} /></span>
+                      <span className="restext"><span className="restitle">{r.title}</span><span className="ressub">{r.sub}</span></span>
+                      <Icon name="chevright" size={20} className="muted-ico" />
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {open && page === 'trip' && <TripTab />}
+          {open && page === 'stops' && <StopsTab />}
+          {open && page === 'ride' && <RideTab />}
+          {open && page === 'map' && daily && <DailyMapTab />}
+          {open && page === 'places' && daily && <PlacesTab />}
+          {open && page === 'tracks' && daily && <TracksTab />}
+          {open && page === 'log' && <LogbookTab />}
+          {open && page === 'team' && <div className="stack"><TeamTab />{daily && <DailyControl part="share" />}</div>}
+          {open && page === 'files' && <FilesTab />}
+          {open && page === 'backup' && <div className="stack"><DailyControl part="backup" /><FilesTab /></div>}
+          {open && page === 'google' && <ToolsTab part="google" />}
+          {open && page === 'advanced' && <ToolsTab part="advanced" />}
+          {open && (page === 'riding' || page === 'access' || page === 'osm' || page === 'help') && <div className="stack"><DailyControl part={page} />{page === 'help' && <About />}</div>}
         </div>
       </aside>
     </>
   );
+}
+
+function About() {
+  return <section><h3>About</h3><p className="muted">RideGrid India · free and open source (GPLv3). Map data © Google and © OpenStreetMap contributors.</p></section>;
 }
 
 // ---------------------------------------------------------------- Trip
@@ -321,7 +395,7 @@ function FilesTab() {
 }
 
 // ---------------------------------------------------------------- Tools
-function ToolsTab() {
+function ToolsTab({ part }: { part: 'google' | 'advanced' }) {
   useEngine();
   const status = useRouterStatus();
   const [r, setR] = useState<RouterSettings>(app.router);
@@ -337,9 +411,9 @@ function ToolsTab() {
   });
   const isStress = !!engine.trip?.isStress;
 
+  if (part === 'google') return <div className="stack"><GoogleSettingsPanel /><GoogleUsage /></div>;
   return (
     <div className="stack">
-      {mode.current === 'daily' && <DailyControl />}
       <section>
         <h3>Road snapping engine</h3>
         <p className="muted">Status: <b>{status}</b> · {engine.pendingLegs.toLocaleString('en-IN')} pending · {engine.errorLegs} failed · {app.queue.requests} requests this session · {cacheCount?.toLocaleString('en-IN') ?? '…'} legs cached on device{app.queue.lastError ? ` · last error: ${app.queue.lastError}` : ''}</p>
@@ -374,9 +448,6 @@ function ToolsTab() {
       <OfflineRouting />
 
       <AndroidAppPanel />
-
-      <GoogleSettingsPanel />
-      <GoogleUsage />
 
       {mode.current === 'expedition' && <section>
         <h3>Scale stress test</h3>

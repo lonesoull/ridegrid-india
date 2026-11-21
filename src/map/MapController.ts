@@ -138,7 +138,7 @@ export class MapController {
     if (asked < 10 || Date.now() - this.lastTiltMsg < 8000) return;
     this.lastTiltMsg = Date.now();
     if (got < 1 && (this.underlay?.maxTiltSeen ?? 0) < 1) {
-      toast('Google won\'t tilt with this Map ID. Create your own Vector Map ID with Tilt + Rotation (Tools → Google Maps mode → Map ID) for 3D.', 'error');
+      toast('Google won\'t tilt with this Map ID. Create your own Vector Map ID with Tilt + Rotation (Settings → Google Maps → Map ID) for 3D.', 'error');
     } else if (got < 1) {
       toast(`Zoom in to tilt — Google allows 3D only when closer (now zoom ${gZoom.toFixed(0)}).`);
     } else if (asked - got > 5) {

@@ -106,7 +106,7 @@ export function DailySearchBar() {
           } catch (e: any) { if (e?.name === 'AbortError') throw e; if (!out.length) setErr(e?.message ?? 'Online search failed'); }
         }
         if (!c.signal.aborted) { ui.set({ places: out }); mapCtl?.setPlaces(out, null); }
-        if (!out.length && !offlineSearch.loaded.size && !navigator.onLine) setErr('Offline: download search data for this region in Map → Offline maps');
+        if (!out.length && !offlineSearch.loaded.size && !navigator.onLine) setErr('Offline: download search data for this region in Settings → Map → Offline maps');
       } catch (e: any) { if (e?.name !== 'AbortError') setErr(e?.message ?? 'Search failed'); }
       finally { if (!c.signal.aborted) setBusy(false); }
     }, immediate ? 0 : 300);
@@ -177,7 +177,7 @@ export function DailySearchBar() {
             ))}
           </>}
           {!busy && q.trim().length >= 2 && !results.length && !err && <div className="muted">No results</div>}
-          {!offlineSearch.loaded.size && <div className="muted small-note">Tip: download search data in Map → Offline maps to search with no internet.</div>}
+          {!offlineSearch.loaded.size && <div className="muted small-note">Tip: download search data in Settings → Map → Offline maps to search with no internet.</div>}
           <button className="link muted closer" onClick={() => setFocus(false)}>Close</button>
         </div>
       )}

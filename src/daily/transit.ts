@@ -61,7 +61,7 @@ async function viaTransitous(from: LngLat, to: LngLat, when?: Date): Promise<Tra
 export async function transitRoutes(from: LngLat, to: LngLat, when?: Date): Promise<TransitRoute[]> {
   if (google.settings.key) { try { const r = await viaGoogle(from, to, when); if (r.length) return r; } catch (e) { console.warn(e); } }
   const r = await viaTransitous(from, to, when);
-  if (!r.length) throw new Error('No public transport found for this trip (add a Google key in Tools for better coverage in India)');
+  if (!r.length) throw new Error('No public transport found for this trip (add a Google key in Settings for better coverage in India)');
   return r;
 }
 

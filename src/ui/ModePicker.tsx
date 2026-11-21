@@ -1,4 +1,5 @@
 import { mode, MODE_LABEL, type AppMode } from '../core/mode';
+import { engine } from '../core/engine';
 import { switchMode } from '../core/trips';
 import { ui, useUI, act } from './state';
 import { mapCtl } from './App';
@@ -23,7 +24,7 @@ export function ModePicker() {
     access.apply();
     if (mapCtl) await applyBase(mapCtl, true);
     ui.set({ modePicker: false, drawer: false, tab: 'trip', selectedId: null, place: null, places: [] });
-    if (changed) setTimeout(() => mapCtl?.fitRoute(), 300);
+    if (changed && engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 300);
   });
   return (
     <div className="modal-wrap" onClick={() => mode.chosen && ui.set({ modePicker: false })}>

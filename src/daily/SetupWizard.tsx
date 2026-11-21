@@ -11,18 +11,18 @@ const FLAG = 'ridegrid.daily.setupDone';
 export const setupDone = () => { try { return localStorage.getItem(FLAG) === '1'; } catch { return true; } };
 export const resetSetup = () => { try { localStorage.removeItem(FLAG); } catch { /* ignore */ } };
 
-/** First-run Daily setup (OsmAnd "first start" wizard), in plain steps. Can be re-run from Tools. */
+/** First-run Daily setup (OsmAnd "first start" wizard), in plain steps. Can be re-run from Settings → Help. */
 export function SetupWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [, tick] = useState(0);
   const finish = () => { try { localStorage.setItem(FLAG, '1'); } catch { /* ignore */ } onDone(); };
-  const go = (tab: 'tools' | 'map') => { ui.set({ drawer: true, tab }); finish(); };
+  const go = (tab: 'google' | 'map') => { ui.set({ drawer: true, tab }); finish(); };
   const steps = [
     <>
       <h3>1 · Google map</h3>
-      <p>The base map, search, traffic and routes come from Google — like Google Maps on your phone. It needs your own free Google key (instructions are in Tools).</p>
+      <p>The base map, search, traffic and routes come from Google — like Google Maps on your phone. It needs your own free Google key (instructions are in Settings).</p>
       <p>{google.settings.key ? '✅ Google key saved.' : '⬜ No Google key yet — the app still works with its own offline map.'}</p>
-      {!google.settings.key && <button onClick={() => go('tools')}>Add Google key now</button>}
+      {!google.settings.key && <button onClick={() => go('google')}>Add Google key now</button>}
     </>,
     <>
       <h3>2 · Offline maps</h3>
@@ -49,7 +49,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       <label className="check"><input type="checkbox" checked={extras.s.notify} onChange={(e) => void extras.save({ notify: e.target.checked }).then(() => tick((x) => x + 1))} /><span>Next turn in the notification bar</span></label>
       <label className="check"><input type="checkbox" checked={extras.s.autoRecord} onChange={(e) => void extras.save({ autoRecord: e.target.checked }).then(() => tick((x) => x + 1))} /><span>Record my track automatically when I ride</span></label>
       <label className="check"><input type="checkbox" checked={extras.s.wakeScreen} onChange={(e) => void extras.save({ wakeScreen: e.target.checked }).then(() => tick((x) => x + 1))} /><span>Wake the screen before turns</span></label>
-      <p className="muted">Everything else is in Ride, Map and Tools. You can run this setup again from Tools.</p>
+      <p className="muted">Everything else is in Settings (the gear in the search bar). You can run these steps again from Settings → Help.</p>
     </>,
   ];
   return (

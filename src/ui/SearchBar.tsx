@@ -88,7 +88,7 @@ function ExpeditionSearchBar() {
             </button>
           ))}
           {!busy && q.trim().length >= 2 && !results.length && !err && <div className="muted">No results</div>}
-          {results.length > 0 && <div className="muted small-note">{results[0].provider === 'google' ? 'Powered by Google' : 'Search © OpenStreetMap contributors (Photon)'}{!google.active && ' · add a Google key in Tools for Google search'}</div>}
+          {results.length > 0 && <div className="muted small-note">{results[0].provider === 'google' ? 'Powered by Google' : 'Search © OpenStreetMap contributors (Photon)'}{!google.active && ' · add a Google key in Settings for Google search'}</div>}
           <button className="link muted closer" onClick={() => setFocus(false)}>Close</button>
         </div>
       )}
