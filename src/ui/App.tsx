@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { locateMe } from './locate';
+import { SearchTop } from './Search';
 import { startLocate } from './locate';
 import { T } from '../core/terms';
 import { MapController } from '../map/MapController';
@@ -11,7 +13,6 @@ import { useEngine, useRouterStatus } from './hooks';
 import { Drawer } from './Drawer';
 import { FpsMeter } from './FpsMeter';
 import { StopSheet } from './StopSheet';
-import { SearchBar } from './SearchBar';
 import { MirrorPanel } from './MirrorPanel';
 import { SosModal, RouteOfferModal } from './TeamModals';
 import { team } from '../team/team';
@@ -50,7 +51,7 @@ import { startDaily } from '../daily/startDaily';
 import { startMapExtras } from '../daily/mapExtras';
 import { startWeatherLayers } from '../daily/weatherLayers';
 import { handleLaunch, listenAppLinks } from '../daily/launch';
-import { mode, MODE_LABEL } from '../core/mode';
+import { mode } from '../core/mode';
 
 export let mapCtl: MapController | null = null;
 
@@ -162,32 +163,34 @@ function Hud() {
   useEngine();
   const status = useRouterStatus();
   const t = engine.trip;
+  const daily = t?.kind === 'daily';
   const target = t?.targetKm ? t.targetKm * 1000 : 0;
   const covered = t?.coveredM ?? 0;
   const pending = engine.pendingLegs, errors = engine.errorLegs;
+  const routing = (pending > 0 || errors > 0 || status === 'offline' || status === 'backoff' || status === 'paused') && !(t?.isStress && status === 'paused');
   return (
-    <div className="hud glass">
-      <SearchBar />
-      <div className="hud-title" onClick={() => ui.set({ drawer: true, tab: 'trip' })}><span className={`kind ${t?.kind === 'daily' ? 'daily' : 'exp'}`} title="Switch mode" onClick={(e) => { e.stopPropagation(); ui.set({ modePicker: true }); }}>{MODE_LABEL[mode.current]} ⇄</span>{t?.name}{t?.sequenceLock ? <span className="lock" title="Sequence Lock on">🔒</span> : null}</div>
-      <div className="hud-stats" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
-        <span><b>{engine.stops.length.toLocaleString('en-IN')}</b> {T().n(engine.stops.length)}</span>
-        <span><b>{fmtKm(engine.routedM)}</b> mapped</span>
-        <span><b>{fmtKm(covered)}</b> covered</span>
-        {target > 0 && <span><b>{fmtKm(Math.max(0, target - covered))}</b> left</span>}
+    <div className="hud">
+      <SearchTop onSettings={() => ui.set({ drawer: true })} />
+      <div className="statusrow">
+        {!daily && t && (
+          <button className="statuschip" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
+            <b>{t.name}</b>{t.sequenceLock ? ' 🔒' : ''} · {engine.stops.length.toLocaleString('en-IN')} {T().n(engine.stops.length)} · {fmtKm(engine.routedM)} mapped · {fmtKm(covered)} covered{target > 0 ? ` · ${fmtKm(Math.max(0, target - covered))} left` : ''}
+          </button>
+        )}
+        {routing && (
+          <span className={`statuschip st-${status}`}>
+            {status === 'offline' ? 'Offline — ' : status === 'backoff' ? 'Server busy, retrying — ' : status === 'paused' ? 'Auto-route paused — ' : <><span className="spin" /> {daily ? 'Planning route — ' : 'Snapping to roads — '}</>}
+            {pending.toLocaleString('en-IN')} {daily ? 'parts' : 'legs'} left{errors ? ` · ${errors} failed` : ''}
+          </span>
+        )}
+        <HaltChip />
       </div>
-      <HaltChip />
       {t?.isStress && (
-        <div className="hud-stress" onClick={(e) => e.stopPropagation()}>
-          <span>⚙ Viewing STRESS TEST trip (test stops only). Your real stops are in your own trip.</span>
+        <div className="hud-stress glass" onClick={(e) => e.stopPropagation()}>
+          <span>Viewing STRESS TEST trip (test stops only). Your real stops are in your own trip.</span>
           <StressRouteButton />
           <button className="sm" onClick={() => act(null, () => leaveStressTrip()).then(() => setTimeout(() => mapCtl?.fitRoute(), 300))}>Back to my trip</button>
           <button className="sm danger" onClick={() => confirm('Clear ALL stress-test stops and delete the Stress Test trip?') && act('Clearing stress test…', () => deleteStressTrip())}>Clear all</button>
-        </div>
-      )}
-      {(pending > 0 || errors > 0 || status === 'offline' || status === 'backoff' || status === 'paused') && !(t?.isStress && status === 'paused') && (
-        <div className={`hud-router st-${status}`}>
-          {status === 'offline' ? '📴 Offline — ' : status === 'backoff' ? '⏳ Server busy, retrying — ' : status === 'paused' ? '⏸ Auto-route paused — ' : '🛣 Snapping to roads — '}
-          {pending.toLocaleString('en-IN')} legs pending{errors ? ` · ${errors} failed` : ''}
         </div>
       )}
     </div>
@@ -203,49 +206,92 @@ function HaltChip() {
   return <div className={`haltchip ${h <= 1 ? 'danger' : h <= 12 ? 'warn' : ''}`}>{left > 0 ? `Halt timer ${fmtHms(left)} left of ${compliance.settings.haltHours} h` : `Maximum ${compliance.settings.haltHours} h halt exceeded`}</div>;
 }
 
-function TrafficFab() {
-  useUI((s) => s.gtick);
-  const g = google.settings;
-  if (!g.key || !g.on) return null;
-  return (
-    <button className={`fab glass ${g.traffic ? 'traffic-on' : ''}`} title={g.traffic ? 'Hide live traffic' : 'Show live traffic'}
-      onClick={() => act(null, async () => { await google.save({ traffic: !g.traffic }); if (mapCtl) await applyBase(mapCtl, true); })}>
-      <Icon name="traffic" />
-    </button>
-  );
-}
-
 function HudGate() {
   useNav();
   return nav.mode === 'off' ? <Hud /> : null;
 }
 
+/**
+ * Map buttons, Google Maps style: Layers at the top right; my location and Ride at the bottom right;
+ * everything else (undo, redo, fit, tilt, night…) folds away under a chevron. A compass appears only when the map is turned.
+ */
 function Controls() {
   useEngine();
   const tapMode = useUI((s) => s.tapMode);
   const night = useUI((s) => s.night);
-  const locate = () => {
-    if (!navigator.geolocation) { toast('GPS not available', 'error'); return; }
-    navigator.geolocation.getCurrentPosition(
-      (p) => mapCtl?.showMe([p.coords.longitude, p.coords.latitude]),
-      (e) => toast(`GPS: ${e.message}`, 'error'),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
-  };
+  const locMode = useUI((s) => s.locMode);
+  const daily = mode.current === 'daily';
+  const place = useUI((s) => s.place);
+  useNav();
+  const [more, setMore] = useState(false);
+  const [layers, setLayers] = useState(false);
+  const [turned, setTurned] = useState(false);
+  useEffect(() => {
+    const m = mapCtl?.map; if (!m) return;
+    const f = () => { const t = Math.abs(m.getBearing()) > 1 || m.getPitch() > 1; setTurned((x) => (x === t ? x : t)); };
+    m.on('rotate', f); m.on('pitch', f); f();
+    return () => { m.off('rotate', f); m.off('pitch', f); };
+  }, []);
+  const tap = () => { const n = TAP_NEXT[tapMode]; ui.set({ tapMode: n }); toast(TAP_LABEL(n)); };
   return (
     <>
-      <button className="fab menu glass" aria-label="Open menu" onClick={() => ui.set({ drawer: true })}><Icon name="menu" size={26} /></button>
-      <div className="fabs">
-        <button className="fab glass" title="Undo (Ctrl+Z)" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}><Icon name="undo" /></button>
-        <button className="fab glass" title="Redo (Ctrl+Y)" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}><Icon name="redo" /></button>
-        <button className={`fab glass tap-${tapMode}`} title={TAP_LABEL(tapMode)} onClick={() => { const n = TAP_NEXT[tapMode]; ui.set({ tapMode: n }); toast(TAP_LABEL(n)); }}><Icon name={TAP_ICON[tapMode]} /></button>
-        <button className="fab glass go" title="Ride / simulate this route" onClick={() => ui.set({ drawer: true, tab: 'ride' })}><Icon name="bike" size={26} /></button>
-        <TrafficFab />
-        <button className="fab glass" title="Fit route" onClick={() => mapCtl?.fitRoute()}><Icon name="fit" /></button>
-        <button className="fab glass" title="Tilt 3D / flat" onClick={() => mapCtl?.tilt()}><Icon name="tilt" /></button>
-        <button className="fab glass" title="North up, flat" onClick={() => mapCtl?.snapView()}><Icon name="compass" /></button>
-        <button className="fab glass" title="My location" onClick={locate}><Icon name="locate" /></button>
-        <button className="fab glass" title="Day / Night" onClick={() => ui.set({ night: !night })}><Icon name={night ? 'sun' : 'moon'} /></button>
+      <div className="fabs-top">
+        <button className="fab" aria-label="Map layers" onClick={() => setLayers(true)}><Icon name="layers" /></button>
+        {turned && <button className="fab" aria-label="North up" onClick={() => { mapCtl?.snapView(); ui.set({ locMode: locMode === 'compass' ? 'follow' : locMode }); }}><Icon name="compass" /></button>}
+      </div>
+      {!place && nav.mode === 'off' && <div className="fabs-bottom">
+        {more && (
+          <div className="fab-more">
+            {daily && <button className={`fab tap-${tapMode}`} aria-label={TAP_LABEL(tapMode)} onClick={tap}><Icon name={TAP_ICON[tapMode]} /></button>}
+            {daily && <button className="fab" aria-label="Undo" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}><Icon name="undo" /></button>}
+            <button className="fab" aria-label="Redo" disabled={!engine.canRedo} onClick={() => act(null, () => engine.redo())}><Icon name="redo" /></button>
+            <button className="fab" aria-label="Show whole route" onClick={() => { mapCtl?.fitRoute(); setMore(false); }}><Icon name="fit" /></button>
+            <button className="fab" aria-label="3D tilt" onClick={() => mapCtl?.tilt()}><Icon name="tilt" /></button>
+            <button className="fab" aria-label={night ? 'Day map' : 'Night map'} onClick={() => ui.set({ night: !night })}><Icon name={night ? 'sun' : 'moon'} /></button>
+          </div>
+        )}
+        <button className="fab small" aria-label={more ? 'Fewer buttons' : 'More buttons'} aria-expanded={more} onClick={() => setMore(!more)}><Icon name={more ? 'chevdown' : 'chevup'} size={20} /></button>
+        {!daily && <button className={`fab tap-${tapMode}`} aria-label={TAP_LABEL(tapMode)} onClick={tap}><Icon name={TAP_ICON[tapMode]} /></button>}
+        {!daily && <button className="fab" aria-label="Undo" disabled={!engine.canUndo} onClick={() => act(null, () => engine.undo())}><Icon name="undo" /></button>}
+        <button className={`fab loc-${locMode}`} aria-label="My location" onClick={() => void locateMe()}><Icon name={locMode === 'compass' ? 'compass' : 'locate'} /></button>
+        <button className="fab go" aria-label="Ride" onClick={() => ui.set({ drawer: true, tab: 'ride' })}><Icon name="directions" size={26} /></button>
+      </div>}
+      {layers && <LayersSheet onClose={() => setLayers(false)} />}
+    </>
+  );
+}
+
+/** Map layers, like Google Maps' layers sheet: map type and the Google layers, plus night. */
+function LayersSheet({ onClose }: { onClose: () => void }) {
+  useUI((s) => s.gtick);
+  const night = useUI((s) => s.night);
+  const [, tick] = useState(0);
+  const g = google.settings;
+  const daily = mode.current === 'daily';
+  const d = dailyMap.settings;
+  const gOn = !!g.key && g.on;
+  const setD = (p: Partial<typeof d>) => act(null, async () => { await dailyMap.save(p); if (mapCtl) await applyBase(mapCtl, true); tick((x) => x + 1); });
+  const types = [['roadmap', 'Default', 'map'], ['satellite', 'Satellite', 'eye'], ['hybrid', 'Hybrid', 'layers'], ['terrain', 'Terrain', 'activity']] as const;
+  return (
+    <>
+      <div className="search-scrim" onClick={onClose} />
+      <div className="bottomsheet" role="dialog" aria-label="Map layers">
+        <div className="bs-handle" />
+        <div className="bs-head"><span>Map type</span><button className="iconbtn" aria-label="Close" onClick={onClose}><Icon name="close" size={20} /></button></div>
+        {daily && gOn && (
+          <div className="tiles">
+            {types.map(([k, l, ic]) => <button key={k} className={`tile ${d.gType === k ? 'on' : ''}`} onClick={() => setD({ gType: k })}><span className="tile-ico"><Icon name={ic} /></span>{l}</button>)}
+          </div>
+        )}
+        <div className="bs-head"><span>Map details</span></div>
+        <div className="tiles">
+          {gOn && <button className={`tile ${g.traffic ? 'on' : ''}`} onClick={() => act(null, async () => { await google.save({ traffic: !g.traffic }); if (mapCtl) await applyBase(mapCtl, true); tick((x) => x + 1); })}><span className="tile-ico"><Icon name="traffic" /></span>Traffic</button>}
+          {daily && gOn && <button className={`tile ${d.gTransit ? 'on' : ''}`} onClick={() => setD({ gTransit: !d.gTransit })}><span className="tile-ico"><Icon name="route" /></span>Transit</button>}
+          {daily && <button className={`tile ${d.trails ? 'on' : ''}`} onClick={() => setD({ trails: !d.trails })}><span className="tile-ico"><Icon name="flag" /></span>Trails</button>}
+          <button className={`tile ${night ? 'on' : ''}`} onClick={() => ui.set({ night: !night })}><span className="tile-ico"><Icon name="moon" /></span>Night</button>
+        </div>
+        {!gOn && <p className="bs-note">Add your Google key in Settings → Google Maps for Google's map, satellite and live traffic.</p>}
+        {daily && <button className="textbtn" onClick={() => { onClose(); ui.set({ drawer: true, tab: 'map' }); }}>More map options</button>}
       </div>
     </>
   );

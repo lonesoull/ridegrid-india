@@ -69,6 +69,22 @@ export async function searchAlongRoute(q: string, route: LngLat[]): Promise<GPla
   return (j.places ?? []).map((g: any) => ({ id: g.id, name: g.displayName?.text ?? '', address: g.formattedAddress ?? '', p: [g.location.longitude, g.location.latitude], type: g.primaryTypeDisplayName?.text }));
 }
 
+/** Google text search near a point ("petrol pump", "dhaba"), nearest first; openNow filters to places open right now. */
+export async function googleTextNear(q: string, p: LngLat, o: { openNow?: boolean } = {}): Promise<(GPlace & { distM: number })[]> {
+  gquota.take('textAlongRoute');
+  const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key(), 'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName' },
+    body: JSON.stringify({ textQuery: q, locationBias: { circle: { center: { latitude: p[1], longitude: p[0] }, radius: 15000 } }, rankPreference: 'DISTANCE', languageCode: 'en', regionCode: 'IN', pageSize: 20, ...(o.openNow ? { openNow: true } : {}) }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j?.error?.message ?? 'Google search failed');
+  const kx = 111320 * Math.cos((p[1] * Math.PI) / 180);
+  return (j.places ?? []).map((g: any) => {
+    const q2: LngLat = [g.location.longitude, g.location.latitude];
+    return { id: g.id, name: g.displayName?.text ?? '', address: g.formattedAddress ?? '', p: q2, type: g.primaryTypeDisplayName?.text, distM: Math.hypot((q2[0] - p[0]) * kx, (q2[1] - p[1]) * 110540) };
+  });
+}
+
 /** Small Street View photo URL (null if Google has no imagery there). */
 export async function streetViewPhoto(p: LngLat): Promise<string | null> {
   const meta = await fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${p[1]},${p[0]}&radius=60&key=${key()}`).then((r) => r.json()).catch(() => null);

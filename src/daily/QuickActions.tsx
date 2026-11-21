@@ -10,6 +10,7 @@ import { dailyMap } from './mapLayers';
 import { myLocation } from '../nav/directions';
 import type { LngLat } from '../core/geo';
 import { StarChart } from './StarChart';
+import { Icon } from '../ui/Icon';
 import { whereAmI } from './extras';
 import { handoff } from '../nav/handoff';
 
@@ -19,7 +20,7 @@ export const QA_LABEL: Record<QA, string> = { fav: '★ Add favourite here', mar
   audio: '🎙 Voice note here', rec: '● Start / stop recording', voice: '🔊 Voice on / off', night: '🌙 Day / night', style: '🗺 Next map style', hideplaces: '👁 Show / hide my places',
   search: '🔍 Search', nav: '🧭 Navigate / stop', zoomin: '＋ Zoom in', zoomout: '－ Zoom out', mylocation: '◎ My location', lock: '🔒 Lock screen (no accidental taps)', stars: '🌌 Star chart', whereami: '📍 Where am I? (spoken)', gnext: '🗺 Next 10 stops in Google Maps' };
 export const DEFAULT_QA: QA[] = ['lock', 'park', 'marker', 'rec'];
-const ICON: Record<QA, string> = { fav: '★', marker: '⚑', park: 'P', note: '✎', photo: '📷', audio: '🎙', rec: '●', voice: '🔊', night: '🌙', style: '🗺', hideplaces: '👁', search: '🔍', nav: '🧭', zoomin: '＋', zoomout: '－', mylocation: '◎', lock: '🔒', stars: '🌌', whereami: '📍', gnext: 'G' };
+const ICON: Record<QA, string> = { fav: 'star', marker: 'flag', park: 'parking', note: 'note', photo: 'camera', audio: 'mic', rec: 'rec', voice: 'volume', night: 'moon', style: 'map', hideplaces: 'eye', search: 'search', nav: 'directions', zoomin: 'plus', zoomout: 'minus', mylocation: 'locate', lock: 'lock', stars: 'star', whereami: 'pin', gnext: 'gmaps' };
 
 export const quick = {
   list: [...DEFAULT_QA] as QA[], hidePlaces: false,
@@ -40,6 +41,7 @@ export function QuickActions() {
   const [recording, setRecording] = useState<MediaRecorder | null>(null);
   const [locked, setLocked] = useState(false);
   const [stars, setStars] = useState(false);
+  const [open, setOpen] = useState(false);
   useEffect(() => { void quick.load().then(() => tick((x) => x + 1)); const f = () => tick((x) => x + 1); quick.listeners.add(f); recorder.listeners.add(f); return () => { quick.listeners.delete(f); recorder.listeners.delete(f); }; }, []);
 
   const run = (a: QA) => {
@@ -82,9 +84,10 @@ export function QuickActions() {
   return (
     <div className="quickacts">
       <input ref={photo} type="file" accept="image/*,video/*" capture="environment" hidden onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ''; if (f.length) void act(null, async () => { const p = await here(); await markers.put({ kind: 'note', name: `Photo ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, p, media: f }); toast('Photo note saved on the map'); }); }} />
-      {quick.list.map((a) => (
-        <button key={a} className={`fab glass qa ${a === 'rec' && recorder.on ? 'rec-on' : ''} ${a === 'audio' && recording ? 'rec-on' : ''}`} title={QA_LABEL[a]} onClick={() => void run(a)}>{ICON[a]}</button>
+      {(open || quick.list.length <= 3 ? quick.list : quick.list.slice(0, 2)).map((a) => (
+        <button key={a} className={`fab glass qa ${a === 'rec' && recorder.on ? 'rec-on' : ''} ${a === 'audio' && recording ? 'rec-on' : ''}`} title={QA_LABEL[a]} aria-label={QA_LABEL[a]} onClick={() => void run(a)}><Icon name={ICON[a]} /></button>
       ))}
+      {quick.list.length > 3 && <button className="fab small" aria-label={open ? 'Fewer' : 'More quick actions'} onClick={() => setOpen(!open)}><Icon name={open ? 'chevdown' : 'chevup'} size={20} /></button>}
     </div>
   );
 }

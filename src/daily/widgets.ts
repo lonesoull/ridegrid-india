@@ -17,12 +17,16 @@ export const WIDGET_LABEL: Record<WidgetId, string> = {
   obdRpm: 'Engine RPM (OBD)', obdCoolant: 'Engine temperature (OBD)', obdVolts: 'Battery voltage (OBD)', obdThrottle: 'Throttle (OBD)', obdLoad: 'Engine load (OBD)', obdFuel: 'Fuel level (OBD)', sats: 'GPS satellites',
 };
 export interface WidgetSettings { left: WidgetId[]; right: WidgetId[] }
-export const DEFAULT_WIDGETS: WidgetSettings = { left: ['clock', 'battery'], right: ['tripDist', 'avgSpeed', 'altitude'] };
+// a clean map like Google Maps: the phone already shows time and battery; riding numbers appear while riding
+export const DEFAULT_WIDGETS: WidgetSettings = { left: [], right: ['tripDist', 'avgSpeed', 'altitude'] };
 
 export const widgets = {
   s: structuredClone(DEFAULT_WIDGETS),
   listeners: new Set<() => void>(),
-  async load() { this.s = { ...DEFAULT_WIDGETS, ...(await getSetting('dailyWidgets', DEFAULT_WIDGETS)) }; },
+  async load() {
+    this.s = { ...DEFAULT_WIDGETS, ...(await getSetting('dailyWidgets', DEFAULT_WIDGETS)) };
+    if (this.s.left.join() === 'clock,battery') this.s.left = []; // old default: clock and battery always on the map
+  },
   async save(s: WidgetSettings) { this.s = s; await putSetting('dailyWidgets', s); this.listeners.forEach((f) => f()); },
 };
 
