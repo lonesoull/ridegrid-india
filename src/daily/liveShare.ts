@@ -1,4 +1,5 @@
-import mqtt from 'mqtt';
+import type { MqttClient } from 'mqtt';
+const loadMqtt = () => import('mqtt').then((m) => (m as any).default ?? m);
 import { deriveTeam, seal, open } from '../team/crypto';
 import { DEFAULT_BROKER } from '../team/team';
 import { nav } from '../nav/navigator';
@@ -17,7 +18,7 @@ const chan = async (code: string) => { const d = await deriveTeam(`share:${code}
 
 export const liveShare = {
   on: false, code: '', until: 0, sent: 0,
-  client: null as mqtt.MqttClient | null, stopGps: null as null | (() => void), timer: 0 as any, last: null as SharePos | null,
+  client: null as MqttClient | null, stopGps: null as null | (() => void), timer: 0 as any, last: null as SharePos | null,
   listeners: new Set<() => void>(),
   emit() { this.listeners.forEach((f) => f()); },
   link() { return `${location.origin}${location.pathname}#watch=${this.code}`; },
@@ -26,7 +27,8 @@ export const liveShare = {
     await this.stop();
     this.code = newCode(); this.until = hours > 0 ? Date.now() + hours * 3600000 : 0; this.on = true;
     const { topic, key } = await chan(this.code);
-    const client = mqtt.connect(DEFAULT_BROKER, { clientId: `rgs-${Math.random().toString(36).slice(2, 10)}`, clean: true, keepalive: 30, reconnectPeriod: 3000 });
+    const mqtt = await loadMqtt();
+    const client: MqttClient = mqtt.connect(DEFAULT_BROKER, { clientId: `rgs-${Math.random().toString(36).slice(2, 10)}`, clean: true, keepalive: 30, reconnectPeriod: 3000 });
     this.client = client;
     let own: LngLat | null = null, ownAcc = 0, ownSpd = 0, ownHd = 0;
     if (nav.mode !== 'live') this.stopGps = await watchGps((f) => { own = [f.lng, f.lat]; ownAcc = f.acc; ownSpd = f.speed ?? 0; ownHd = f.heading ?? 0; }, () => {});
@@ -56,7 +58,8 @@ export const liveShare = {
 /** Viewer side: subscribe to a shared link's channel. */
 export async function watchShare(code: string, onPos: (p: SharePos | null) => void) {
   const { topic, key } = await chan(code);
-  const client = mqtt.connect(DEFAULT_BROKER, { clientId: `rgw-${Math.random().toString(36).slice(2, 10)}`, clean: true, keepalive: 30, reconnectPeriod: 3000 });
+  const mqtt = await loadMqtt();
+  const client: MqttClient = mqtt.connect(DEFAULT_BROKER, { clientId: `rgw-${Math.random().toString(36).slice(2, 10)}`, clean: true, keepalive: 30, reconnectPeriod: 3000 });
   client.on('connect', () => client.subscribe(topic, { qos: 1 }));
   client.on('message', async (_t, payload) => {
     if (!payload.length) { onPos(null); return; }

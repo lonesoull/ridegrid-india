@@ -515,3 +515,4 @@ section p { margin: 0; }
 .hud { grid-template-columns: minmax(0, 1fr); }
 .topbar, .searchpill, .statusrow { min-width: 0; max-width: 100%; }
 .statusrow > * { max-width: 100%; min-width: 0; }
+.textbtn { min-height: 40px; }

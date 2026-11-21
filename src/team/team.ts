@@ -1,4 +1,6 @@
-import mqtt, { type MqttClient } from 'mqtt';
+import type { MqttClient } from 'mqtt';
+/** the MQTT library (~330 KB) loads only when a team link is actually used */
+const loadMqtt = () => import('mqtt').then((m) => (m as any).default ?? m);
 import { getSetting, putSetting, uid } from '../core/db';
 import type { LngLat } from '../core/geo';
 import { deriveTeam, newPairingCode, normalizeCode, open, seal } from './crypto';
@@ -99,7 +101,8 @@ class Team {
     this.key = key; this.base = `rg1/${topicId}`;
     this.status = 'connecting'; this.emit();
     const offline = await seal(key, { id: s.deviceId, name: s.name, role: s.role, online: false, t: Date.now() } satisfies PeerState);
-    const client = mqtt.connect(s.broker, {
+    const mqtt = await loadMqtt();
+    const client: MqttClient = mqtt.connect(s.broker, {
       clientId: `rg-${s.deviceId}-${Math.random().toString(36).slice(2, 7)}`,
       clean: true, keepalive: 20, reconnectPeriod: 2000, connectTimeout: 10000,
       will: { topic: `${this.base}/p/${s.deviceId}`, payload: offline as any, retain: true, qos: 1 },

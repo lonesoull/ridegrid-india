@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import { db, uid, type StopLog, type StopType, type RidePoint } from '../core/db';
 import { haversine, type LngLat } from '../core/geo';
 import { loadStates, stateAt } from './states';
@@ -231,6 +230,7 @@ async function dayGPX(tripId: string, tripName: string, d: DaySummary) {
  */
 export interface RiderInfo { riderName?: string; bikeReg?: string; bikeModel?: string }
 export async function evidencePack(tripId: string, tripName: string, date?: string, rules: EvidenceRules = DEFAULT_RULES, rider: RiderInfo = {}): Promise<Blob> {
+  const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
   const all = await daySummaries(tripId, rules);
   const days = (date ? all.filter((d) => d.date === date) : all).slice().sort((a, b) => a.date.localeCompare(b.date));

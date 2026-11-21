@@ -61,6 +61,9 @@ const TAP_NEXT: Record<TapMode, TapMode> = { append: 'insert', insert: 'off', of
 const TAP_LABEL = (m: TapMode) => ({ append: `Tap: add ${T().one} at end`, insert: 'Tap: insert on route line', off: 'Tap: view only' }[m]);
 const TAP_ICON: Record<TapMode, string> = { append: 'plus', insert: 'insert', off: 'hand' };
 
+/** night setting the current map style was built with */
+let baseNight: boolean | null = null;
+
 export function App() {
   const el = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
@@ -106,13 +109,14 @@ export function App() {
       nav.subscribe(() => { if (nav.mode !== navWas) { navWas = nav.mode; if (nav.mode === 'off') void drawRidden(); } });
       void team.load();
       if (location.hash.startsWith('#join=')) ui.set({ drawer: true, tab: 'team' });
-      await applyBase(mapCtl!);
-      window.addEventListener('online', () => mapCtl && applyBase(mapCtl));
-      window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
+      // know the mode first, then build the map style once (it used to be built three times at start)
       await bootTrips();
       document.documentElement.dataset.mode = mode.current;
+      await applyBase(mapCtl!);
+      baseNight = ui.get().night;
+      window.addEventListener('online', () => mapCtl && applyBase(mapCtl));
+      window.addEventListener('offline', () => mapCtl && applyBase(mapCtl));
       void access.load();
-      if (mode.current === 'daily') await applyBase(mapCtl!);
       if (!mode.chosen) ui.set({ modePicker: true });
       void reminder.start();
       void handleLaunch().catch((e) => toast(String(e?.message ?? e), 'error'));
@@ -138,7 +142,7 @@ export function App() {
   const night = useUI((s) => s.night);
   useEffect(() => {
     document.documentElement.dataset.theme = night ? 'dark' : 'light';
-    if (ready && mapCtl) void applyBase(mapCtl);
+    if (ready && mapCtl && night !== baseNight) { baseNight = night; void applyBase(mapCtl); }
   }, [night, ready]);
 
   // live-location viewer link (#watch=CODE): only the map and the rider
