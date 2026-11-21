@@ -136,7 +136,7 @@ export function NavPanel() {
         {more && <>
           <div className="muted navnext">Next {t.one} <b>#{Math.min(nav.next + 1, N).toLocaleString('en-IN')}</b> of {N.toLocaleString('en-IN')} · {done ? '—' : fmtDist(toStop)}{!sim && ` · ${Math.round(nav.speedMps * 3.6)} km/h`}{sim && ` · ${nav.settings.simKmh} km/h ×${nav.mult}`}</div>
           <div className="navbtns">
-            {!sim && <button className="logbtn" onClick={() => ui.set({ logStop: true })}><Icon name="note" size={18} /> Log stop</button>}
+            {!sim && exp && <button className="logbtn" onClick={() => ui.set({ logStop: true })}><Icon name="note" size={18} /> Log stop</button>}
             {!sim && isExpedition() && <EvidenceButton />}
             {team.settings && <SosHold />}
           </div>

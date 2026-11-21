@@ -88,6 +88,8 @@ export function RideTab() {
 
       {isExpedition() ? <RulesSection /> : <DailyRouteSettings />}
 
+      {/* logbook, Google stages and evidence ride logs are Expedition record tools — Daily keeps its rides in Tracks */}
+      {isExpedition() && <>
       <section>
         <h3>Logbook</h3>
         <p className="muted">Start/end of day, stops, breaks, photos and the printable logbook now have their own tab.</p>
@@ -133,6 +135,7 @@ export function RideTab() {
           </div>
         ))}
       </section>
+      </>}
     </div>
   );
 }

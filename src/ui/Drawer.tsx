@@ -54,7 +54,6 @@ function rows(daily: boolean): { title?: string; rows: Row[] }[] {
       { id: 'stops', icon: 'pin', title: 'Stops', sub: 'Add, reorder and inspect stops' },
       { id: 'places', icon: 'star', title: 'Saved places', sub: 'Favourites, markers, parked bike, notes' },
       { id: 'tracks', icon: 'activity', title: 'Tracks', sub: 'Recording, my tracks, measure' },
-      { id: 'log', icon: 'book', title: 'Ride diary', sub: 'Stops you logged, photos, notes' },
     ] },
     { title: 'Settings', rows: [
       { id: 'ride', icon: 'directions', title: 'Navigation', sub: 'Route options, voice, alerts, Google Maps hand-off' },

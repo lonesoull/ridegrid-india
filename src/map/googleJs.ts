@@ -173,6 +173,12 @@ export class GoogleUnderlay {
       const br = new GoogleBridge(this.gmap, ml);
       this.gl.push({ remove: () => br.destroy() });
     }).catch((e) => console.warn('google bridge', e));
+    // stops / waypoints as Google's own numbered pins (tap to open, press-and-hold to drag)
+    void import('./googleStops').then(({ GoogleStops }) => {
+      if (!this.drive) return;
+      const st = new GoogleStops(this.gmap);
+      this.gl.push({ remove: () => st.destroy() });
+    }).catch((e) => console.warn('google bridge', e));
     this.gl.push(this.gmap.addListener('idle', () => { copy(); ml.fire('rg-idle' as any); }));
     this.gl.push(this.gmap.addListener('dragstart', () => { cancelAnimationFrame(anim); ml.fire('dragstart'); }));
     // taps / long-presses: Google's own places open our place card; anything else goes to our layers (stops, favourites…)
@@ -206,6 +212,8 @@ export class GoogleUnderlay {
     const cancel = () => { clearTimeout(timer); timer = 0; };
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' || !e.isPrimary) { cancel(); return; }
+      // on one of Google's pins (stops): Google handles tap and drag itself
+      if (e.composedPath().some((n) => (n as HTMLElement).tagName === 'GMP-ADVANCED-MARKER')) { cancel(); return; }
       cancel(); sx = e.clientX; sy = e.clientY; pid = e.pointerId;
       timer = window.setTimeout(() => {
         timer = 0; lastHold = Date.now();

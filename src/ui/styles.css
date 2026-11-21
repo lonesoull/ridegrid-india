@@ -523,3 +523,9 @@ section p { margin: 0; }
 .gbox { flex: 1; min-width: 0; display: flex; align-items: center; }
 .gbox gmp-place-autocomplete { flex: 1; min-width: 0; color-scheme: light; --gmp-mat-color-surface: transparent; border: 0; }
 :root[data-theme='dark'] .gbox gmp-place-autocomplete { color-scheme: dark; }
+/* stops / waypoints as Google pins: numbered circles (start green, end red, others blue), count bubbles when zoomed out */
+.gpin { min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px; display: grid; place-items: center; font: 600 12px/1 Roboto, system-ui, sans-serif;
+  color: #fff; background: #1a73e8; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); transform: translateY(50%); cursor: pointer; }
+.gpin.start { background: #188038; } .gpin.end { background: #d93025; }
+.gpin.sel { outline: 3px solid #f9ab00; outline-offset: 1px; transform: translateY(50%) scale(1.15); }
+.gpin.cluster { min-width: 34px; height: 34px; border-radius: 17px; background: rgba(26,115,232,.92); font-size: 12px; }

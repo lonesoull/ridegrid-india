@@ -265,6 +265,9 @@ function vectorLayer(ml: MLMap, L: any, src: any) {
   });
 }
 
+/** stops / waypoints and their selection are Google's own pins instead */
+const NATIVE = new Set(['rg-stop-pts', 'rg-stop-label', 'rg-clusters', 'rg-cluster-label', 'rg-sel']);
+
 // ---------------------------------------------------------------- the bridge
 export class GoogleBridge {
   private overlay: GoogleMapsOverlay;
@@ -333,6 +336,7 @@ export class GoogleBridge {
     const out: any[] = [];
     for (const L of style.layers as any[]) {
       if (L.type === 'background' || (L.layout?.visibility ?? 'visible') === 'none') continue;
+      if (NATIVE.has(L.id)) continue; // drawn as Google's own pins (googleStops.ts)
       if ((L.minzoom !== undefined && zoom < L.minzoom - 0.5) || (L.maxzoom !== undefined && zoom >= L.maxzoom)) continue;
       const src: any = (style.sources as any)[L.source];
       if (!src) continue;
