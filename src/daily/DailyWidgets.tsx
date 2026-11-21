@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { seaLevelAltitude } from './altitude';
+import { live } from '../nav/liveLocation';
 import { extras, deviceStatus } from './extras';
 import { formatCoords } from './coords';
 import { nav } from '../nav/navigator';
@@ -66,7 +68,7 @@ function value(id: WidgetId): React.ReactNode | null {
     case 'speed': return riding ? big(Math.round(mps * 3.6), 'km/h') : null;
     case 'avgSpeed': return riding && stats.movingS > 30 ? big(Math.round((stats.distM / stats.movingS) * 3.6), 'avg km/h') : null;
     case 'maxSpeed': return riding ? big(Math.round(stats.maxMps * 3.6), 'max km/h') : null;
-    case 'altitude': return nav.altitude !== null ? big(Math.round(nav.altitude), 'm alt') : null;
+    case 'altitude': { const h = seaLevelAltitude(nav.pos ?? live.pos, () => widgets.listeners.forEach((f) => f())); return h !== null ? big(Math.round(h), 'm above sea') : null; }
     case 'climb': return riding && stats.climbM > 0 ? big(`↗${Math.round(stats.climbM)}`, 'm climb') : null;
     case 'bearing': return riding ? big(`${Math.round(nav.heading)}°`, DIRS[Math.round(nav.heading / 45) % 8]) : null;
     case 'battery': return battery ? big(`${Math.round(battery.level * 100)}%`, battery.charging ? '⚡ battery' : 'battery') : null;

@@ -29,6 +29,7 @@ const clock = (s: number) => (Number.isFinite(s) ? new Date(Date.now() + s * 100
 export function NavPanel() {
   useNav();
   const following = useUI((s) => s.following);
+  const [more, setMore] = useState(false);
   if (nav.mode === 'off') return null;
   const N = engine.stops.length;
   const done = nav.done;
@@ -96,14 +97,19 @@ export function NavPanel() {
       </div>
 
       {!exp && <DailyNavExtras />}
+      {!following && <button className="recentre" onClick={() => { ui.set({ following: true }); mapCtl?.startFollow(nav.pos); }}><Icon name="locate" size={18} /> Re-centre</button>}
       <div className="navpanel glass">
         {nav.gpsError && <div className="offbanner warn">{nav.gpsError}</div>}
         <CompAlerts />
         {!sim && !nav.pos && !nav.gpsError && <div className="muted">Waiting for GPS fix… (outdoors with open sky is fastest)</div>}
-        <div className="navsummary">
-          <div><b className="eta">{done ? 'Arrived' : fmtDur(etaS)}</b> <span className="muted">· {fmtKm(nav.remaining)} · arrive {sim ? '—' : clock(etaS)}{live ? ' · live traffic' : ''}</span></div>
-          <div className="muted">Next {t.one} <b>#{Math.min(nav.next + 1, N).toLocaleString('en-IN')}</b> of {N.toLocaleString('en-IN')} · {done ? '—' : fmtDist(toStop)}
-            {!sim && ` · ${Math.round(nav.speedMps * 3.6)} km/h`}{sim && ` · ${nav.settings.simKmh} km/h ×${nav.mult}`}</div>
+        <div className="navmain">
+          <button className="navround danger" aria-label="Exit navigation" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: 'append' }))}><Icon name="close" /></button>
+          <div className="navsummary">
+            <b className="eta">{done ? 'Arrived' : fmtDur(etaS)}</b>
+            <span className="muted">{fmtKm(nav.remaining)} · {sim ? 'simulation' : clock(etaS)}{live ? ' · live traffic' : ''}</span>
+          </div>
+          {st && <button className="navround" aria-label="Open the next 10 stops in Google Maps" onClick={() => handoff.open()}><Icon name="gmaps" /></button>}
+          <button className="navround" aria-label={more ? 'Fewer options' : 'More options'} aria-expanded={more} onClick={() => setMore(!more)}><Icon name={more ? 'chevdown' : 'chevup'} /></button>
         </div>
         {nav.faster && (
           <div className="fasterbar">
@@ -122,16 +128,19 @@ export function NavPanel() {
           </div>
         )}
         {detour?.returning && nav.approach && <div className="muted">Returning {detour.returning === 'same' ? 'the way you came' : 'by the safe route'} to where you left the route.</div>}
-        <div className="navbtns">
-          {sim && <button className="primary" onClick={() => nav.togglePlay()} disabled={done}><Icon name={nav.playing ? 'pause' : 'play'} /> {nav.playing ? 'Pause' : 'Play'}</button>}
-          {sim && SIM_SPEEDS.map((m) => <button key={m} className={nav.mult === m ? 'on' : ''} onClick={() => nav.setMult(m)}>{m}×</button>)}
-          {!following && <button onClick={() => { ui.set({ following: true }); mapCtl?.startFollow(nav.pos); }}><Icon name="target" /> Re-centre</button>}
-          {!sim && <button className="logbtn" onClick={() => ui.set({ logStop: true })}>Log stop</button>}
-          {!sim && isExpedition() && <EvidenceButton />}
-          {team.settings && <SosHold />}
+        {sim && <div className="navbtns">
+          <button className="primary" onClick={() => nav.togglePlay()} disabled={done}><Icon name={nav.playing ? 'pause' : 'play'} /> {nav.playing ? 'Pause' : 'Play'}</button>
+          {SIM_SPEEDS.map((m) => <button key={m} className={nav.mult === m ? 'on' : ''} onClick={() => nav.setMult(m)}>{m}×</button>)}
+        </div>}
+        {!more && st && handoff.due && <HandoffButtons />}
+        {more && <>
+          <div className="muted navnext">Next {t.one} <b>#{Math.min(nav.next + 1, N).toLocaleString('en-IN')}</b> of {N.toLocaleString('en-IN')} · {done ? '—' : fmtDist(toStop)}{!sim && ` · ${Math.round(nav.speedMps * 3.6)} km/h`}{sim && ` · ${nav.settings.simKmh} km/h ×${nav.mult}`}</div>
+          <div className="navbtns">
+            {!sim && <button className="logbtn" onClick={() => ui.set({ logStop: true })}><Icon name="note" size={18} /> Log stop</button>}
+            {!sim && isExpedition() && <EvidenceButton />}
+            {team.settings && <SosHold />}
+          </div>
           {st && <HandoffButtons />}
-          <button className="danger" onClick={() => act(null, () => nav.stop()).then(() => ui.set({ tapMode: 'append' }))}><Icon name="stop" /> Exit</button>
-        </div>
         <div className="navfoot muted">
           {sim ? 'Simulation' : `GPS ±${Math.round(nav.accuracy)} m`} · {!sim && isNativeApp() ? 'background GPS ✓' : nav.wake.active ? 'screen kept on ✓' : nav.wake.supported ? 'screen lock not held' : 'keep-awake not supported'}
           {nav.mockFixes > 0 && <span className="danger-text"> · FAKE GPS blocked ×{nav.mockFixes}</span>}
@@ -141,6 +150,7 @@ export function NavPanel() {
           {nav.joinedAt !== null && ` · joined route before #${nav.joinedAt + 1}`}
           {nav.missed.length > 0 && <span className="warn"> · missed: {nav.missed.slice(-5).map((i) => `#${i + 1}`).join(', ')}{nav.missed.length > 5 ? ` (+${nav.missed.length - 5})` : ''}</span>}
         </div>
+        </>}
       </div>
     </>
   );

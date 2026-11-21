@@ -4,7 +4,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { GoogleUnderlay, type GoogleBaseOpts } from './googleJs';
 import { nav } from '../nav/navigator';
 import { engine, type Leg, type LegDiff } from '../core/engine';
-import { bounds, type LngLat } from '../core/geo';
+import { bounds, haversine, type LngLat } from '../core/geo';
 import { ui, toast, act } from '../ui/state';
 import { app } from '../core/app';
 
@@ -77,6 +77,7 @@ export class MapController {
         this.map.setStyle(fallbackStyle);
       }
     });
+    if (import.meta.env.DEV || location.search.includes('rgdebug')) (window as any).__rgMap = this.map;
     engine.subscribe((e) => {
       if (e.stops) this.scheduleStops();
       if (e.legs) this.applyLegDiff(e.legs);
@@ -369,12 +370,13 @@ export class MapController {
     if (pos && this.follow && !this.drag) {
       const now = performance.now();
       // first follow frame (or after zooming far out): bring the camera down to riding view
-      const cam: { zoom?: number; pitch?: number } = this.map.getZoom() < 13 ? { zoom: 15.5, pitch: 55 } : {};
+      const far = this.map.getZoom() < 13 || this.lastCam === 0 || haversine([this.map.getCenter().lng, this.map.getCenter().lat], pos) > 3000;
+      const cam: { zoom?: number; pitch?: number } = far ? { zoom: Math.max(this.map.getZoom(), 16), pitch: 55 } : {};
       // Daily mode auto-zoom by speed (hook unset in expedition)
       const az = this.followZoom?.();
       if (az !== null && az !== undefined && !('zoom' in cam) && Math.abs(az - this.map.getZoom()) > 0.3) cam.zoom = az;
       const brg = this.followBearing?.(heading) ?? heading;
-      if (sim) this.map.jumpTo({ center: pos, bearing: brg, ...cam });
+      if (sim || far) { this.lastCam = now; this.map.jumpTo({ center: pos, bearing: brg, ...cam }); }
       else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: brg, duration: 900, ...cam }); }
     }
   }
@@ -443,7 +445,10 @@ export class MapController {
   }
   startFollow(pos?: LngLat | null) {
     this.follow = true;
-    this.map.jumpTo({ center: pos ?? this.map.getCenter(), zoom: Math.max(this.map.getZoom(), 15.5), pitch: 55 });
+    this.lastCam = 0;
+    // go straight to riding view where the rider is; with no position yet, wait for the first fix (no jump into the sea)
+    const p = pos ?? this.me;
+    if (p) this.map.jumpTo({ center: p, zoom: Math.max(this.map.getZoom(), 16), pitch: 55 });
   }
 
   // ---------- camera ----------

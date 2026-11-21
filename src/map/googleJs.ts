@@ -109,15 +109,35 @@ export class GoogleUnderlay {
     this.drive = true;
     ml.getContainer().classList.add('google-drives');
     let raf = 0;
+    // RideGrid's own camera moves (follow while riding, fly to a place…) drive Google meanwhile; copying Google
+    // back during them would cancel them, so the copy pauses until they end
+    let ours = 0;
+    ml.on('movestart', (e: any) => { if (e?.rg !== 'g' && !e?.originalEvent) ours++; });
+    ml.on('moveend', (e: any) => { if (e?.rg !== 'g' && !e?.originalEvent) ours = Math.max(0, ours - 1); });
     const copy = () => {
       raf = 0;
+      if (ours) return;
       const c = this.gmap.getCenter(); if (!c) return;
       ml.jumpTo({ center: [c.lng(), c.lat()], zoom: (this.gmap.getZoom() ?? 1) - 1, bearing: this.gmap.getHeading?.() ?? 0, pitch: this.gmap.getTilt?.() ?? 0 }, FROM_GOOGLE);
     };
     const schedule = () => { if (!raf) raf = requestAnimationFrame(copy); };
-    for (const ev of ['center_changed', 'zoom_changed', 'heading_changed', 'tilt_changed']) this.gl.push(this.gmap.addListener(ev, schedule));
+    // Best: draw our layer inside Google's own frame (WebGL overlay) — both maps then move together, no sliding.
+    const W = google.maps.WebGLOverlayView;
+    if (W) {
+      const ov = new W();
+      ov.onDraw = ({ transformer }: any) => {
+        if (ours) return; // MapLibre is animating and renders itself
+        const cp = transformer.getCameraParams();
+        ml.jumpTo({ center: [cp.lng, cp.lat], zoom: cp.zoom - 1, bearing: cp.heading, pitch: cp.tilt }, FROM_GOOGLE);
+        ml.redraw();
+      };
+      ov.setMap(this.gmap);
+      this.gl.push({ remove: () => ov.setMap(null) });
+    }
+    // fallback (basic raster Google map has no WebGL overlay): copy the camera on the next frame
+    for (const ev of ['center_changed', 'zoom_changed', 'heading_changed', 'tilt_changed']) this.gl.push(this.gmap.addListener(ev, () => { if (!W || this.renderingType === 'RASTER') schedule(); }));
     this.gl.push(this.gmap.addListener('idle', () => { copy(); ml.fire('rg-idle' as any); }));
-    this.gl.push(this.gmap.addListener('dragstart', () => ml.fire('dragstart')));
+    this.gl.push(this.gmap.addListener('dragstart', () => { if (ours) { ml.stop(); ours = 0; } ml.fire('dragstart'); }));
     // taps / long-presses: Google's own places open our place card; anything else goes to our layers (stops, favourites…)
     const pass = (type: 'click' | 'contextmenu') => (e: any) => {
       if (type === 'click' && e.placeId && opts.onPlaceTap) { e.stop?.(); opts.onPlaceTap(e.placeId, [e.latLng.lng(), e.latLng.lat()]); return; }

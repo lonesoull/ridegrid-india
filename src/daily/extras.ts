@@ -149,6 +149,12 @@ export function installRouteStyle(ctl: import('../map/MapController').MapControl
     const w = (a: number, b: number, c: number): any => ['interpolate', ['linear'], ['zoom'], 4, a * k, 10, b * k, 16, c * k];
     if (m.getLayer('rg-route-line')) { m.setPaintProperty('rg-route-line', 'line-color', d ? extras.s.routeColor : '#1e90ff'); m.setPaintProperty('rg-route-line', 'line-width', w(1.6, 4, 7)); }
     if (m.getLayer('rg-route-casing')) m.setPaintProperty('rg-route-casing', 'line-width', w(3, 7, 12));
+    // the way to your first stop: same solid blue as the route while riding (Google style); Expedition keeps its dashed orange detour line
+    if (m.getLayer('rg-approach')) {
+      m.setPaintProperty('rg-approach', 'line-color', d ? extras.s.routeColor : '#f97316');
+      m.setPaintProperty('rg-approach', 'line-dasharray', d ? undefined : [1.5, 1]);
+      m.setPaintProperty('rg-approach', 'line-width', d ? w(1.6, 4, 7) : ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6]);
+    }
     const data = { type: 'FeatureCollection' as const, features: d && extras.s.showAvoided ? dailyNav.s.avoided.map((a) => ({ type: 'Feature' as const, properties: { name: a.name }, geometry: { type: 'LineString' as const, coordinates: a.coords } })) : [] };
     const src = m.getSource('d-avoided') as import('maplibre-gl').GeoJSONSource | undefined;
     if (src) src.setData(data);
@@ -158,8 +164,10 @@ export function installRouteStyle(ctl: import('../map/MapController').MapControl
       m.addLayer({ id: 'd-avoided-x', type: 'symbol', source: 'd-avoided', layout: { 'symbol-placement': 'line', 'symbol-spacing': 120, 'text-field': '⛔', 'text-size': 14, 'text-font': ['Noto Sans Regular'] } });
     }
   };
-  ctl.styleHooks.add(apply);
-  const again = () => { if (ctl.map.isStyleLoaded()) apply(ctl.map); };
+  ctl.styleHooks.add((m) => { try { apply(m); } catch (e) { (window as any).__rgStyleErr = String(e); console.warn('route style', e); } });
+  const again = () => { try { if (ctl.map.getLayer('rg-route-line')) apply(ctl.map); } catch (e) { console.warn('route style', e); } };
   extras.listeners.add(again); dailyNav.listeners.add(again);
+  // switching between Expedition and Daily: restyle (the map style isn't always rebuilt)
+  new MutationObserver(again).observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode'] });
   again();
 }

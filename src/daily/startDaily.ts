@@ -33,7 +33,7 @@ export function startDaily(ctl: MapController) {
     if (t && t.dist < 60 && buzzed !== t.s) { buzzed = t.s; access.buzz(t.c.includes('left') ? [300] : [100, 80, 100]); }
   });
   installTrackLayer(ctl);
-  void extras.load().then(() => { startExtras(); installRouteStyle(ctl); });
+  void extras.load().then(() => { try { installRouteStyle(ctl); } catch (e) { console.warn('route style', e); } try { startExtras(); } catch (e) { console.warn('extras', e); } }).catch((e) => console.warn('extras load', e));
   void import('./drive').then(({ drive }) => drive.startAuto(() => toast('Daily Google Drive backup is due — open Settings → Backup & files → Back up now')));
   void import('./osm').then((m) => m.osmAuth.finish()).then((ok) => ok && toast('Logged in to OpenStreetMap')).catch((e) => toast(e.message, 'error'));
   // Google-planned legs may only be shown on the Google map: when the signal goes / comes back, re-plan
