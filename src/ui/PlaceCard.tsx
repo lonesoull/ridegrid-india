@@ -109,22 +109,19 @@ export function PlaceCard() {
           {safe && <span className={`chip ${safe.ok ? 'okchip' : 'badchip'}`}>{safe.ok ? `✅ Keeps ≥ ${nav.settings.gapM} m from other planned roads` : `⚠ Passes ${Math.round(safe.minGapM)} m from a planned road`} · {fmtKm(safe.distM)}</span>}
         </div>
         {exp ? <>
-          <div className="btns main-actions">
-            <button className="primary" onClick={safetyCheck}>Safety check</button>
+          <div className="actionrow">
+            <button className="primary" onClick={safetyCheck}><Icon name="shield" size={18} /> Safety check</button>
             <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${p[1]},${p[0]}&travelmode=two-wheeler`, '_blank', 'noopener')}><Icon name="gmaps" size={18} /> Google Maps</button>
           </div>
           <p className="hint">Expedition: checks a way from where you are to this place that keeps {nav.settings.gapM} m from every other planned road (crossings, sub-roads, flyovers, parallel roads). While you go there, Detour mode guards you, and “Return the way I came” brings you back.</p>
         </> : <>
-          <div className="btns main-actions">
-            <button className={dir ? '' : 'primary'} onClick={directions}><Icon name="directions" /> Directions</button>
-            <button className={dir ? 'primary' : ''} onClick={() => go('live')}><Icon name="play" /> Go</button>
-            <button onClick={() => go('sim')}><Icon name="sim" /> Simulate</button>
+          <div className="actionrow">
+            <button className={dir ? '' : 'primary'} onClick={directions}><Icon name="directions" size={18} /> Directions</button>
+            <button className={dir ? 'primary' : ''} onClick={() => go('live')}><Icon name="play" size={18} /> Start</button>
+            <button onClick={() => act(null, async () => { const i = await addStop(); toast(`Added as ${T().one} #${i + 1}`); })}><Icon name="plus" size={18} /> Add stop</button>
+            <button onClick={() => go('sim')}><Icon name="sim" size={18} /> Simulate</button>
           </div>
-          <div className="btns sm">
-            <button onClick={() => act(null, async () => { const i = await addStop(); toast(`Added as ${T().one} #${i + 1}`); })}>＋ Add as {T().one}</button>
-            <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${p[1]},${p[0]}&travelmode=two-wheeler`, '_blank', 'noopener')}><Icon name="gmaps" size={18} /> Google Maps</button>
-            <TransitPanel from={async () => nav.pos ?? (await myFix()).p} to={p} />
-          </div>
+          <TransitPanel from={async () => nav.pos ?? (await myFix()).p} to={p} />
           <GooglePlaceExtras p={p} placeId={(pl ?? sel).id.startsWith('g:') ? (pl ?? sel).id.slice(2) : undefined} name={sel.name} from={where} />
         </>}
       </>}

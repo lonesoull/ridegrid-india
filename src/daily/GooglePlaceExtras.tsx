@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Icon } from '../ui/Icon';
 import type { LngLat } from '../core/geo';
 import { mapCtl } from '../ui/App';
 import { act, toast } from '../ui/state';
@@ -16,14 +17,14 @@ export function GooglePlaceExtras({ p, placeId, name, from }: { p: LngLat; place
   useEffect(() => { if (pano && panoEl.current) void openStreetView(panoEl.current, p).catch((e) => { toast(e.message, 'error'); setPano(false); }); }, [pano]);
   return (
     <div className="gextras">
-      <div className="btns sm">
-        <button onClick={() => openInGoogleMaps(p, placeId, name)}>Open in Google Maps (ratings, hours, reviews)</button>
-        {ok && placeId && !photos && <button onClick={() => act(null, async () => setPhotos(await placePhotos(placeId)))}>📷 Photos</button>}
+      <div className="actionrow">
+        <button onClick={() => openInGoogleMaps(p, placeId, name)} title="Ratings, hours and reviews in the Google Maps app"><Icon name="gmaps" size={18} /> Google Maps</button>
+        {ok && placeId && !photos && <button onClick={() => act(null, async () => setPhotos(await placePhotos(placeId)))}><Icon name="camera" size={18} /> Photos</button>}
         {<button onClick={() => act('Walking route…', async () => {
           const w = await walkRoute(await from(), p);
           if (mapCtl) showTrack(mapCtl, { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { c: '#1971c2' }, geometry: { type: 'LineString', coordinates: w.coords } }] });
           toast(`Walk ${w.distM < 1000 ? `${Math.round(w.distM)} m` : `${(w.distM / 1000).toFixed(1)} km`} · about ${Math.round(w.minutes)} min · ${w.by}`);
-        })}>🚶 Walk here</button>}
+        })}><Icon name="activity" size={18} /> Walk</button>}
       </div>
       {sv && !pano && <button className="svthumb" onClick={() => setPano(true)} title="Open Street View"><img src={sv} alt="Street View" /><span>Street View ▸</span></button>}
       {pano && <div className="panowrap"><div ref={panoEl} className="pano" /><button className="x" onClick={() => setPano(false)}>✕</button></div>}

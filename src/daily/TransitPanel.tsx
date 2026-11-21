@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from '../ui/Icon';
 import type { LngLat } from '../core/geo';
 import { mapCtl } from '../ui/App';
 import { act, ui } from '../ui/state';
@@ -16,7 +17,7 @@ export function TransitPanel({ from, to }: { from: () => Promise<LngLat>; to: Ln
     if (all.length) mapCtl.map.fitBounds([[Math.min(...all.map((p) => p[0])), Math.min(...all.map((p) => p[1]))], [Math.max(...all.map((p) => p[0])), Math.max(...all.map((p) => p[1]))]], { padding: 70 });
   };
   const load = () => act('Finding buses, metro and trains…', async () => { const r = await transitRoutes(await from(), to); setRoutes(r); setPick(0); draw(r[0]); });
-  if (!routes) return <button onClick={load}>🚌 Public transport</button>;
+  if (!routes) return <div className="actionrow"><button onClick={load}><Icon name="route" size={18} /> Bus & train</button></div>;
   const r = routes[pick];
   return (
     <div className="transit">

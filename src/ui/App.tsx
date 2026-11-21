@@ -275,7 +275,7 @@ function LayersSheet({ onClose }: { onClose: () => void }) {
       <div className="search-scrim" onClick={onClose} />
       <div className="bottomsheet" role="dialog" aria-label="Map layers">
         <div className="bs-handle" />
-        <div className="bs-head"><span>Map type</span><button className="iconbtn" aria-label="Close" onClick={onClose}><Icon name="close" size={20} /></button></div>
+        <div className="bs-head"><span>{daily && gOn ? 'Map type' : 'Map layers'}</span><button className="iconbtn" aria-label="Close" onClick={onClose}><Icon name="close" size={20} /></button></div>
         {daily && gOn && (
           <div className="tiles">
             {types.map(([k, l, ic]) => <button key={k} className={`tile ${d.gType === k ? 'on' : ''}`} onClick={() => setD({ gType: k })}><span className="tile-ico"><Icon name={ic} /></span>{l}</button>)}
