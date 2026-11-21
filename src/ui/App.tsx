@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EditStops } from './EditStops';
 import { locateMe } from './locate';
 import { SearchTop } from './Search';
 import { startLocate } from './locate';
@@ -145,6 +146,7 @@ export function App() {
       {ready && <Controls />}
       {ready && <StopSheet />}
       {ready && <PlaceCard />}
+      {ready && <EditStops />}
       {ready && <MirrorPanel />}
       {ready && <SosModal />}
       {ready && <RouteOfferModal />}
@@ -176,6 +178,9 @@ function Hud() {
           <button className="statuschip" onClick={() => ui.set({ drawer: true, tab: 'trip' })}>
             <b>{t.name}</b>{t.sequenceLock ? ' 🔒' : ''} · {engine.stops.length.toLocaleString('en-IN')} {T().n(engine.stops.length)} · {fmtKm(engine.routedM)} mapped · {fmtKm(covered)} covered{target > 0 ? ` · ${fmtKm(Math.max(0, target - covered))} left` : ''}
           </button>
+        )}
+        {daily && engine.stops.length > 0 && (
+          <button className="statuschip" onClick={() => ui.set({ editStops: true })}><Icon name="route" size={16} /> <b>{engine.stops.length} {T().n(engine.stops.length)}</b>{engine.routedM > 0 ? ` · ${fmtKm(engine.routedM)}` : ''} · Edit</button>
         )}
         {routing && (
           <span className={`statuschip st-${status}`}>

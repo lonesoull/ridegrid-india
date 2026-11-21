@@ -482,3 +482,17 @@ section p { margin: 0; }
 .actionrow > button.primary { background: var(--accent); border-color: transparent; color: #fff; }
 :root[data-theme='dark'] .actionrow > button.primary { color: #202124; }
 .gextras { display: grid; gap: var(--s3); }
+
+/* Edit stops */
+.editstops { max-height: 80dvh; grid-template-rows: auto auto 1fr auto; }
+.es-list { overflow-y: auto; margin: 0 calc(-1 * var(--s4)); touch-action: pan-y; }
+.es-row { display: flex; align-items: center; gap: var(--s3); height: 56px; padding: 0 var(--s2) 0 var(--s4); background: var(--surface); }
+.es-row.dragging { box-shadow: var(--shadow-lg); position: relative; z-index: 1; border-radius: var(--r-md); }
+.es-badge { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: var(--fs-cap); font-weight: 500; display: grid; place-items: center; flex: none; }
+.es-name { flex: 1; min-width: 0; display: grid; gap: 2px; background: none; padding: 0; min-height: 0; text-align: left; justify-content: stretch; font-weight: 400; border-radius: 0; }
+.es-name:hover:not(:disabled) { background: none; }
+.es-grip { width: 40px; height: 40px; display: grid; place-items: center; color: var(--muted); touch-action: none; cursor: grab; }
+.es-foot { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.es-foot > button { background: var(--surface); border: 1px solid var(--line); color: var(--accent); }
+.es-list, .es-row, .fab, .catrow, .actionrow { user-select: none; -webkit-user-select: none; }
+.statusrow { padding-right: 60px; }

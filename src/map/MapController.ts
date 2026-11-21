@@ -477,6 +477,7 @@ export class MapController {
     if (fly) this.map.flyTo({ center: p, zoom: Math.max(this.map.getZoom(), 16), duration: 800 });
   }
   private meAcc = 0; private meHeading: number | null = null;
+  holdDrag: { start: (x: number, y: number) => boolean; move: (x: number, y: number) => void; end: (x: number, y: number) => void } | null = null;
 
   // ---------- interactions ----------
   private async snap(p: LngLat): Promise<LngLat> {
@@ -575,6 +576,19 @@ export class MapController {
       const raw: LngLat = [e.lngLat.lng, e.lngLat.lat];
       await act(null, async () => engine.moveStop(id, await this.snap(raw)));
       this.src(DRAG)?.setData(empty());
+    };
+    // Daily on Google: hold a stop ~0.5 s, then drag it (the Google map pauses its gestures meanwhile)
+    this.holdDrag = {
+      start: (x, y) => {
+        const f = this.hitStop({ x, y }, 22);
+        if (!f) return false;
+        const id = f.properties!.id as string;
+        this.drag = { id, i: engine.indexOf(id) };
+        ui.set({ selectedId: id });
+        return true;
+      },
+      move: (x, y) => { const ll = m.unproject([x, y]); move({ lngLat: ll } as MapMouseEvent); },
+      end: (x, y) => { const ll = m.unproject([x, y]); void end({ lngLat: ll } as MapMouseEvent); },
     };
     m.on('mousedown', start); m.on('touchstart', start);
     m.on('mousemove', move); m.on('touchmove', move);

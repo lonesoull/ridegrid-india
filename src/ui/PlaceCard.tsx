@@ -98,7 +98,7 @@ export function PlaceCard() {
       <div className="sheet-head">
         <div style={{ flex: 1, minWidth: 0 }}>
           <b>{(pl ?? sel).name}</b>
-          <div className="muted">{(pl ?? sel).address}</div>
+          <div className="muted">{sel.address.length > (pl?.address.length ?? 0) ? sel.address : (pl ?? sel).address}</div>
         </div>
         <button className="x" aria-label="Close" onClick={close}><Icon name="close" size={18} /></button>
       </div>

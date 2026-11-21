@@ -11,7 +11,8 @@ import { offlineSearch } from './offlineSearch';
 import { sunTimes } from './sun';
 import type { LngLat } from '../core/geo';
 import { google } from '../core/google';
-import { placeAt } from './gfeatures';
+import { placeAt, googleReady, addressAt } from './gfeatures';
+import { placeName } from '../nav/logbook';
 
 /**
  * Daily map extras (OsmAnd): tap any place for its card, automatic day/night, north-up / compass
@@ -47,7 +48,17 @@ export function startMapExtras(ctl: MapController) {
     if (!g) return;
     ui.set({ place: { id: g.id ? `g:${g.id}` : `addr:${lng},${lat}`, name: g.name, address: [g.type, g.address].filter(Boolean).join(' · '), p: g.p, provider: 'google' }, selectedId: null });
   }).catch(() => {});
-  m.on('contextmenu', (e) => { if (daily() && google.tilesOk) googlePlace(e.lngLat.lng, e.lngLat.lat); });
+  // long-press: a "Dropped pin" right there (like Google Maps), with its address filled in when known
+  m.on('contextmenu', (e) => {
+    if (!daily()) return;
+    const p: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    const id = `pin:${p[0].toFixed(6)},${p[1].toFixed(6)}`;
+    const pin = { id, name: 'Dropped pin', address: `${p[1].toFixed(6)}, ${p[0].toFixed(6)}`, p, provider: 'osm' as const };
+    ui.set({ place: pin, places: [pin], selectedId: null });
+    void (googleReady() ? addressAt(p) : placeName(p)).then((a) => {
+      if (a && ui.get().place?.id === id) ui.set({ place: { ...pin, address: `${a} · ${pin.address}` } });
+    }).catch(() => {});
+  });
   ctl.tapHooks.push((e) => {
     if (!daily() || !google.tilesOk || ui.get().tapMode !== 'off') return false;
     googlePlace(e.lngLat.lng, e.lngLat.lat);

@@ -41,7 +41,11 @@ export interface GoogleBaseOpts { night: boolean; traffic: boolean; mapId: strin
   /** Daily: the Google map takes the finger gestures (Google Maps feel) and our layers follow it */
   drive?: boolean;
   /** a tap on one of Google's own places (shops, petrol pumps…) */
-  onPlaceTap?: (placeId: string, p: [number, number]) => void }
+  onPlaceTap?: (placeId: string, p: [number, number]) => void;
+  /** finger held still ~0.5 s at a screen point (relative to the map). Return true to take over the finger (drag a stop). */
+  onHold?: (x: number, y: number) => boolean;
+  onHoldMove?: (x: number, y: number) => void;
+  onHoldEnd?: (x: number, y: number) => void }
 
 export class GoogleUnderlay {
   div: HTMLDivElement;
@@ -122,7 +126,42 @@ export class GoogleUnderlay {
       const r = ml.getCanvasContainer().getBoundingClientRect();
       ml.fire(new MapMouseEvent(type, ml, new MouseEvent(type, { clientX: r.left + pt.x, clientY: r.top + pt.y })));
     };
-    this.gl.push(this.gmap.addListener('click', pass('click')), this.gmap.addListener('contextmenu', pass('contextmenu')));
+    // long-press (touch): drop a pin, or — held on a stop — drag that stop while Google pauses its gestures
+    let lastHold = 0;
+    const ctxPass = pass('contextmenu');
+    this.gl.push(this.gmap.addListener('click', pass('click')), this.gmap.addListener('contextmenu', (e: any) => { if (Date.now() - lastHold > 1000) ctxPass(e); }));
+    const el = this.div;
+    let timer = 0, sx = 0, sy = 0, holding = false, pid = -1;
+    const rel = (e: PointerEvent) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const; };
+    const cancel = () => { clearTimeout(timer); timer = 0; };
+    const down = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' || !e.isPrimary) { cancel(); return; }
+      cancel(); sx = e.clientX; sy = e.clientY; pid = e.pointerId;
+      timer = window.setTimeout(() => {
+        timer = 0; lastHold = Date.now();
+        const [x, y] = rel(e);
+        navigator.vibrate?.(25);
+        if (opts.onHold?.(x, y)) { holding = true; this.gmap.setOptions({ gestureHandling: 'none' }); }
+        else {
+          const r = ml.getCanvasContainer().getBoundingClientRect();
+          ml.fire(new MapMouseEvent('contextmenu', ml, new MouseEvent('contextmenu', { clientX: r.left + x, clientY: r.top + y })));
+        }
+      }, 500);
+    };
+    const move = (e: PointerEvent) => {
+      if (e.pointerId !== pid) return;
+      if (holding) { e.preventDefault(); e.stopPropagation(); const [x, y] = rel(e); opts.onHoldMove?.(x, y); return; }
+      if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) cancel();
+    };
+    const up = (e: PointerEvent) => {
+      if (e.pointerId !== pid) return;
+      cancel();
+      if (holding) { holding = false; e.stopPropagation(); const [x, y] = rel(e); opts.onHoldEnd?.(x, y); this.gmap.setOptions({ gestureHandling: 'greedy' }); }
+    };
+    el.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointermove', move, { capture: true, passive: false });
+    window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true);
+    this.gl.push({ remove: () => { el.removeEventListener('pointerdown', down, true); window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true); } });
   }
   drive = false;
   setTraffic(on: boolean) {

@@ -12,6 +12,8 @@ export interface UIState {
   /** the Expedition / Daily ride picker is open */
   modePicker: boolean;
   following: boolean;
+  /** the Edit stops sheet is open */
+  editStops: boolean;
   /** my-location button: off / following me / turning with the compass */
   locMode: import('./locate').LocMode;
   /** next map tap inserts a stop at this index */
@@ -33,7 +35,7 @@ export interface UIState {
 let state: UIState = {
   selectedId: null, tapMode: 'append', snapToRoad: true,
   night: typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches,
-  drawer: false, tab: 'home', modePicker: false, following: true, locMode: 'off', insertAt: null, gtick: 0, sos: null, routeOffer: null, places: [], place: null, logStop: false, toast: null, fps: false, busy: null,
+  drawer: false, tab: 'home', modePicker: false, following: true, editStops: false, locMode: 'off', insertAt: null, gtick: 0, sos: null, routeOffer: null, places: [], place: null, logStop: false, toast: null, fps: false, busy: null,
 };
 const subs = new Set<() => void>();
 

@@ -256,6 +256,7 @@ function StopsTab() {
       {isExpedition() && <RouteChecker />}
       <section>
         <h3>Route tools</h3>
+        <button className="primary" onClick={() => ui.set({ drawer: false, editStops: true })}>Edit {T().many}: reorder, remove, add</button>
         <div className="btns">
           <button onClick={() => mapCtl?.fitRoute()}>Fit route bounds</button>
           <button onClick={() => mapCtl?.snapView()}>Snap view</button>
