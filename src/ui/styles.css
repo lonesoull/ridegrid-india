@@ -511,3 +511,7 @@ section p { margin: 0; }
 .sosbtn { flex: 1 1 auto; min-height: 48px; background: var(--danger); color: #fff; }
 .navfoot { text-align: center; }
 .recentre { position: absolute; z-index: 9; left: 50%; transform: translateX(-50%); bottom: calc(120px + env(safe-area-inset-bottom)); background: var(--surface); color: var(--accent); box-shadow: var(--shadow-lg); min-height: 44px; padding: 0 var(--s5); }
+/* the top bar can never be wider than the screen (long Expedition status used to push the settings button off) */
+.hud { grid-template-columns: minmax(0, 1fr); }
+.topbar, .searchpill, .statusrow { min-width: 0; max-width: 100%; }
+.statusrow > * { max-width: 100%; min-width: 0; }

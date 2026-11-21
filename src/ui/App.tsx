@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { EditStops } from './EditStops';
 import { locateMe } from './locate';
 import { SearchTop } from './Search';
@@ -11,7 +11,8 @@ import { bootTrips, leaveStressTrip, deleteStressTrip } from '../core/trips';
 import { fmtKm } from '../core/geo';
 import { ui, useUI, toast, act, type TapMode } from './state';
 import { useEngine, useRouterStatus } from './hooks';
-import { Drawer } from './Drawer';
+// settings pages load on first open (keeps the app's start small)
+const Drawer = lazy(() => import('./Drawer').then((m) => ({ default: m.Drawer })));
 import { FpsMeter } from './FpsMeter';
 import { StopSheet } from './StopSheet';
 import { MirrorPanel } from './MirrorPanel';
@@ -74,7 +75,9 @@ export function App() {
       await dailyNav.load();
       await Promise.all([widgets.load(), markers.load(), recorder.load(), bikes.load()]);
       void offlineMaps.boot();
-      void offlineSearch.boot();
+      // heavy on-device data loads after the map is showing, when the phone is idle
+      const later = (f: () => void, ms: number) => setTimeout(() => ((window as any).requestIdleCallback ?? ((g: () => void) => g()))(f), ms);
+      later(() => void offlineSearch.boot(), 2500);
       void offlineTerrain.boot();
       startDailyOverlays(mapCtl!);
       startDaily(mapCtl!);
@@ -83,14 +86,16 @@ export function App() {
       startWeatherLayers(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));
       startTelemetry(); startTeamEvents(); startCompliance(); startHandoffWatch();
-      void device.boot().then(() => app.queue.kick());
+      later(() => void device.boot().then(() => app.queue.kick()), 1500);
       // two-wheeler-banned roads on the map: expedition trips only
       let bannedFor: string | null = null;
       const showBanned = () => {
         const k = `${engine.trip?.id}:${engine.trip?.kind}`;
         if (k === bannedFor) return;
         bannedFor = k;
-        void loadExpressways().then((d) => mapCtl?.setBanned(d && engine.trip?.kind !== 'daily' ? d.fc : null));
+        // only Expedition shows two-wheeler-banned roads; Daily never downloads or draws them (several MB)
+        if (engine.trip?.kind !== 'expedition') { mapCtl?.setBanned(null); return; }
+        void loadExpressways().then((d) => { if (engine.trip?.kind === 'expedition') mapCtl?.setBanned(d ? d.fc : null); });
       };
       showBanned();
       engine.subscribe(() => showBanned());
@@ -151,7 +156,7 @@ export function App() {
       {ready && <SosModal />}
       {ready && <RouteOfferModal />}
       {ready && <NavPanel />}
-      {ready && <Drawer />}
+      {ready && <DrawerGate />}
       {ready && <LogStopDialog />}
       {ready && <ModePicker />}
       {ready && <DailyLayer />}
@@ -318,3 +323,12 @@ function FpsMeterGate() {
 
 /** Re-render once the map exists (viewer page). */
 function WatchBoot() { const [, t] = useState(0); useEffect(() => { const i = setInterval(() => { if (mapCtl) { t(1); clearInterval(i); } }, 200); return () => clearInterval(i); }, []); return null; }
+
+/** Settings load the first time they are opened, then stay loaded. */
+function DrawerGate() {
+  const open = useUI((s) => s.drawer);
+  const [wanted, setWanted] = useState(false);
+  useEffect(() => { if (open) setWanted(true); }, [open]);
+  useEffect(() => { const t = setTimeout(() => setWanted(true), 6000); return () => clearTimeout(t); }, []); // preload when idle
+  return wanted ? <Suspense fallback={open ? <div className="drawer open"><div className="sp-status"><span className="spin" /> Loading…</div></div> : null}><Drawer /></Suspense> : null;
+}

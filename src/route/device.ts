@@ -49,7 +49,8 @@ export const device = {
   /** Load every stored zone into the routing thread (at app start). */
   async boot() {
     for (const g of await db.graphs.toArray()) {
-      try { const r = await call({ type: 'load', zone: g.zone, buf: await g.blob.arrayBuffer() }); this.loaded.add(g.zone); this.boxes.set(g.zone, r.bbox); this.expressways.set(g.zone, !!r.hasBanned); } catch { /* corrupt → ignore */ }
+      // hand the road map to the routing thread without copying it (it can be tens of MB)
+      try { const buf = await g.blob.arrayBuffer(); const r = await call({ type: 'load', zone: g.zone, buf }, [buf]); this.loaded.add(g.zone); this.boxes.set(g.zone, r.bbox); this.expressways.set(g.zone, !!r.hasBanned); } catch { /* corrupt → ignore */ }
     }
     this.emit();
   },

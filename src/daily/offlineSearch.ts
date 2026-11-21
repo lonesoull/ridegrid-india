@@ -14,7 +14,6 @@ function call<T>(msg: object): Promise<T> {
   return new Promise<T>((res, rej) => { pending.set(id, { res, rej }); worker!.postMessage({ ...msg, id }); });
 }
 async function dir() { return (await navigator.storage.getDirectory()).getDirectoryHandle('poi', { create: true }); }
-async function readText(name: string) { return (await (await (await dir()).getFileHandle(name)).getFile()).text(); }
 async function writeText(name: string, text: string) { const w = await ((await (await dir()).getFileHandle(name, { create: true })) as any).createWritable(); await w.write(text); await w.close(); }
 
 export interface PoiZone { zone: string; generated?: string; poi: number; at: number }
@@ -34,9 +33,11 @@ export const offlineSearch = {
     this.ready = true; this.emit();
   },
   async load(zone: string) {
-    await call({ type: 'add', zone, tsv: await readText(`${zone}.poi.tsv`) });
+    const r = await call<{ xy: Float64Array; kinds: string[]; speeds: string[] }>({ type: 'addFile', zone });
     this.loaded.add(zone);
-    try { parseAlerts(zone, await readText(`${zone}.alerts.tsv`)); } catch { /* none */ }
+    const a = r.xy as Float64Array & { kinds?: string[]; speeds?: string[] };
+    a.kinds = r.kinds; a.speeds = r.speeds;
+    alertData.set(zone, a);
   },
   async download(zone: string, base = `${import.meta.env.BASE_URL}poi`) {
     const [poi, alerts, meta] = await Promise.all([
@@ -64,13 +65,6 @@ export const offlineSearch = {
   async nearby(near: LngLat): Promise<{ cat: string; label: string; hits: Hit[] }[]> { if (!this.loaded.size) return []; return (await call<{ result: any }>({ type: 'nearby', near })).result; },
 };
 
-function parseAlerts(zone: string, tsv: string) {
-  const rows = tsv.split('\n').filter(Boolean);
-  const a = new Float64Array(rows.length * 2) as Float64Array & { kinds?: string[]; speeds?: string[] };
-  a.kinds = []; a.speeds = [];
-  rows.forEach((r, i) => { const [x, y, k, sp] = r.split('\t'); a[2 * i] = +x; a[2 * i + 1] = +y; a.kinds!.push(k); a.speeds!.push(sp ?? ''); });
-  alertData.set(zone, a);
-}
 
 // ---------- search history (per device convenience)
 const HK = 'ridegrid.daily.history';

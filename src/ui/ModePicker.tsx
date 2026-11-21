@@ -30,7 +30,7 @@ export function ModePicker() {
     <div className="modal-wrap" onClick={() => mode.chosen && ui.set({ modePicker: false })}>
       <div className="modal glass modepick" onClick={(e) => e.stopPropagation()}>
         <h3>{mode.chosen ? 'Switch mode' : 'Welcome — choose a mode'}</h3>
-        <p className="muted">The two modes are kept completely separate: their own trips, screens and settings. You can switch any time from the menu.</p>
+        <p className="muted">The two modes are kept completely separate: their own trips, screens and settings. You can switch any time: tap ⚙ in the search bar, then the mode at the top of Settings.</p>
         {(['expedition', 'daily'] as AppMode[]).map((m) => (
           <button key={m} className={`modecard ${m} ${mode.chosen && mode.current === m ? 'on' : ''}`} onClick={() => pick(m)}>
             <span className="mi">{INFO[m].icon}</span>

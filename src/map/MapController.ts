@@ -261,7 +261,7 @@ export class MapController {
     m.addSource(RIDDEN, { type: 'geojson', data: this.riddenFc ?? empty() });
     m.addLayer({ id: 'rg-ridden', type: 'line', source: RIDDEN, layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2, 14, 7], 'line-opacity': 0.6 } }, 'rg-route-casing');
-    m.addSource(BANNED, { type: 'geojson', data: this.bannedFc ?? empty() });
+    m.addSource(BANNED, { type: 'geojson', data: this.bannedUrl ?? empty() });
     m.addLayer({ id: 'rg-banned', type: 'line', source: BANNED, minzoom: 6,
       paint: { 'line-color': '#7f1d1d', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.5, 14, 5], 'line-dasharray': [2, 1.5], 'line-opacity': 0.8 } }, 'rg-route-casing');
     // team devices: their ridden tracks and live arrows
@@ -387,7 +387,15 @@ export class MapController {
   /** Daily: taps on map features; return true when handled. */
   tapHooks: ((e: MapMouseEvent, box: [[number, number], [number, number]]) => boolean)[] = [];
   private bannedFc: GeoJSON.FeatureCollection | null = null;
-  setBanned(fc: GeoJSON.FeatureCollection | null) { this.bannedFc = fc; this.src(BANNED)?.setData(fc ?? empty()); }
+  private bannedUrl: string | null = null;
+  /** Big data set (all banned expressways): handed to the map's worker as a file, so the screen never freezes parsing it. */
+  setBanned(fc: GeoJSON.FeatureCollection | null) {
+    if (fc === this.bannedFc) return;
+    this.bannedFc = fc;
+    if (this.bannedUrl) URL.revokeObjectURL(this.bannedUrl);
+    this.bannedUrl = fc ? URL.createObjectURL(new Blob([JSON.stringify(fc)], { type: 'application/json' })) : null;
+    this.src(BANNED)?.setData(this.bannedUrl ?? empty());
+  }
   private riddenFc: GeoJSON.FeatureCollection | null = null;
   setRidden(lines: LngLat[][]) {
     this.riddenFc = { type: 'FeatureCollection', features: lines.filter((l) => l.length > 1).map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) };
