@@ -11,16 +11,23 @@ export interface Place {
   p?: LngLat;               // known immediately for Photon; fetched on demand for Google
   provider: 'google' | 'osm';
   distM?: number;
+  /** 'query' = a search suggestion: picking it shows a list of places */
+  kind?: 'query';
+  /** Google place types (for the icon) */
+  types?: string[];
 }
 
 let session = '';
+/** why Google search last failed (shown to the rider instead of silently showing worse results) */
+export const searchStatus = { googleError: '' };
 const newSession = () => (session = crypto.randomUUID());
 
 export async function searchPlaces(q: string, near: LngLat | null, signal?: AbortSignal): Promise<Place[]> {
   q = q.trim();
   if (q.length < 2) return [];
   if (google.active) {
-    try { return await googleAutocomplete(q, near, signal); } catch (e) { if ((e as any)?.name === 'AbortError') throw e; /* fall back to OSM */ }
+    try { const r = await googleAutocomplete(q, near, signal); searchStatus.googleError = ''; return r; }
+    catch (e) { if ((e as any)?.name === 'AbortError') throw e; searchStatus.googleError = (e as Error)?.message ?? 'Google search failed'; /* fall back to OSM */ }
   }
   return photon(q, near, signal);
 }
@@ -43,17 +50,21 @@ async function photon(q: string, near: LngLat | null, signal?: AbortSignal): Pro
 async function googleAutocomplete(q: string, near: LngLat | null, signal?: AbortSignal): Promise<Place[]> {
   gquota.take('autocomplete');
   if (!session) newSession();
-  const body: any = { input: q, includedRegionCodes: ['in'], languageCode: 'en', sessionToken: session };
+  const body: any = { input: q, includedRegionCodes: ['in'], languageCode: 'en', sessionToken: session, includeQueryPredictions: true };
   if (near) { body.origin = { latitude: near[1], longitude: near[0] }; body.locationBias = { circle: { center: { latitude: near[1], longitude: near[0] }, radius: 50000 } }; }
   const r = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': google.settings.key }, body: JSON.stringify(body),
   });
   const j = await r.json();
   if (!r.ok) throw new Error(j?.error?.message ?? 'Google search failed');
-  return (j.suggestions ?? []).filter((s: any) => s.placePrediction).map((s: any): Place => {
+  // like Google Maps: search suggestions ("petrol pump near me") and places, in Google's order
+  return (j.suggestions ?? []).map((s: any): Place | null => {
+    const qp = s.queryPrediction;
+    if (qp) { const t = qp.text?.text ?? ''; return { id: `q:${t}`, name: t, address: 'Search nearby', provider: 'google', kind: 'query' }; }
     const pp = s.placePrediction;
-    return { id: `g:${pp.placeId}`, name: pp.structuredFormat?.mainText?.text ?? pp.text?.text, address: pp.structuredFormat?.secondaryText?.text ?? '', provider: 'google', distM: pp.distanceMeters };
-  });
+    if (!pp) return null;
+    return { id: `g:${pp.placeId}`, name: pp.structuredFormat?.mainText?.text ?? pp.text?.text, address: pp.structuredFormat?.secondaryText?.text ?? '', provider: 'google', distM: pp.distanceMeters, types: pp.types };
+  }).filter(Boolean) as Place[];
 }
 
 /** Coordinates for a place (Google needs a details call; ends the billing session). */

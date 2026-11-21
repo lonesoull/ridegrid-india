@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { searchPlaces, type Place } from '../core/search';
+import { searchPlaces, searchStatus, type Place } from '../core/search';
 import { google } from '../core/google';
 import { engine } from '../core/engine';
 import { fmtKm } from '../core/geo';
@@ -38,6 +38,14 @@ const fmtDist = (m?: number) => (m === undefined ? '' : m < 1000 ? `${Math.round
 const ICON_FOR: Record<string, string> = { fuel: 'fuel', restaurant: 'food', fast_food: 'food', cafe: 'coffee', mechanic: 'wrench', tyres: 'wrench', moto_shop: 'wrench', atm: 'cash', bank: 'cash',
   hotel: 'bed', guest_house: 'bed', hostel: 'bed', hospital: 'hospital', clinic: 'hospital', pharmacy: 'hospital', ev: 'zap', parking: 'parking', police: 'shield' };
 
+/** Icon for Google place types */
+function iconForTypes(types?: string[]): string | undefined {
+  const t = (types ?? []).join(' ');
+  return /gas_station|fuel/.test(t) ? 'fuel' : /charging/.test(t) ? 'zap' : /restaurant|food|meal|bakery/.test(t) ? 'food' : /cafe|coffee|tea/.test(t) ? 'coffee'
+    : /atm|bank/.test(t) ? 'cash' : /lodging|hotel|hostel|guest/.test(t) ? 'bed' : /hospital|doctor|pharmacy|clinic|health/.test(t) ? 'hospital'
+      : /car_repair|motorcycle|repair/.test(t) ? 'wrench' : /parking/.test(t) ? 'parking' : /police/.test(t) ? 'shield' : undefined;
+}
+
 const hitToPlace = (h: Hit, i: number): Place & { icon?: string } => {
   const [hours, phone, , city] = h.info.split('|');
   const st = hours ? openState(hours) : null;
@@ -73,7 +81,8 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
 
   const show = (list: Place[], src: typeof source) => { ui.set({ places: list }); mapCtl?.setPlaces(list, null); setSource(src); };
 
-  const run = (text: string, c: typeof cat, o: { along: boolean; filters: string[] }, immediate = false) => {
+  /** list = a full list of places (Enter, or a suggestion like "petrol pump near me"); otherwise suggestions as you type */
+  const run = (text: string, c: typeof cat, o: { along: boolean; filters: string[] }, immediate = false, asList = false) => {
     ctl.current?.abort();
     if (!c && text.trim().length < 2) { show([], ''); setErr(''); setBusy(false); return; }
     const ac = new AbortController(); ctl.current = ac;
@@ -90,13 +99,14 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
         // 1) Google first
         if (googleReady() && !offlineOnly) {
           try {
+            const wantList = asList;
             let list: Place[];
             if (rp) list = (await searchAlongRoute(c?.q ?? text, rp.pts)).map((g) => ({ id: `g:${g.id}`, name: g.name, address: [g.type, g.address].filter(Boolean).join(' · '), p: g.p, provider: 'google' }));
-            else if (c || openNow) list = (await googleTextNear(c?.q ?? text, centre, { openNow })).map((g) => ({ id: `g:${g.id}`, name: g.name, address: [g.type, g.address].filter(Boolean).join(' · '), p: g.p, provider: 'google', distM: g.distM, icon: c?.icon } as Place));
-            else list = await searchPlaces(text, centre, ac.signal);
+            else if (c || openNow || wantList) list = (await googleTextNear(c?.q ?? text, centre, { openNow, byDistance: !!c })).map((g) => ({ id: `g:${g.id}`, name: g.name, address: [g.type, g.address].filter(Boolean).join(' · '), p: g.p, provider: 'google', distM: g.distM, icon: c?.icon ?? iconForTypes([g.gtype ?? '']) } as Place));
+            else list = (await searchPlaces(text, centre, ac.signal)).map((x) => ({ ...x, icon: x.kind === 'query' ? 'search' : iconForTypes(x.types) } as Place));
             if (!ac.signal.aborted) show(list, 'google');
             return;
-          } catch (e: any) { if (e?.name === 'AbortError') return; /* offline below */ }
+          } catch (e: any) { if (e?.name === 'AbortError') return; searchStatus.googleError = e?.message ?? 'Google search failed'; /* offline below */ }
         }
         // 2) offline index (no Google / no signal / special filters)
         let hits = daily ? await offlineSearch.search(c ? '' : text, { near: centre, cat: c?.id, limit: o.filters.length ? 300 : 25, along: rp ? { pts: rp.pts, maxM: 2000, fromS: rp.fromS } : undefined }) : [];
@@ -123,6 +133,8 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
   const pickCat = (c: (typeof CATS)[number]) => { setCat(c); setQ(''); setOpen(true); run('', c, opts(), true); };
   const clear = () => { setQ(''); setCat(null); setFilters([]); setErr(''); show([], ''); mapCtl?.setPlaces([], null); input.current?.focus(); };
   const pick = (p: Place) => {
+    // a search suggestion ("petrol pump near me"): show the list of places, like Google Maps
+    if (p.kind === 'query') { setQ(p.name); setCat(null); run(p.name, null, opts(), true, true); return; }
     if (p.p) remember({ name: p.name, address: p.address, p: p.p });
     ui.set({ place: p, selectedId: null }); close();
   };
@@ -146,7 +158,7 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
             <input ref={input} value={q} enterKeyHint="search" placeholder={daily ? 'Search here' : 'Search police, hotel, fuel…'}
               onFocus={openSearch}
               onChange={(e) => { setQ(e.target.value); setCat(null); run(e.target.value, null, opts()); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') run(q, cat, opts(), true); if (e.key === 'Escape') close(); }} />
+              onKeyDown={(e) => { if (e.key === 'Enter') { run(q, cat, opts(), true, true); input.current?.blur(); } if (e.key === 'Escape') close(); }} />
           )}
           {(q || cat) && <button className="iconbtn" aria-label="Clear" onClick={clear}><Icon name="close" size={20} /></button>}
           <button className="iconbtn avatar" aria-label="Settings" onClick={() => { close(); onSettings(); }}><Icon name="settings" size={22} /></button>
@@ -190,6 +202,7 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
               {!recents.length && <div className="sp-status muted">Search for a place, an address, a PIN code or coordinates.</div>}
             </>
           )}
+          {showList && source !== 'google' && searchStatus.googleError && google.settings.key && <div className="sp-status warn">Google search isn't working: {searchStatus.googleError}. Check that “Places API (New)” is enabled for your key (Settings → Google Maps → Test key).</div>}
           {showList && results.length > 0 && <div className="sp-foot">{source === 'google' ? 'Results from Google' : source === 'offline' ? 'Offline results (OpenStreetMap)' : 'Results from OpenStreetMap'}{!google.active && source !== 'offline' ? ' · add a Google key in Settings for Google search' : ''}</div>}
         </div>
       )}

@@ -375,15 +375,31 @@ export class MapController {
     if (pos && this.follow && !this.drag) {
       const now = performance.now();
       // first follow frame (or after zooming far out): bring the camera down to riding view
+      const v = this.navCam();
       const far = this.map.getZoom() < 13 || this.lastCam === 0 || haversine([this.map.getCenter().lng, this.map.getCenter().lat], pos) > 3000;
-      const cam: { zoom?: number; pitch?: number } = far ? { zoom: Math.max(this.map.getZoom(), 16), pitch: 55 } : {};
-      // Daily mode auto-zoom by speed (hook unset in expedition)
+      const cam: { zoom?: number; pitch?: number } = far ? { zoom: Math.min(15.5, v.maxZoom), pitch: v.pitch } : {};
+      if (!far && Math.abs(this.map.getPitch() - v.pitch) > 2) cam.pitch = v.pitch;
+      // Daily mode auto-zoom by speed (hook unset in expedition); capped so Google never switches to 3D buildings
       const az = this.followZoom?.();
-      if (az !== null && az !== undefined && !('zoom' in cam) && Math.abs(az - this.map.getZoom()) > 0.3) cam.zoom = az;
+      if (az !== null && az !== undefined && !('zoom' in cam) && Math.abs(Math.min(az, v.maxZoom) - this.map.getZoom()) > 0.3) cam.zoom = Math.min(az, v.maxZoom);
+      if (cam.zoom === undefined && this.map.getZoom() > v.maxZoom + 0.05) cam.zoom = v.maxZoom;
       const brg = this.followBearing?.(heading) ?? heading;
-      if (sim || far) { this.lastCam = now; this.map.jumpTo({ center: pos, bearing: brg, ...cam }); }
-      else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: pos, bearing: brg, duration: 900, ...cam }); }
+      let centre: LngLat = pos;
+      // like Google Maps: your arrow sits in the lower part of the screen, so more road ahead is visible
+      if (v.pitch > 0 || brg === heading) {
+        const z = cam.zoom ?? this.map.getZoom(), h = this.map.getContainer().clientHeight || 700;
+        const mpp = (78271.517 * Math.cos((pos[1] * Math.PI) / 180)) / 2 ** z;
+        const ahead = h * 0.12 * mpp, r = (brg * Math.PI) / 180; // arrow ~70% down the free map area, above the bottom panel
+        centre = [pos[0] + (ahead * Math.sin(r)) / (111320 * Math.cos((pos[1] * Math.PI) / 180)), pos[1] + (ahead * Math.cos(r)) / 110540];
+      }
+      if (sim || far) { this.lastCam = now; this.map.jumpTo({ center: centre, bearing: brg, ...cam }); }
+      else if (now - this.lastCam > 500 || 'zoom' in cam) { this.lastCam = now; this.map.easeTo({ center: centre, bearing: brg, duration: 900, ...cam }); }
     }
+  }
+  /** Camera while navigating (Settings → Navigation → Map while navigating). Google draws 3D buildings from zoom 17 (16 here). */
+  navCam(): { pitch: number; maxZoom: number } {
+    const v = nav.settings.navView ?? 'tilted';
+    return v === 'flat' ? { pitch: 0, maxZoom: 17 } : v === '3d' ? { pitch: 60, maxZoom: 18 } : { pitch: 45, maxZoom: 15.8 };
   }
   /** Optional follow-camera zoom (Daily auto-zoom by speed). */
   followZoom: (() => number | null) | null = null;
@@ -461,7 +477,8 @@ export class MapController {
     this.lastCam = 0;
     // go straight to riding view where the rider is; with no position yet, wait for the first fix (no jump into the sea)
     const p = pos ?? this.me;
-    if (p) this.map.jumpTo({ center: p, zoom: Math.max(this.map.getZoom(), 16), pitch: 55 });
+    const v = this.navCam();
+    if (p) this.map.jumpTo({ center: p, zoom: Math.min(Math.max(this.map.getZoom(), 15.5), v.maxZoom), pitch: v.pitch });
   }
 
   // ---------- camera ----------

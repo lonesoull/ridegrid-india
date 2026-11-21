@@ -71,6 +71,13 @@ export function RideTab() {
         </label>
         <label className="check"><input type="checkbox" checked={s.beep} onChange={(e) => set({ beep: e.target.checked })} /><span>Audio beeps (off-route alarm, arrival chime)</span></label>
         <label className="check"><input type="checkbox" checked={s.voice} onChange={(e) => set({ voice: e.target.checked })} /><span>Voice announcements (helmet speaker)</span></label>
+        <label className="field">Map while navigating
+          <select value={s.navView ?? 'tilted'} onChange={(e) => set({ navView: e.target.value as 'tilted' | 'flat' | '3d' })}>
+            <option value="tilted">Tilted, like Google Maps (no 3D buildings)</option>
+            <option value="flat">Flat 2D</option>
+            <option value="3d">3D with buildings</option>
+          </select>
+        </label>
         <label className="check"><input type="checkbox" checked={s.reroute} onChange={(e) => set({ reroute: e.target.checked })} /><span>Auto re-route back to the next stop when off route (like Google Maps)</span></label>
         <label className="check"><input type="checkbox" checked={s.logSim} onChange={(e) => set({ logSim: e.target.checked })} /><span>Log simulated rides too (testing — adds to “covered”)</span></label>
         <div className="btns">
