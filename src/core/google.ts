@@ -91,7 +91,7 @@ const MANEUVER: Record<string, TurnCode | null> = {
   ROUNDABOUT_LEFT: 'roundabout', ROUNDABOUT_RIGHT: 'roundabout',
 };
 
-export interface GRoute { coords: LngLat[]; distM: number; durS: number; turns: Turn[] }
+export interface GRoute { coords: LngLat[]; distM: number; durS: number; turns: Turn[]; /** e.g. "via NH 44" */ description?: string }
 
 /** Google Routes steps → one leg's coordinates and turns. */
 export function stepsToLeg(steps: any[]): { coords: LngLat[]; turns: Turn[] } {
@@ -107,24 +107,33 @@ export function stepsToLeg(steps: any[]): { coords: LngLat[]; turns: Turn[] } {
   return { coords, turns };
 }
 
-export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?: AbortSignal, via: LngLat[] = []): Promise<GRoute> {
+/** Google two-wheeler routes with live traffic. `alternatives` asks for up to 3 routes (like Google Maps' choices). */
+export async function googleRoutes(key: string, from: LngLat, to: LngLat, o: { signal?: AbortSignal; via?: LngLat[]; alternatives?: boolean } = {}): Promise<GRoute[]> {
   gquota.take('routes2w'); // two-wheeler routing is Google's Enterprise level (7,000 free / month, India)
   const ll = (p: LngLat) => ({ location: { latLng: { latitude: p[1], longitude: p[0] } } });
+  const via = o.via ?? [];
   const j = await gfetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-    method: 'POST', signal,
+    method: 'POST', signal: o.signal,
     headers: {
       'Content-Type': 'application/json', 'X-Goog-Api-Key': key,
-      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.navigationInstruction',
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.description,routes.routeLabels,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.navigationInstruction',
     },
     body: JSON.stringify({
       origin: ll(from), destination: ll(to), travelMode: 'TWO_WHEELER', routingPreference: 'TRAFFIC_AWARE',
       // pass-through points force the route along a given path (used to price the rider's current route)
       ...(via.length ? { intermediates: via.map((p) => ({ ...ll(p), via: true })) } : {}),
+      ...(o.alternatives && !via.length ? { computeAlternativeRoutes: true } : {}),
       polylineQuality: 'HIGH_QUALITY', languageCode: 'en-IN', regionCode: 'IN', units: 'METRIC',
     }),
   });
-  const r = j.routes?.[0];
-  if (!r) throw new GoogleError('Google found no two-wheeler route');
+  const routes = (j.routes ?? []).map(parseRoute);
+  if (!routes.length) throw new GoogleError('Google found no two-wheeler route');
+  return routes;
+}
+export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?: AbortSignal, via: LngLat[] = []): Promise<GRoute> {
+  return (await googleRoutes(key, from, to, { signal, via }))[0];
+}
+function parseRoute(r: any): GRoute {
   const coords: LngLat[] = [];
   const turns: Turn[] = [];
   for (const st of r.legs?.[0]?.steps ?? []) {
@@ -139,7 +148,7 @@ export async function googleRoute(key: string, from: LngLat, to: LngLat, signal?
     const c = ni ? MANEUVER[ni.maneuver] : null;
     if (c) turns.push({ i: Math.max(0, startIdx), c, txt: ni.instructions?.split('\n')[0] });
   }
-  return { coords, distM: r.distanceMeters ?? lineLength(coords), durS: parseInt(String(r.duration ?? '0').replace('s', '')) || 0, turns };
+  return { coords, distM: r.distanceMeters ?? lineLength(coords), durS: parseInt(String(r.duration ?? '0').replace('s', '')) || 0, turns, description: r.description };
 }
 
 // ---------------------------------------------------------------- key diagnostics

@@ -249,6 +249,16 @@ export class MapController {
       paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6.5] } }, 'rg-clusters');
     m.addLayer({ id: 'rg-approach', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': '#f97316', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.6, 14, 4.5], 'line-dasharray': [1.5, 1] } }, 'rg-clusters');
+    // Google's other route choices: grey lines under the chosen (blue) one, each with its time
+    m.addSource('rg-alts', { type: 'geojson', data: this.altFc ?? empty() });
+    m.addLayer({ id: 'rg-alt-casing', type: 'line', source: 'rg-alts', filter: ['==', ['geometry-type'], 'LineString'], layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#ffffff', 'line-width': roadWidth(10, 5) } }, 'rg-approach-casing');
+    m.addLayer({ id: 'rg-alt-line', type: 'line', source: 'rg-alts', filter: ['==', ['geometry-type'], 'LineString'], layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#9aa0a6', 'line-width': roadWidth(7, 3) } }, 'rg-approach-casing');
+    m.addLayer({ id: 'rg-alt-label', type: 'symbol', source: 'rg-alts', filter: ['==', ['geometry-type'], 'Point'],
+      layout: { 'text-field': ['get', 'label'], 'text-font': FONT, 'text-size': 13, 'text-allow-overlap': true },
+      paint: { 'text-color': '#3c4043', 'text-halo-color': '#ffffff', 'text-halo-width': 3 } });
+    m.on('click', 'rg-alt-line', (e) => { const i = e.features?.[0]?.properties?.i; if (typeof i === 'number') this.onAltPick?.(i); });
     m.addSource(PLACES, { type: 'geojson', data: this.placesFc ?? empty() });
     m.addLayer({ id: 'rg-places', type: 'circle', source: PLACES,
       paint: { 'circle-radius': ['case', ['get', 'sel'], 12, 8], 'circle-color': ['case', ['get', 'sel'], '#db2777', '#a855f7'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
@@ -473,6 +483,18 @@ export class MapController {
 
   private approach: LngLat[] | null = null;
   /** Orange dashed "how to get there" path from the rider to a stop. */
+  private altFc: GeoJSON.FeatureCollection | null = null;
+  onAltPick: ((i: number) => void) | null = null;
+  /** Google's other route choices (grey, with "+4 min" labels); null clears them. */
+  setAlternatives(list: { coords: LngLat[]; label: string; i: number }[] | null) {
+    const f: GeoJSON.Feature[] = [];
+    for (const a of list ?? []) {
+      f.push({ type: 'Feature', properties: { i: a.i }, geometry: { type: 'LineString', coordinates: a.coords } });
+      f.push({ type: 'Feature', properties: { i: a.i, label: a.label }, geometry: { type: 'Point', coordinates: a.coords[Math.floor(a.coords.length / 2)] } });
+    }
+    this.altFc = { type: 'FeatureCollection', features: f };
+    this.src('rg-alts')?.setData(this.altFc);
+  }
   setApproach(coords: LngLat[] | null, fit = false) {
     this.approach = coords;
     this.src(APPROACH)?.setData(coords && coords.length > 1 ? lineFeature(coords) : empty());

@@ -529,3 +529,12 @@ section p { margin: 0; }
 .gpin.start { background: #188038; } .gpin.end { background: #d93025; }
 .gpin.sel { outline: 3px solid #f9ab00; outline-offset: 1px; transform: translateY(50%) scale(1.15); }
 .gpin.cluster { min-width: 34px; height: 34px; border-radius: 17px; background: rgba(26,115,232,.92); font-size: 12px; }
+/* Google-style route choices */
+.routechoices { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--s4)); padding: 0 var(--s4); }
+.routechoice { flex: none; display: grid; justify-items: start; gap: 2px; min-width: 132px; padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); text-align: left; font-weight: 400; }
+.routechoice.on { border: 2px solid var(--accent); background: var(--accent-soft); }
+.routechoice b { font-size: var(--fs-lg); font-weight: 500; color: var(--text); }
+.routechoice b.fast { color: var(--ok); }
+.routechoice span { font-size: var(--fs-cap); color: var(--muted); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.routechoice small { font-size: var(--fs-cap); color: var(--muted); }
+.fasterstatus { text-align: center; font-size: var(--fs-cap); }

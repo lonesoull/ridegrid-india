@@ -1,6 +1,6 @@
 import { app } from '../core/app';
 import { live } from './liveLocation';
-import { google, googleRoute } from '../core/google';
+import { google, googleRoutes } from '../core/google';
 import { engine } from '../core/engine';
 import { haversine, lineLength, type LngLat } from '../core/geo';
 import { inIndia } from '../core/india';
@@ -36,7 +36,9 @@ export function fixProblem(f: Fix, target?: LngLat): string | null {
 }
 
 import type { Turn } from '../core/turns';
-export interface Directions { from: LngLat; coords: LngLat[]; distM: number; routed: boolean; turns?: Turn[]; durS?: number; source?: 'google' | 'osrm' }
+export interface Directions { from: LngLat; coords: LngLat[]; distM: number; routed: boolean; turns?: Turn[]; durS?: number; source?: 'google' | 'osrm'; description?: string;
+  /** Google's other route choices (fastest first), like Google Maps — this one included */
+  choices?: Directions[] }
 
 /** Road route from the rider's current location to stop i (straight line if the server can't be reached). */
 export async function directionsTo(i: number, from?: LngLat): Promise<Directions> {
@@ -51,8 +53,9 @@ export async function directionsToPoint(to: LngLat, from?: LngLat): Promise<Dire
   if (haversine(me, to) < 30) return { from: me, coords: [me, to], distM: haversine(me, to), routed: true };
   if (google.active) {
     try {
-      const g = await googleRoute(google.settings.key, me, to);
-      if (g.coords.length >= 2) return { from: me, coords: [me, ...g.coords, to], distM: g.distM, durS: g.durS, routed: true, source: 'google', turns: g.turns.map((t) => ({ ...t, i: t.i + 1 })) };
+      const rs = (await googleRoutes(google.settings.key, me, to, { alternatives: true })).filter((g) => g.coords.length >= 2).sort((a, b) => a.durS - b.durS);
+      const all: Directions[] = rs.map((g) => ({ from: me, coords: [me, ...g.coords, to], distM: g.distM, durS: g.durS, routed: true, source: 'google' as const, description: g.description, turns: g.turns.map((t) => ({ ...t, i: t.i + 1 })) }));
+      if (all.length) return { ...all[0], choices: all };
     } catch { /* fall back to OSRM below */ }
   }
   try {

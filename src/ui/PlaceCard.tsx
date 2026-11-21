@@ -18,6 +18,10 @@ import { knownLocation } from './SearchBar';
 import { mapCtl } from './App';
 import { Icon } from './Icon';
 
+const fmtMin = (s?: number) => { if (!s) return '—'; const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.max(1, m)} min`; };
+/** label on a grey alternative: how much slower than the chosen route */
+const altLabel = (c: Directions, sel: Directions) => { const d = Math.round(((c.durS ?? 0) - (sel.durS ?? 0)) / 60); return d === 0 ? fmtMin(c.durS) : d > 0 ? `+${d} min` : `${d} min`; };
+
 let planned: { v: number; L: RouteLine; idx: SegIndex } | null = null;
 function plannedIndex() {
   if (!planned || planned.v !== engine.version) { const L = buildRouteLine(); planned = { v: engine.version, L, idx: new SegIndex(L) }; }
@@ -47,7 +51,7 @@ export function PlaceCard() {
   }, [sel?.id]);
 
   if (!sel || nav.mode !== 'off') return null;
-  const close = () => { ui.set({ place: null }); mapCtl?.setApproach(null); };
+  const close = () => { ui.set({ place: null }); mapCtl?.setApproach(null); mapCtl?.setAlternatives(null); };
   const p = pl?.p;
   // distance from the rider (or from where the search was made) — not from the map centre, which moves to the place
   const here = knownLocation();
@@ -62,11 +66,16 @@ export function PlaceCard() {
     return f.p;
   };
 
-  const directions = () => act('Finding a road route…', async () => {
-    const d = await directionsToPoint(p!, await where());
-    setDir(d);
-    mapCtl?.setApproach(d.coords, true);
-  });
+  /** show route choice k (blue) and the others grey with their extra time, like Google Maps */
+  const choose = (d: Directions, k: number) => {
+    const all = d.choices ?? [d];
+    const pick = all[k] ?? all[0];
+    setDir({ ...pick, choices: all });
+    mapCtl?.setApproach(pick.coords, k === 0 && !dir);
+    mapCtl?.setAlternatives(all.map((c, i) => ({ c, i })).filter((x) => x.i !== k).map(({ c, i }) => ({ i, coords: c.coords, label: altLabel(c, pick) })));
+    if (mapCtl) mapCtl.onAltPick = (i) => choose({ ...pick, choices: all }, i);
+  };
+  const directions = () => act('Finding a road route…', async () => choose(await directionsToPoint(p!, await where()), 0));
 
   const addStop = async (): Promise<number> => {
     await engine.addStop(p!, engine.stops.length, pl!.name);
@@ -77,6 +86,7 @@ export function PlaceCard() {
   const go = (mode: 'live' | 'sim') => act(mode === 'live' ? 'Starting navigation…' : 'Starting simulation…', async () => {
     const i = await addStop();
     ui.set({ place: null });
+    mapCtl?.setAlternatives(null);
     await startRide(mode, i, dir ? { coords: dir.coords, turns: dir.turns } : null);
   });
 
@@ -115,6 +125,21 @@ export function PlaceCard() {
           </div>
           <p className="hint">Expedition: checks a way from where you are to this place that keeps {nav.settings.gapM} m from every other planned road (crossings, sub-roads, flyovers, parallel roads). While you go there, Detour mode guards you, and “Return the way I came” brings you back.</p>
         </> : <>
+          {dir?.choices && dir.choices.length > 1 && (
+            <div className="routechoices">
+              {dir.choices.map((c, k) => {
+                const on = c.coords === dir.coords;
+                const fastest = k === 0;
+                return (
+                  <button key={k} className={`routechoice ${on ? 'on' : ''}`} onClick={() => choose(dir, k)}>
+                    <b className={fastest ? 'fast' : ''}>{fmtMin(c.durS)}</b>
+                    <span>{fmtKm(c.distM)}{c.description ? ` · ${c.description}` : ''}</span>
+                    <small>{fastest ? 'Fastest · live traffic' : `+${Math.max(1, Math.round(((c.durS ?? 0) - (dir.choices![0].durS ?? 0)) / 60))} min`}</small>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="actionrow">
             <button className={dir ? '' : 'primary'} onClick={directions}><Icon name="directions" size={18} /> Directions</button>
             <button className={dir ? 'primary' : ''} onClick={() => go('live')}><Icon name="play" size={18} /> Start</button>

@@ -206,11 +206,13 @@ export class Navigator {
       this.playing = true;
       this.lastT = 0;
       this.raf = requestAnimationFrame((ts) => this.tick(ts));
+      this.faster = null; this.liveEta = null; this.fasterQuietUntil = 0; this.fasterStatus = null;
+      this.scheduleFaster(8000);
       if (this.settings.voice) say(this.approach ? `Simulation started. Heading to stop ${fromStop + 1}` : `Simulation started from stop ${fromStop + 1}`);
     } else {
       this.pos = null; this.mockFixes = 0;
       this.stopGps = await watchGps((f) => this.onFix(f), (msg) => { this.gpsError = msg; this.emit(); });
-      this.faster = null; this.liveEta = null; this.fasterQuietUntil = 0;
+      this.faster = null; this.liveEta = null; this.fasterQuietUntil = 0; this.fasterStatus = null;
       this.scheduleFaster(15000);
       if (this.settings.voice) say(`Navigation started. Heading to ${T().one} ${this.next + 1}`);
     }
@@ -266,13 +268,16 @@ export class Navigator {
   private scheduleFaster(delayMs: number) {
     if (this.fasterTimer) clearTimeout(this.fasterTimer);
     this.fasterTimer = null;
-    if (this.mode !== 'live' || isExpedition() || !this.settings.fasterSec) return;
+    if (this.mode === 'off' || isExpedition() || !this.settings.fasterSec) return; // also while simulating, so it can be tried at home
     this.fasterTimer = setTimeout(() => void this.checkFaster().finally(() => this.scheduleFaster(this.settings.fasterSec * 1000)), delayMs);
   }
 
   /** Ask Google (live traffic) for the best route to the next stop and the time of the route we're on. */
+  /** when live traffic was last checked, and what it found (shown in the navigation panel) */
+  fasterStatus: { at: number; text: string } | null = null;
   async checkFaster() {
-    if (this.checking || !google.active || !this.pos || !this.line || this.offRoute || this.done) return;
+    if (this.checking || !this.pos || !this.line || this.offRoute || this.done) return;
+    if (!google.active) { this.fasterStatus = { at: Date.now(), text: navigator.onLine ? 'Faster-route checks need Google (Settings → Google Maps)' : 'No internet — faster-route checks paused' }; this.emit(); return; }
     const st = engine.stops[this.next];
     if (!st) return;
     const to: LngLat = [st.lng, st.lat];
@@ -283,7 +288,12 @@ export class Navigator {
     this.checking = true;
     try {
       const key = google.settings.key;
-      const [best, cur] = await Promise.all([googleRoute(key, this.pos, to), via.length ? googleRoute(key, this.pos, to, undefined, via) : Promise.resolve(null)]);
+      // best = Google's fastest way now; cur = the route we're on, priced with live traffic (forced through points on it)
+      const [b, c] = await Promise.allSettled([googleRoute(key, this.pos, to), via.length ? googleRoute(key, this.pos, to, undefined, via) : Promise.resolve(null)]);
+      if (b.status === 'rejected') throw b.reason;
+      const best = b.value;
+      // if Google couldn't price our route, estimate it from its length at the fastest route's average speed
+      const cur = c.status === 'fulfilled' && c.value ? c.value : via.length ? { durS: best.durS * (span / Math.max(1, best.distM)), distM: span } as any : null;
       const curS = cur?.durS ?? best.durS;
       this.liveEta = { toNextS: curS, at: Date.now() };
       const saving = curS - best.durS;
@@ -295,8 +305,9 @@ export class Navigator {
           if (this.settings.voice) say(`Faster route available. Saves ${Math.round(saving / 60)} minutes.`);
         }
       } else this.faster = null;
+      this.fasterStatus = { at: Date.now(), text: this.faster ? `Faster route found · saves ${Math.round(this.faster.savingS / 60)} min` : "You're on the fastest route" };
       this.emit();
-    } catch { /* offline / quota: try again next round */ }
+    } catch (e: any) { this.fasterStatus = { at: Date.now(), text: `Couldn't check live traffic: ${String(e?.message ?? e).slice(0, 80)}` }; this.emit(); }
     finally { this.checking = false; }
   }
 

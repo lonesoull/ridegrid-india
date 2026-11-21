@@ -128,6 +128,7 @@ export function NavPanel() {
           </div>
         )}
         {detour?.returning && nav.approach && <div className="muted">Returning {detour.returning === 'same' ? 'the way you came' : 'by the safe route'} to where you left the route.</div>}
+        {!exp && nav.fasterStatus && !nav.faster && <div className="fasterstatus muted">{nav.fasterStatus.text} · checked {Math.max(0, Math.round((Date.now() - nav.fasterStatus.at) / 60000))} min ago</div>}
         {sim && <div className="navbtns">
           <button className="primary" onClick={() => nav.togglePlay()} disabled={done}><Icon name={nav.playing ? 'pause' : 'play'} /> {nav.playing ? 'Pause' : 'Play'}</button>
           {SIM_SPEEDS.map((m) => <button key={m} className={nav.mult === m ? 'on' : ''} onClick={() => nav.setMult(m)}>{m}×</button>)}
