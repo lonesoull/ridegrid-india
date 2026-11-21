@@ -189,10 +189,10 @@ export class MapController {
 
     m.addLayer({ id: 'rg-route-casing', type: 'line', source: ROUTE, filter: ['==', ['get', 'st'], 'ok'],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': night ? '#001a33' : '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 3, 10, 7, 16, 12] } });
+      paint: { 'line-color': night ? '#001a33' : '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 2.2, 10, 4.5, 16, 7.5] } });
     m.addLayer({ id: 'rg-route-line', type: 'line', source: ROUTE, filter: ['==', ['get', 'st'], 'ok'],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#1e90ff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.6, 10, 4, 16, 7] } });
+      paint: { 'line-color': '#1e90ff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.4, 10, 3, 16, 5] } });
     m.addLayer({ id: 'rg-route-pending', type: 'line', source: ROUTE, filter: ['!=', ['get', 'st'], 'ok'],
       paint: {
         'line-color': ['match', ['get', 'st'], 'error', '#ef4444', night ? '#94a3b8' : '#64748b'],
@@ -237,9 +237,9 @@ export class MapController {
     // ---- navigation layers (Phase 2)
     m.addSource(APPROACH, { type: 'geojson', data: this.approach ? lineFeature(this.approach) : empty() });
     m.addLayer({ id: 'rg-approach-casing', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 4, 14, 9] } }, 'rg-clusters');
+      paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6.5] } }, 'rg-clusters');
     m.addLayer({ id: 'rg-approach', type: 'line', source: APPROACH, layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#f97316', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6], 'line-dasharray': [1.5, 1] } }, 'rg-clusters');
+      paint: { 'line-color': '#f97316', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.6, 14, 4.5], 'line-dasharray': [1.5, 1] } }, 'rg-clusters');
     m.addSource(PLACES, { type: 'geojson', data: this.placesFc ?? empty() });
     m.addLayer({ id: 'rg-places', type: 'circle', source: PLACES,
       paint: { 'circle-radius': ['case', ['get', 'sel'], 12, 8], 'circle-color': ['case', ['get', 'sel'], '#db2777', '#a855f7'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
@@ -257,7 +257,7 @@ export class MapController {
     m.addSource(PUCK, { type: 'geojson', data: empty() });
     // ridden track goes UNDER the planned route (wider, translucent) so any difference stays visible
     m.addLayer({ id: 'rg-track', type: 'line', source: TRACK, layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 5, 14, 13], 'line-opacity': 0.55 } }, 'rg-route-casing');
+      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6], 'line-opacity': 0.55 } }, 'rg-route-casing');
     m.addLayer({ id: 'rg-next', type: 'circle', source: NEXT,
       paint: { 'circle-radius': 20, 'circle-color': 'rgba(34,197,94,0.18)', 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 4 } });
     if (!m.hasImage('rg-arrow')) m.addImage('rg-arrow', arrowImage(), { pixelRatio: 2 });
@@ -265,7 +265,7 @@ export class MapController {
     // roads already ridden on this trip (crimson) and two-wheeler-banned expressways (dark red, dashed)
     m.addSource(RIDDEN, { type: 'geojson', data: this.riddenFc ?? empty() });
     m.addLayer({ id: 'rg-ridden', type: 'line', source: RIDDEN, layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2, 14, 7], 'line-opacity': 0.6 } }, 'rg-route-casing');
+      paint: { 'line-color': '#dc143c', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 14, 4.5], 'line-opacity': 0.6 } }, 'rg-route-casing');
     m.addSource(BANNED, { type: 'geojson', data: this.bannedUrl ?? empty() });
     m.addLayer({ id: 'rg-banned', type: 'line', source: BANNED, minzoom: 6,
       paint: { 'line-color': '#7f1d1d', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.5, 14, 5], 'line-dasharray': [2, 1.5], 'line-opacity': 0.8 } }, 'rg-route-casing');

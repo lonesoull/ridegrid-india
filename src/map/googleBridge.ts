@@ -109,6 +109,8 @@ const ANCHOR: Record<string, [string, string]> = {
   'top-left': ['start', 'top'], 'top-right': ['end', 'top'], 'bottom-left': ['start', 'bottom'], 'bottom-right': ['end', 'bottom'],
 };
 
+/** Correction if the drawing layer and the screen disagree on pixel density (see GoogleBridge.checkScale). */
+let PX = 1;
 function buildLayers(ml: MLMap, L: any, feats: Geo[], zoom: number, idSuffix = ''): any[] {
   const id = `${L.id}${idSuffix}`;
   const t = L.type as string;
@@ -127,7 +129,7 @@ function buildLayers(ml: MLMap, L: any, feats: Geo[], zoom: number, idSuffix = '
     }
     const dashArr = Array.isArray(dash) && typeof dash[0] === 'number' ? dash as number[] : null;
     return [new PathLayer({
-      id, data: rows, getPath: (d: any) => d.path, getColor: (d: any) => d.c, getWidth: (d: any) => d.width,
+      id, data: rows, getPath: (d: any) => d.path, getColor: (d: any) => d.c, getWidth: (d: any) => d.width * PX,
       widthUnits: 'pixels', capRounded: (L.layout?.['line-cap'] ?? 'butt') === 'round', jointRounded: (L.layout?.['line-join'] ?? 'miter') === 'round',
       ...(dashArr ? { extensions: [DASH], getDashArray: () => dashArr, dashJustified: true } : {}),
       parameters: { depthCompare: 'always' } as any,
@@ -142,8 +144,8 @@ function buildLayers(ml: MLMap, L: any, feats: Geo[], zoom: number, idSuffix = '
       for (const p of points(f.geometry!, false)) rows.push({ p, r: rad + s / 2, c: rgba(col(zoom, ef), op(zoom, ef) ?? 1), sc: rgba(sc(zoom, ef), so(zoom, ef) ?? 1), s });
     }
     return [new ScatterplotLayer({
-      id, data: rows, getPosition: (d: any) => d.p, getRadius: (d: any) => d.r, radiusUnits: 'pixels', getFillColor: (d: any) => d.c,
-      stroked: true, getLineColor: (d: any) => d.sc, getLineWidth: (d: any) => d.s, lineWidthUnits: 'pixels', parameters: { depthCompare: 'always' } as any,
+      id, data: rows, getPosition: (d: any) => d.p, getRadius: (d: any) => d.r * PX, radiusUnits: 'pixels', getFillColor: (d: any) => d.c,
+      stroked: true, getLineColor: (d: any) => d.sc, getLineWidth: (d: any) => d.s * PX, lineWidthUnits: 'pixels', parameters: { depthCompare: 'always' } as any,
     })];
   }
   if (t === 'fill') {
@@ -171,7 +173,7 @@ function buildLayers(ml: MLMap, L: any, feats: Geo[], zoom: number, idSuffix = '
         for (const p of points(f.geometry!, onLine)) rows.push({ p, ic: { id: nm, url: ic.url, width: ic.width, height: ic.height, anchorY: anchor.startsWith('bottom') ? ic.height : anchor.startsWith('top') ? 0 : ic.height / 2 }, h, a: -(rot(zoom, ef) ?? 0), o: Math.round((op(zoom, ef) ?? 1) * 255) });
       }
       if (rows.length) out.push(new IconLayer({
-        id: `${id}-icon`, data: rows, getPosition: (d: any) => d.p, getIcon: (d: any) => d.ic, getSize: (d: any) => d.h, sizeUnits: 'pixels',
+        id: `${id}-icon`, data: rows, getPosition: (d: any) => d.p, getIcon: (d: any) => d.ic, getSize: (d: any) => d.h * PX, sizeUnits: 'pixels',
         getAngle: (d: any) => d.a, billboard: !mapAligned, getColor: (d: any) => [255, 255, 255, d.o], parameters: { depthCompare: 'always' } as any,
       }));
     }
@@ -191,8 +193,8 @@ function buildLayers(ml: MLMap, L: any, feats: Geo[], zoom: number, idSuffix = '
         for (const p of points(f.geometry!, onLine)) rows.push({ p, text, sz, off: [o[0] * sz, o[1] * sz], ta: a[0], ab: a[1], c: rgba(col(zoom, ef), op(zoom, ef) ?? 1), ang: -(rot(zoom, ef) ?? 0) });
       }
       if (rows.length) out.push(new TextLayer({
-        id: `${id}-text`, data: rows, getPosition: (d: any) => d.p, getText: (d: any) => d.text, getSize: (d: any) => d.sz, sizeUnits: 'pixels',
-        getColor: (d: any) => d.c, getPixelOffset: (d: any) => d.off, getTextAnchor: (d: any) => d.ta, getAlignmentBaseline: (d: any) => d.ab, getAngle: (d: any) => d.ang,
+        id: `${id}-text`, data: rows, getPosition: (d: any) => d.p, getText: (d: any) => d.text, getSize: (d: any) => d.sz * PX, sizeUnits: 'pixels',
+        getColor: (d: any) => d.c, getPixelOffset: (d: any) => [d.off[0] * PX, d.off[1] * PX], getTextAnchor: (d: any) => d.ta, getAlignmentBaseline: (d: any) => d.ab, getAngle: (d: any) => d.ang,
         characterSet: 'auto', fontFamily: 'Roboto, "Noto Sans", system-ui, sans-serif', fontWeight: /Bold/.test(font) ? 700 : 400,
         fontSettings: { sdf: true, buffer: 6 }, outlineWidth: haloW ? Math.min(4, haloW * 2) : 0, outlineColor: haloC,
         ...(overlap ? {} : { extensions: [COLLIDE], collisionGroup: id }), parameters: { depthCompare: 'always' } as any,
@@ -278,6 +280,7 @@ export class GoogleBridge {
   private clusters = new Map<string, { data: any; index: Supercluster }>();
   private offs: (() => void)[] = [];
   constructor(gmap: any, private ml: MLMap) {
+    this.gmapDiv = gmap.getDiv?.() ?? null;
     // interleaved = drawn inside Google's own WebGL frame (vector map); on Google's basic raster map deck falls back to
     // an overlay that Google moves with the map. Accept software / low-end GPUs instead of failing.
     this.overlay = new GoogleMapsOverlay({ interleaved: true, layers: [], deviceProps: { webgl: { failIfMajorPerformanceCaveat: false, preserveDrawingBuffer: false } } } as any);
@@ -363,8 +366,22 @@ export class GoogleBridge {
       }
     }
     this.overlay.setProps({ layers: out });
+    this.checkScale();
     this.lastLayers = out.map((l) => l.id);
   }
+  /** Sizes are in screen pixels. If the drawing layer works in device pixels without applying the screen's
+   *  density (or the other way round), everything would look 3× too thin / thick on a phone — measure and correct. */
+  private checkScale() {
+    setTimeout(() => {
+      const vp = (this.overlay as any)._deck?.getViewports?.()[0];
+      const css = this.gmapDiv?.clientWidth || window.innerWidth;
+      if (!vp?.width || !css) return;
+      // deck pixel = css px when vp.width ≈ screen width; otherwise scale sizes by the ratio (3× device pixels → ×3, etc.)
+      const next = Math.abs(vp.width - css) < 4 ? 1 : Math.max(0.25, Math.min(4, Math.round((vp.width / css) * 4) / 4));
+      if (Math.abs(next - PX) > 0.05) { PX = next; this.memo.clear(); this.schedule(); }
+    }, 500);
+  }
+  private gmapDiv: HTMLElement | null = null;
   destroy() {
     cancelAnimationFrame(this.raf); clearTimeout(this.timer);
     this.offs.forEach((f) => f());
