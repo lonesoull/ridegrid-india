@@ -15,6 +15,15 @@ export const STYLES = {
   night: 'https://tiles.openfreemap.org/styles/dark',
 };
 
+/**
+ * Line width in real-world metres (like Google's route): it grows with the road as you zoom in — about one
+ * carriageway when close — and never gets thinner than `minPx` when zoomed out. k = rider's thickness setting.
+ */
+export function roadWidth(metres: number, minPx: number, k = 1): any {
+  const px20 = (metres * 2 ** 20) / 73550; // 512-px tiles at ~20° latitude
+  const zMin = Math.log2((minPx * 73550) / metres);
+  return ['interpolate', ['exponential', 2], ['zoom'], 4, minPx * 0.5 * k, Math.max(5, zMin), minPx * k, 20, px20 * k];
+}
 const ROUTE = 'rg-route', STOPS = 'rg-stops', DRAG = 'rg-drag', SEL = 'rg-sel', ME = 'rg-me', TRACK = 'rg-track', PUCK = 'rg-puck', NEXT = 'rg-next', APPROACH = 'rg-approach', ISSUES = 'rg-issues', PLACES = 'rg-places', PEERS = 'rg-peers', PEERTRK = 'rg-peer-tracks', BANNED = 'rg-banned', RIDDEN = 'rg-ridden';
 export const ROLE_COLOR: Record<string, string> = { primary: '#f97316', secondary: '#14b8a6', laptop: '#64748b' };
 const FONT = ['Noto Sans Bold'];
@@ -189,10 +198,10 @@ export class MapController {
 
     m.addLayer({ id: 'rg-route-casing', type: 'line', source: ROUTE, filter: ['==', ['get', 'st'], 'ok'],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': night ? '#001a33' : '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 2.2, 10, 4.5, 16, 7.5] } });
+      paint: { 'line-color': night ? '#001a33' : '#ffffff', 'line-width': roadWidth(10, 5) } });
     m.addLayer({ id: 'rg-route-line', type: 'line', source: ROUTE, filter: ['==', ['get', 'st'], 'ok'],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#1e90ff', 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.4, 10, 3, 16, 5] } });
+      paint: { 'line-color': '#1e90ff', 'line-width': roadWidth(7, 3) } });
     m.addLayer({ id: 'rg-route-pending', type: 'line', source: ROUTE, filter: ['!=', ['get', 'st'], 'ok'],
       paint: {
         'line-color': ['match', ['get', 'st'], 'error', '#ef4444', night ? '#94a3b8' : '#64748b'],

@@ -17,6 +17,7 @@ import { handoff } from '../nav/handoff';
 import { googleReady, addressAt } from './gfeatures';
 import type { CoordFormat } from './coords';
 import { routing } from '../core/router';
+import { roadWidth } from '../map/MapController';
 import { dailyNav } from './dailyNav';
 routing.avoidBorders = () => mode.current === 'daily' && extras.s.avoidBorders;
 
@@ -147,14 +148,13 @@ export function installRouteStyle(ctl: import('../map/MapController').MapControl
   const apply = (m: import('maplibre-gl').Map) => {
     const d = daily();
     const k = d ? extras.s.routeWidth : 1;
-    const w = (a: number, b: number, c: number): any => ['interpolate', ['linear'], ['zoom'], 4, a * k, 10, b * k, 16, c * k];
-    if (m.getLayer('rg-route-line')) { m.setPaintProperty('rg-route-line', 'line-color', d ? extras.s.routeColor : '#1e90ff'); m.setPaintProperty('rg-route-line', 'line-width', w(1.4, 3, 5)); }
-    if (m.getLayer('rg-route-casing')) m.setPaintProperty('rg-route-casing', 'line-width', w(2.2, 4.5, 7.5));
+    if (m.getLayer('rg-route-line')) { m.setPaintProperty('rg-route-line', 'line-color', d ? extras.s.routeColor : '#1e90ff'); m.setPaintProperty('rg-route-line', 'line-width', roadWidth(7, 3, k)); }
+    if (m.getLayer('rg-route-casing')) m.setPaintProperty('rg-route-casing', 'line-width', roadWidth(10, 5, k));
     // the way to your first stop: same solid blue as the route while riding (Google style); Expedition keeps its dashed orange detour line
     if (m.getLayer('rg-approach')) {
       m.setPaintProperty('rg-approach', 'line-color', d ? extras.s.routeColor : '#f97316');
       m.setPaintProperty('rg-approach', 'line-dasharray', d ? undefined : [1.5, 1]);
-      m.setPaintProperty('rg-approach', 'line-width', d ? w(1.4, 3, 5) : ['interpolate', ['linear'], ['zoom'], 6, 1.6, 14, 4.5]);
+      m.setPaintProperty('rg-approach', 'line-width', d ? roadWidth(7, 3, k) : ['interpolate', ['linear'], ['zoom'], 6, 1.6, 14, 4.5]);
     }
     const data = { type: 'FeatureCollection' as const, features: d && extras.s.showAvoided ? dailyNav.s.avoided.map((a) => ({ type: 'Feature' as const, properties: { name: a.name }, geometry: { type: 'LineString' as const, coordinates: a.coords } })) : [] };
     const src = m.getSource('d-avoided') as import('maplibre-gl').GeoJSONSource | undefined;
