@@ -1,3 +1,4 @@
+import { isTyping } from './typing';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { EditStops } from './EditStops';
 import { locateMe } from './locate';
@@ -125,7 +126,7 @@ export function App() {
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
     })().catch((e) => toast(String(e), 'error'));
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input,textarea,select')) return;
+      if (isTyping(e)) return;
       const k = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); void act(null, () => (e.shiftKey ? engine.redo() : engine.undo())); }
       else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); void act(null, () => engine.redo()); }

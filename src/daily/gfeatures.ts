@@ -205,3 +205,24 @@ export async function walkRoute(from: LngLat, to: LngLat): Promise<{ coords: Lng
   const d = Math.hypot((to[0] - from[0]) * 111320 * Math.cos((from[1] * Math.PI) / 180), (to[1] - from[1]) * 110540) * 1.3;
   return { coords: [from, to], distM: d, minutes: d / 75, by: 'straight line (offline estimate)' };
 }
+
+/** Google's own search box (Place Autocomplete widget): the same suggestions and dropdown as Google Maps. */
+export async function googleSearchBox(near: LngLat | null, onPick: (pl: { id: string; name: string; address: string; p: LngLat; types?: string[] }) => void, onError: (msg: string) => void): Promise<HTMLElement> {
+  const places: any = await lib('places');
+  const el = new places.PlaceAutocompleteElement({
+    includedRegionCodes: ['in'],
+    ...(near ? { locationBias: { center: { lat: near[1], lng: near[0] }, radius: 50000 }, origin: { lat: near[1], lng: near[0] } } : {}),
+  });
+  el.setAttribute('placeholder', 'Search Google Maps');
+  el.addEventListener('gmp-select', async (ev: any) => {
+    try {
+      gquota.take('autocomplete');
+      const place = ev.placePrediction?.toPlace?.() ?? ev.place;
+      gquota.take('placeBasic');
+      await place.fetchFields({ fields: ['id', 'displayName', 'formattedAddress', 'location', 'types'] });
+      onPick({ id: place.id, name: place.displayName ?? '', address: place.formattedAddress ?? '', p: [place.location.lng(), place.location.lat()], types: place.types });
+    } catch (e: any) { onError(e?.message ?? 'Google search failed'); }
+  });
+  el.addEventListener('gmp-error', (ev: any) => onError(ev?.error?.message ?? 'Google search is not available for this key (enable “Places API (New)”)'));
+  return el;
+}

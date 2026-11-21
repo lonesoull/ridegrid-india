@@ -1,3 +1,4 @@
+import { isTyping } from '../ui/typing';
 import { getSetting, putSetting } from '../core/db';
 import { engine } from '../core/engine';
 import { mode } from '../core/mode';
@@ -78,7 +79,7 @@ function act(a: BtnAction) {
 export function startExtras() {
   // ---- handlebar / Bluetooth remote buttons (they arrive as keys or media buttons)
   window.addEventListener('keydown', (e) => {
-    if (!daily() || (e.target as HTMLElement)?.closest('input,textarea,select')) return;
+    if (!daily() || isTyping(e)) return;
     const a = extras.s.keys[e.key] ?? extras.s.keys[e.key.toLowerCase()];
     if (a) { e.preventDefault(); act(a); }
   });

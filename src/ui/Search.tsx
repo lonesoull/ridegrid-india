@@ -4,7 +4,7 @@ import { google } from '../core/google';
 import { engine } from '../core/engine';
 import { fmtKm } from '../core/geo';
 import { mode } from '../core/mode';
-import { ui, useUI } from './state';
+import { ui, useUI, toast } from './state';
 import { mapCtl } from './App';
 import { Icon } from './Icon';
 import { searchCentre, warmLocation } from './SearchBar';
@@ -14,7 +14,7 @@ import { recentDestinations } from '../daily/extras';
 import { parseCoords } from '../daily/coords';
 import { FLAG_LABEL, hitFlags, type Hit } from '../daily/poiIndex';
 import { openState } from '../daily/openingHours';
-import { googleReady, googleTextNear, searchAlongRoute } from '../daily/gfeatures';
+import { googleReady, googleTextNear, searchAlongRoute, googleSearchBox } from '../daily/gfeatures';
 
 /**
  * Search, Google Maps style: a pill at the top with the settings button, a row of category chips,
@@ -65,6 +65,9 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
   const [along, setAlong] = useState(false);
   const [filters, setFilters] = useState<string[]>([]);
   const [, setTick] = useState(0);
+  // with Google on: Google's own search box (exactly Google Maps' suggestions); our box only without Google / signal
+  const [googleBox, setGoogleBox] = useState(googleReady());
+  useEffect(() => { const f = () => setGoogleBox(googleReady() && !searchStatus.googleError); window.addEventListener('online', f); window.addEventListener('offline', f); return () => { window.removeEventListener('online', f); window.removeEventListener('offline', f); }; }, []);
   const [source, setSource] = useState<'google' | 'offline' | 'osm' | ''>('');
   const ctl = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -152,7 +155,9 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
           <button className="iconbtn" aria-label={open ? 'Back' : 'Search'} onClick={() => (open ? close() : (input.current?.focus(), openSearch()))}>
             <Icon name={open ? 'back' : 'search'} size={22} />
           </button>
-          {cat && !q ? (
+          {googleBox && !cat ? (
+            <GoogleBox onPick={(pl) => pick({ id: `g:${pl.id}`, name: pl.name, address: pl.address, p: pl.p, provider: 'google' })} onError={(m) => { searchStatus.googleError = m; setGoogleBox(false); setTimeout(() => input.current?.focus(), 50); toast(`Google search isn't allowed for your key (${m}). Enable “Places API (New)” in Google Cloud for this key — until then RideGrid's own search is used.`, 'error'); }} />
+          ) : cat && !q ? (
             <button className="catpill" onClick={clear}><Icon name={cat.icon} size={16} /> {cat.label} <Icon name="close" size={14} /></button>
           ) : (
             <input ref={input} value={q} enterKeyHint="search" placeholder={daily ? 'Search here' : 'Search police, hotel, fuel…'}
@@ -210,3 +215,18 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
   );
 }
 
+
+/** Google's own Place Autocomplete box inside our search pill. */
+function GoogleBox({ onPick, onError }: { onPick: (pl: { id: string; name: string; address: string; p: [number, number] }) => void; onError: (msg: string) => void }) {
+  const host = useRef<HTMLDivElement>(null);
+  const cb = useRef({ onPick, onError }); cb.current = { onPick, onError };
+  useEffect(() => {
+    let el: HTMLElement | null = null, dead = false;
+    void googleSearchBox(searchCentre(), (pl) => cb.current.onPick(pl), (m) => cb.current.onError(m)).then((e) => {
+      if (dead || !host.current) return;
+      el = e; host.current.appendChild(e);
+    }).catch((e) => cb.current.onError(e?.message ?? 'Google search failed to load'));
+    return () => { dead = true; el?.remove(); };
+  }, []);
+  return <div ref={host} className="gbox" />;
+}
