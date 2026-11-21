@@ -42,7 +42,8 @@ export async function applyBase(map: MapController, _force = false) {
     if (daily) {
       const d = dailyMap.settings;
       const style = await buildDailyStyle(night, true);
-      map.setGoogleJsBase({ night, traffic: g.traffic, mapId: g.mapId, mapType: d.gType, transit: d.gTransit, bike: d.gBike }, { id: `${JSON.stringify(d)}|${night}`, style });
+      map.setGoogleJsBase({ night, traffic: g.traffic, mapId: g.mapId, mapType: d.gType, transit: d.gTransit, bike: d.gBike, drive: true,
+        onPlaceTap: (id, p) => ui.set({ place: { id: `g:${id}`, name: 'Loading…', address: '', provider: 'google', p: undefined }, selectedId: null }) }, { id: `${JSON.stringify(d)}|${night}`, style });
     } else map.setGoogleJsBase({ night, traffic: g.traffic, mapId: g.mapId, mapType: 'roadmap', transit: false, bike: false });
     google.tilesOk = true;
   } catch (e: any) {

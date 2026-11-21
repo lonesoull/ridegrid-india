@@ -38,8 +38,9 @@ export function DailyWidgets() {
     const f = () => tick((x) => x + 1);
     widgets.listeners.add(f); markers.listeners.add(f); recorder.listeners.add(f); sensors.listeners.add(f); bikes.listeners.add(f); obd.listeners.add(f);
     const i = setInterval(f, 5000);
-    mapCtl?.map.on('moveend', f);
-    return () => { widgets.listeners.delete(f); markers.listeners.delete(f); recorder.listeners.delete(f); sensors.listeners.delete(f); bikes.listeners.delete(f); obd.listeners.delete(f); clearInterval(i); mapCtl?.map.off('moveend', f); };
+    const mf = (e?: any) => { if (e?.rg !== 'g') f(); };
+    mapCtl?.map.on('moveend', mf); mapCtl?.map.on('rg-idle' as any, mf);
+    return () => { widgets.listeners.delete(f); markers.listeners.delete(f); recorder.listeners.delete(f); sensors.listeners.delete(f); bikes.listeners.delete(f); obd.listeners.delete(f); clearInterval(i); mapCtl?.map.off('moveend', mf); mapCtl?.map.off('rg-idle' as any, mf); };
   }, []);
   const w = widgets.s;
   return (

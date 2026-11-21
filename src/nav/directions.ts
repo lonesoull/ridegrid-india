@@ -1,4 +1,5 @@
 import { app } from '../core/app';
+import { live } from './liveLocation';
 import { google, googleRoute } from '../core/google';
 import { engine } from '../core/engine';
 import { haversine, lineLength, type LngLat } from '../core/geo';
@@ -8,6 +9,8 @@ export interface Fix { p: LngLat; acc: number }
 
 /** Current position + its accuracy in metres (laptops often report a rough Wi-Fi / IP location). */
 export function myFix(): Promise<Fix> {
+  // the always-on location is instant; ask the GPS only when there is none yet
+  if (live.fix && Date.now() - live.fix.at < 30000) return Promise.resolve({ p: live.fix.p, acc: live.fix.acc });
   return new Promise((res, rej) => {
     if (!navigator.geolocation) return rej(new Error('GPS is not available on this device.'));
     navigator.geolocation.getCurrentPosition(

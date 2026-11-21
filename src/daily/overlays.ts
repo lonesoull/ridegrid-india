@@ -1,4 +1,5 @@
 import { Popup, type Map as MLMap, type GeoJSONSource } from 'maplibre-gl';
+import { onMapSettled } from '../map/googleJs';
 import type { MapController } from '../map/MapController';
 import { mode } from '../core/mode';
 import { dailyMap, wikiNear } from './mapLayers';
@@ -61,7 +62,7 @@ export function startDailyOverlays(ctl: MapController) {
     const pop = new Popup({ maxWidth: '280px' }).setLngLat(x.p).setDOMContent(el).addTo(ctl.map);
   });
   const m = ctl.map;
-  m.on('moveend', () => { if (mode.current === 'daily' && (dailyMap.settings.wiki || dailyMap.settings.voyage)) refresh(m); });
+  onMapSettled(m, () => { if (mode.current === 'daily' && (dailyMap.settings.wiki || dailyMap.settings.voyage)) refresh(m); });
   m.on('click', 'd-wiki-dot', async (e) => {
     const f = e.features?.[0];
     if (!f) return;

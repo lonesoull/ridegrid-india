@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { startLocate } from './locate';
 import { T } from '../core/terms';
 import { MapController } from '../map/MapController';
 import { engine } from '../core/engine';
@@ -75,6 +76,7 @@ export function App() {
       void offlineTerrain.boot();
       startDailyOverlays(mapCtl!);
       startDaily(mapCtl!);
+      startLocate(mapCtl!);
       startMapExtras(mapCtl!);
       startWeatherLayers(mapCtl!);
       google.listeners.add(() => ui.set({ gtick: ui.get().gtick + 1 }));

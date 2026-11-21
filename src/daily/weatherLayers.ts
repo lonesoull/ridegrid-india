@@ -1,4 +1,5 @@
 import type { GeoJSONSource, Map as MLMap } from 'maplibre-gl';
+import { onMapSettled } from '../map/googleJs';
 import type { MapController } from '../map/MapController';
 import { mode } from '../core/mode';
 import { dailyMap } from './mapLayers';
@@ -53,6 +54,6 @@ export function startWeatherLayers(ctl: MapController) {
     last = key;
     (m.getSource('d-wx') as GeoJSONSource | undefined)?.setData(await gridData(m));
   };
-  ctl.map.on('moveend', () => void refresh());
+  onMapSettled(ctl.map, () => void refresh());
   dailyMap.listeners.add(() => { last = ''; void refresh(); });
 }

@@ -1,10 +1,19 @@
 /**
  * Google Maps JavaScript API underlay. Billed per map load (one per app start); panning, zooming and
  * the traffic layer don't create extra loads, and Google refreshes traffic automatically.
- * MapLibre stays on top (transparent) and drives the camera; the Google map follows it exactly.
+ * MapLibre stays on top (transparent). Expedition: MapLibre drives the camera and Google follows.
+ * Daily: Google takes the gestures (smooth, like the Google Maps app) and MapLibre follows Google.
  */
 declare const google: any;
 type MLMap = import('maplibre-gl').Map;
+import { MapMouseEvent } from 'maplibre-gl';
+/** Marks camera changes that came from the Google map, so they are not sent back to it. */
+export const FROM_GOOGLE = { rg: 'g' } as const;
+/** "The map stopped moving" in both set-ups (MapLibre-driven or Google-driven). */
+export function onMapSettled(ml: MLMap, fn: () => void) {
+  ml.on('moveend', (e: any) => { if (e?.rg !== 'g') fn(); });
+  ml.on('rg-idle' as any, fn);
+}
 
 let loader: Promise<void> | null = null;
 let loadedKey = '';
@@ -28,7 +37,11 @@ export function loadMapsJs(key: string, language = 'en'): Promise<void> {
 }
 export const onAuthFailure = (f: () => void) => { authListeners.add(f); return () => { authListeners.delete(f); }; };
 
-export interface GoogleBaseOpts { night: boolean; traffic: boolean; mapId: string; mapType?: 'roadmap' | 'satellite' | 'hybrid' | 'terrain'; transit?: boolean; bike?: boolean }
+export interface GoogleBaseOpts { night: boolean; traffic: boolean; mapId: string; mapType?: 'roadmap' | 'satellite' | 'hybrid' | 'terrain'; transit?: boolean; bike?: boolean;
+  /** Daily: the Google map takes the finger gestures (Google Maps feel) and our layers follow it */
+  drive?: boolean;
+  /** a tap on one of Google's own places (shops, petrol pumps…) */
+  onPlaceTap?: (placeId: string, p: [number, number]) => void }
 
 export class GoogleUnderlay {
   div: HTMLDivElement;
@@ -36,7 +49,7 @@ export class GoogleUnderlay {
   traffic: any = null;
   transit: any = null;
   bike: any = null;
-  private sync: () => void;
+  private sync: (e?: any) => void;
   private settle: () => void;
   /** 'VECTOR' supports rotation + tilt; 'RASTER' (older devices / WebGL off) is north-up and flat */
   renderingType: 'VECTOR' | 'RASTER' | null = null;
@@ -54,7 +67,7 @@ export class GoogleUnderlay {
       mapId: opts.mapId || 'DEMO_MAP_ID',
       renderingType: google.maps.RenderingType?.VECTOR,
       colorScheme: opts.night ? 'DARK' : 'LIGHT',
-      disableDefaultUI: true, gestureHandling: 'none', keyboardShortcuts: false, clickableIcons: false,
+      disableDefaultUI: true, gestureHandling: opts.drive ? 'greedy' : 'none', keyboardShortcuts: false, clickableIcons: !!opts.drive,
       isFractionalZoomEnabled: true,
       mapTypeId: opts.mapType ?? 'roadmap',
     });
@@ -66,7 +79,8 @@ export class GoogleUnderlay {
     });
     // Camera match (same as deck.gl's Google overlay): MapLibre tiles are 512 px vs Google's 256 px → zoom + 1;
     // tilt = pitch, heading = bearing; MapLibre's field of view is set to Google's 25° by the caller.
-    this.sync = () => {
+    this.sync = (e?: any) => {
+      if (e?.rg === 'g') return; // came from Google: nothing to send back
       const p = ml.getCenter();
       const pitch = ml.getPitch();
       this.gmap.moveCamera({ center: { lat: p.lat, lng: p.lng }, zoom: ml.getZoom() + 1, heading: ml.getBearing(), tilt: pitch });
@@ -80,11 +94,37 @@ export class GoogleUnderlay {
       this.maxTiltSeen = Math.max(this.maxTiltSeen, gt);
       if (pitch - gt > 0.5) { ml.setPitch(gt); this.onTiltLimited?.(pitch, gt, ml.getZoom() + 1); }
     };
-    ml.on('moveend', this.settle);
+    if (opts.drive) this.driveFromGoogle(ml, opts); else ml.on('moveend', this.settle);
     ml.on('move', this.sync);
     ml.on('resize', this.sync);
     this.sync();
   }
+  private gl: any[] = [];
+  /** Google takes the gestures; MapLibre (our layers) copies Google's camera once per frame, and taps are passed down to it. */
+  private driveFromGoogle(ml: MLMap, opts: GoogleBaseOpts) {
+    this.drive = true;
+    ml.getContainer().classList.add('google-drives');
+    let raf = 0;
+    const copy = () => {
+      raf = 0;
+      const c = this.gmap.getCenter(); if (!c) return;
+      ml.jumpTo({ center: [c.lng(), c.lat()], zoom: (this.gmap.getZoom() ?? 1) - 1, bearing: this.gmap.getHeading?.() ?? 0, pitch: this.gmap.getTilt?.() ?? 0 }, FROM_GOOGLE);
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(copy); };
+    for (const ev of ['center_changed', 'zoom_changed', 'heading_changed', 'tilt_changed']) this.gl.push(this.gmap.addListener(ev, schedule));
+    this.gl.push(this.gmap.addListener('idle', () => { copy(); ml.fire('rg-idle' as any); }));
+    this.gl.push(this.gmap.addListener('dragstart', () => ml.fire('dragstart')));
+    // taps / long-presses: Google's own places open our place card; anything else goes to our layers (stops, favourites…)
+    const pass = (type: 'click' | 'contextmenu') => (e: any) => {
+      if (type === 'click' && e.placeId && opts.onPlaceTap) { e.stop?.(); opts.onPlaceTap(e.placeId, [e.latLng.lng(), e.latLng.lat()]); return; }
+      if (!e.latLng) return;
+      const pt = ml.project([e.latLng.lng(), e.latLng.lat()]);
+      const r = ml.getCanvasContainer().getBoundingClientRect();
+      ml.fire(new MapMouseEvent(type, ml, new MouseEvent(type, { clientX: r.left + pt.x, clientY: r.top + pt.y })));
+    };
+    this.gl.push(this.gmap.addListener('click', pass('click')), this.gmap.addListener('contextmenu', pass('contextmenu')));
+  }
+  drive = false;
   setTraffic(on: boolean) {
     if (on && !this.traffic) { this.traffic = new google.maps.TrafficLayer({ autoRefresh: true }); this.traffic.setMap(this.gmap); }
     if (!on && this.traffic) { this.traffic.setMap(null); this.traffic = null; }
@@ -99,6 +139,8 @@ export class GoogleUnderlay {
   }
   destroy() {
     this.ml.off('move', this.sync); this.ml.off('resize', this.sync); this.ml.off('moveend', this.settle);
+    this.gl.forEach((l) => l.remove()); this.gl = [];
+    this.ml.getContainer().classList.remove('google-drives');
     this.traffic?.setMap(null); this.transit?.setMap(null); this.bike?.setMap(null);
     this.div.remove();
   }

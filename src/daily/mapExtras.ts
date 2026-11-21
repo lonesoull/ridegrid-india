@@ -1,4 +1,5 @@
 import type { GeoJSONSource, Map as MLMap } from 'maplibre-gl';
+import { onMapSettled } from '../map/googleJs';
 import type { MapController } from '../map/MapController';
 import { mode } from '../core/mode';
 import { nav } from '../nav/navigator';
@@ -105,7 +106,7 @@ export function startMapExtras(ctl: MapController) {
     (m.getSource('d-extras-regions') as GeoJSONSource | undefined)?.setData(d.regions);
     (m.getSource('d-extras-rings') as GeoJSONSource | undefined)?.setData(d.rings);
   };
-  m.on('moveend', refresh);
+  onMapSettled(m, refresh);
   dailyMap.listeners.add(refresh);
   offlineMaps.listeners.add(refresh);
   nav.subscribe(() => { if (daily() && dailyMap.settings.rings) refresh(); });

@@ -97,7 +97,7 @@ export function PlaceCard() {
     <div className="sheet glass">
       <div className="sheet-head">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <b>{sel.name}</b>
+          <b>{(pl ?? sel).name}</b>
           <div className="muted">{(pl ?? sel).address}</div>
         </div>
         <button className="x" aria-label="Close" onClick={close}><Icon name="close" size={18} /></button>

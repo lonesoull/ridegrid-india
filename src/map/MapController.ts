@@ -105,7 +105,7 @@ export class MapController {
   /** Called once for each new Google map (one billed map load). */
   onGoogleMapLoad: (() => void) | null = null;
   setGoogleJsBase(opts: GoogleBaseOpts, overlay?: { id: string; style: StyleSpecification }) {
-    const key = `${opts.night}|${opts.mapId}`;
+    const key = `${opts.night}|${opts.mapId}|${!!opts.drive}`;
     if (!this.underlay || this.underlayKey !== key) {
       this.underlay?.destroy();
       this.underlay = new GoogleUnderlay(this.map, opts, (t) => this.onGoogleRendering(t), (asked, got, gz) => this.onTiltLimited(asked, got, gz));
@@ -220,8 +220,13 @@ export class MapController {
       paint: { 'circle-radius': 18, 'circle-color': 'rgba(245,158,11,0.25)', 'circle-stroke-color': '#f59e0b', 'circle-stroke-width': 3 } });
     m.addLayer({ id: 'rg-drag-pt', type: 'circle', source: DRAG, filter: ['==', ['geometry-type'], 'Point'],
       paint: { 'circle-radius': 12, 'circle-color': '#f59e0b', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+    // my location, Google-style: pale accuracy circle, direction beam, blue dot with white ring
+    if (!m.hasImage('rg-beam')) m.addImage('rg-beam', beamImage(), { pixelRatio: 2 });
+    m.addLayer({ id: 'rg-me-acc', type: 'circle', source: ME, paint: { 'circle-radius': 0, 'circle-color': 'rgba(26,115,232,0.15)', 'circle-stroke-color': 'rgba(26,115,232,0.3)', 'circle-stroke-width': 1, 'circle-pitch-alignment': 'map' } });
+    m.addLayer({ id: 'rg-me-beam', type: 'symbol', source: ME, filter: ['has', 'h'],
+      layout: { 'icon-image': 'rg-beam', 'icon-rotate': ['get', 'h'], 'icon-rotation-alignment': 'map', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
     m.addLayer({ id: 'rg-me', type: 'circle', source: ME,
-      paint: { 'circle-radius': 9, 'circle-color': '#0ea5e9', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } });
+      paint: { 'circle-radius': 8, 'circle-color': '#1a73e8', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5, 'circle-pitch-alignment': 'map' } });
 
     // ---- navigation layers (Phase 2)
     m.addSource(APPROACH, { type: 'geojson', data: this.approach ? lineFeature(this.approach) : empty() });
@@ -460,11 +465,18 @@ export class MapController {
     const zoomFor3d = this.base === 'google' && !flat ? { zoom: Math.max(this.map.getZoom(), 16.5) } : {};
     this.map.easeTo({ pitch: flat ? 0 : 60, duration: 600, ...zoomFor3d });
   }
-  showMe(p: LngLat, fly = true) {
+  showMe(p: LngLat, fly = true, acc?: number, heading?: number | null) {
     this.me = p;
-    this.src(ME)?.setData({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } });
-    if (fly) this.map.flyTo({ center: p, zoom: Math.max(this.map.getZoom(), 14) });
+    this.meAcc = acc ?? this.meAcc; this.meHeading = heading === undefined ? this.meHeading : heading;
+    this.src(ME)?.setData({ type: 'Feature', properties: this.meHeading != null ? { h: this.meHeading } : {}, geometry: { type: 'Point', coordinates: p } });
+    if (this.meAcc && this.map.getLayer('rg-me-acc')) {
+      // metres → pixels at each zoom (512 px tiles)
+      const mpp0 = 78271.517 * Math.cos((p[1] * Math.PI) / 180);
+      this.map.setPaintProperty('rg-me-acc', 'circle-radius', ['interpolate', ['exponential', 2], ['zoom'], 0, this.meAcc / mpp0, 22, (this.meAcc / mpp0) * 2 ** 22]);
+    }
+    if (fly) this.map.flyTo({ center: p, zoom: Math.max(this.map.getZoom(), 16), duration: 800 });
   }
+  private meAcc = 0; private meHeading: number | null = null;
 
   // ---------- interactions ----------
   private async snap(p: LngLat): Promise<LngLat> {
@@ -568,4 +580,14 @@ export class MapController {
     m.on('mousemove', move); m.on('touchmove', move);
     m.on('mouseup', end); m.on('touchend', end);
   }
+}
+
+/** Google-style direction beam: a soft blue wedge pointing up (rotated by heading). */
+function beamImage(): ImageData {
+  const W = 80, H = 80, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(W / 2, H, 4, W / 2, H, H);
+  grad.addColorStop(0, 'rgba(26,115,232,0.55)'); grad.addColorStop(1, 'rgba(26,115,232,0)');
+  g.fillStyle = grad; g.beginPath(); g.moveTo(W / 2, H); g.arc(W / 2, H, H, -Math.PI / 2 - 0.5, -Math.PI / 2 + 0.5); g.closePath(); g.fill();
+  return g.getImageData(0, 0, W, H);
 }

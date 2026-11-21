@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { live } from '../nav/liveLocation';
 import { searchPlaces, CATEGORIES, type Place } from '../core/search';
 import { google } from '../core/google';
 import { fmtKm, type LngLat } from '../core/geo';
@@ -15,14 +16,15 @@ const fmtDist = (m?: number) => (m === undefined ? '' : m < 1000 ? `${Math.round
 let lastFix: LngLat | null = null;
 /** Grab a trustworthy location once when search opens (rejects VPN / Wi-Fi guesses). */
 export async function warmLocation() {
-  if (nav.pos || lastFix) return;
+  if (nav.pos || live.pos || lastFix) return;
   try { const f = await myFix(); if (!fixProblem(f)) lastFix = f.p; } catch { /* no permission: use map centre */ }
 }
 /** Rider position or last good fix (null if unknown). */
-export const knownLocation = (): LngLat | null => nav.pos ?? lastFix;
+export const knownLocation = (): LngLat | null => nav.pos ?? live.pos ?? lastFix;
 /** Where the search should be centred: rider position, else last good fix, else map centre. */
 export function searchCentre(): LngLat {
   if (nav.pos) return nav.pos;
+  if (live.pos) return live.pos;
   if (lastFix) return lastFix;
   const c = mapCtl!.map.getCenter();
   return [c.lng, c.lat];

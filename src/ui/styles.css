@@ -399,3 +399,5 @@ code { font-size: 11px; background: var(--btn); padding: 1px 4px; border-radius:
 .autoswitch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .2s; }
 .autoswitch input:checked + i { background: #2f9e44; } .autoswitch input:checked + i::after { left: 14px; }
 .wizard { z-index: 30; right: 10px; }
+.map.google-drives { pointer-events: none; }
+.map.google-drives .maplibregl-marker, .map.google-drives .maplibregl-popup, .map.google-drives .maplibregl-ctrl { pointer-events: auto; }
