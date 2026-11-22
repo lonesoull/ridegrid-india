@@ -1,4 +1,5 @@
 import { isTyping } from './typing';
+import { useBack, startBackHandling, setNavActive } from './back';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { EditStops } from './EditStops';
 import { locateMe } from './locate';
@@ -123,6 +124,8 @@ export function App() {
       void reminder.start();
       void handleLaunch().catch((e) => toast(String(e?.message ?? e), 'error'));
       void listenAppLinks();
+      setNavActive(() => nav.mode !== 'off');
+      void startBackHandling();
       setReady(true);
       if (engine.stops.length) setTimeout(() => mapCtl?.fitRoute(), 400);
     })().catch((e) => toast(String(e), 'error'));
@@ -240,6 +243,8 @@ function Controls() {
   useNav();
   const [more, setMore] = useState(false);
   const [layers, setLayers] = useState(false);
+  useBack(more, () => setMore(false));
+  useBack(layers, () => setLayers(false));
   // the extra buttons fold away again when the map is touched
   useEffect(() => { const m = mapCtl?.map; if (!m || !more) return; const f = () => setMore(false); m.on('click', f); m.on('dragstart', f); return () => { m.off('click', f); m.off('dragstart', f); }; }, [more]);
   const [turned, setTurned] = useState(false);

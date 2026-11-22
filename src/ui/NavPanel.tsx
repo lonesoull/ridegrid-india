@@ -1,4 +1,5 @@
 import { nav, SIM_SPEEDS } from '../nav/navigator';
+import { useBack } from './back';
 import { stage, stageOfStop } from '../nav/gmaps';
 import { engine } from '../core/engine';
 import { fmtKm } from '../core/geo';
@@ -30,6 +31,7 @@ export function NavPanel() {
   useNav();
   const following = useUI((s) => s.following);
   const [more, setMore] = useState(false);
+  useBack(more && nav.mode !== 'off', () => setMore(false));
   if (nav.mode === 'off') return null;
   const N = engine.stops.length;
   const done = nav.done;

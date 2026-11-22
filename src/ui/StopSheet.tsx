@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useBack } from './back';
 import { T } from '../core/terms';
 import { engine } from '../core/engine';
 import { fmtKm, haversine } from '../core/geo';
@@ -22,6 +23,7 @@ export function StopSheet() {
   const [name, setName] = useState('');
   const [dir, setDir] = useState<Directions | null>(null);
   const [more, setMore] = useState(false);
+  useBack(!!id, () => ui.set({ selectedId: null }));
   const i = id ? engine.indexOf(id) : -1;
   const s = engine.stops[i];
   useEffect(() => setName(s?.name ?? ''), [id, s?.name]);

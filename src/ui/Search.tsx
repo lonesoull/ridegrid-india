@@ -7,6 +7,7 @@ import { mode } from '../core/mode';
 import { ui, useUI, toast } from './state';
 import { mapCtl } from './App';
 import { Icon } from './Icon';
+import { useBack } from './back';
 import { searchCentre, warmLocation } from './SearchBar';
 import { routePoints } from '../daily/DailySearchBar';
 import { offlineSearch, history as searchHistory, remember, clearHistory } from '../daily/offlineSearch';
@@ -80,14 +81,8 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const hasRoute = engine.legs.size > 0;
 
-  // the phone's Back button closes the search instead of leaving the app
-  useEffect(() => {
-    if (!open) return;
-    window.history.pushState({ rgSearch: 1 }, '');
-    const onPop = () => close(false);
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, [open]);
+  // the phone's Back closes the search instead of leaving the app
+  useBack(open, () => close(false));
 
   const show = (list: Place[], src: typeof source) => { ui.set({ places: list }); mapCtl?.setPlaces(list, null); setSource(src); };
 
@@ -138,7 +133,6 @@ export function SearchTop({ onSettings }: { onSettings: () => void }) {
   const openSearch = () => { setOpen(true); void warmLocation(); };
   const close = (popHistory = true) => {
     setOpen(false); input.current?.blur();
-    if (popHistory && window.history.state?.rgSearch) window.history.back();
   };
   const pickCat = (c: (typeof CATS)[number]) => { setCat(c); setQ(''); setOpen(true); run('', c, opts(), true); };
   const clear = () => { setQ(''); setCat(null); setFilters([]); setErr(''); show([], ''); mapCtl?.setPlaces([], null); input.current?.focus(); };

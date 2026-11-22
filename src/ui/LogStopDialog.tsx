@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useBack } from './back';
 import { engine } from '../core/engine';
 import type { StopType, Witness } from '../core/db';
 import { nav } from '../nav/navigator';
@@ -41,6 +42,7 @@ export function LogStopDialog() {
   const [w, setW] = useState<Witness>({ name: '' });
   const [photos, setPhotos] = useState<File[]>([]);
   useEffect(() => { if (typeof open === 'string') setType(open as StopType); }, [open]);
+  useBack(!!open, () => ui.set({ logStop: false }));
   if (!open) return null;
   const close = () => { ui.set({ logStop: false }); setOdo(''); setNote(''); setLink(''); setW({ name: '' }); setPhotos([]); };
   const isW = WITNESS.includes(type);

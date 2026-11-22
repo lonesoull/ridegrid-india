@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useBack } from './back';
 import { engine, type Stop } from '../core/engine';
 import { fmtKm } from '../core/geo';
 import { T } from '../core/terms';
@@ -20,6 +21,7 @@ export function EditStops() {
   const [order, setOrder] = useState<Stop[] | null>(null);
   const [dragI, setDragI] = useState<number | null>(null);
   const drag = useRef<{ from: number; y0: number; pid: number } | null>(null);
+  useBack(open, () => { ui.set({ editStops: false }); setOrder(null); });
   if (!open) return null;
   const list = order ?? engine.stops;
   const many = list.length > 60;

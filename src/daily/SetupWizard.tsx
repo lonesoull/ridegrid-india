@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useBack } from '../ui/back';
 import { google } from '../core/google';
 import { nav } from '../nav/navigator';
 import { ui } from '../ui/state';
@@ -14,6 +15,7 @@ export const resetSetup = () => { try { localStorage.removeItem(FLAG); } catch {
 /** First-run Daily setup (OsmAnd "first start" wizard), in plain steps. Can be re-run from Settings → Help. */
 export function SetupWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
+  useBack(true, () => (step > 0 ? setStep(step - 1) : finish()));
   const [, tick] = useState(0);
   const finish = () => { try { localStorage.setItem(FLAG, '1'); } catch { /* ignore */ } onDone(); };
   const go = (tab: 'google' | 'map') => { ui.set({ drawer: true, tab }); finish(); };

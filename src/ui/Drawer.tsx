@@ -15,6 +15,7 @@ import { importFile, parseCoordinateText, type ImportOptions } from '../io/impor
 import { download, exportAs, safeName } from '../io/exporters';
 import { ui, useUI, toast, act, type UIState } from './state';
 import { Icon } from './Icon';
+import { useBack } from './back';
 import { useAsync, useEngine, useRouterStatus } from './hooks';
 import { mapCtl } from './App';
 import { StressRouteButton } from './StressRouteButton';
@@ -76,15 +77,10 @@ export function Drawer() {
   const tab = useUI((s) => s.tab);
   const daily = mode.current === 'daily';
   const page: Page = tab === 'tools' ? 'home' : tab;
-  // the phone's Back button: sub-page → settings home → map
-  useEffect(() => {
-    if (!open) return;
-    window.history.pushState({ rgSettings: 1 }, '');
-    const onPop = () => { const t = ui.get().tab; if (t !== 'home' && t !== 'tools') { ui.set({ tab: 'home' }); window.history.pushState({ rgSettings: 1 }, ''); } else ui.set({ drawer: false }); };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, [open]);
-  const close = () => { ui.set({ drawer: false }); if (window.history.state?.rgSettings) window.history.back(); };
+  // the phone's Back: sub-page → settings home → map
+  useBack(open, () => (ui.get().tab !== 'home' && ui.get().tab !== 'tools' ? (ui.set({ tab: 'home' }), void 0) : ui.set({ drawer: false })));
+  useBack(open && page !== 'home', () => ui.set({ tab: 'home' }));
+  const close = () => ui.set({ drawer: false });
   const back = () => (page === 'home' ? close() : ui.set({ tab: 'home' }));
   return (
     <>

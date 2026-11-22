@@ -1,4 +1,5 @@
 import { mode, MODE_LABEL, type AppMode } from '../core/mode';
+import { useBack } from './back';
 import { engine } from '../core/engine';
 import { switchMode } from '../core/trips';
 import { ui, useUI, act } from './state';
@@ -15,6 +16,7 @@ const INFO: Record<AppMode, { icon: string; lines: string[] }> = {
 /** Full mode change: each mode has its own trips, screens and settings. */
 export function ModePicker() {
   const open = useUI((s) => s.modePicker);
+  useBack(open && mode.chosen, () => ui.set({ modePicker: false }));
   if (!open) return null;
   const pick = (m: AppMode) => act(`Opening ${MODE_LABEL[m]}…`, async () => {
     if (nav.mode !== 'off' && m !== mode.current) throw new Error('Stop the current ride first');

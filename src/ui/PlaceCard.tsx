@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useBack } from './back';
 import { resolvePlace, type Place } from '../core/search';
 import { engine } from '../core/engine';
 import { fmtKm, haversine, type LngLat } from '../core/geo';
@@ -50,8 +51,10 @@ export function PlaceCard() {
     return () => { live = false; };
   }, [sel?.id]);
 
+  useBack(!!sel && nav.mode === 'off', () => close());
   if (!sel || nav.mode !== 'off') return null;
-  const close = () => { ui.set({ place: null, places: [] }); mapCtl?.setApproach(null); mapCtl?.setAlternatives(null); mapCtl?.setPlaces([], null); };
+  function close() { closeCard(); }
+  const closeCard = () => { ui.set({ place: null, places: [] }); mapCtl?.setApproach(null); mapCtl?.setAlternatives(null); mapCtl?.setPlaces([], null); };
   const p = pl?.p;
   // distance from the rider (or from where the search was made) — not from the map centre, which moves to the place
   const here = knownLocation();

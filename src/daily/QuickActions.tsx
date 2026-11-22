@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useBack } from '../ui/back';
 import { getSetting, putSetting } from '../core/db';
 import { nav } from '../nav/navigator';
 import { mapCtl } from '../ui/App';
@@ -42,6 +43,8 @@ export function QuickActions() {
   const [locked, setLocked] = useState(false);
   const [stars, setStars] = useState(false);
   const [open, setOpen] = useState(false);
+  useBack(open, () => setOpen(false));
+  useBack(stars, () => setStars(false));
   useEffect(() => { void quick.load().then(() => tick((x) => x + 1)); const f = () => tick((x) => x + 1); quick.listeners.add(f); recorder.listeners.add(f); return () => { quick.listeners.delete(f); recorder.listeners.delete(f); }; }, []);
 
   const run = (a: QA) => {
